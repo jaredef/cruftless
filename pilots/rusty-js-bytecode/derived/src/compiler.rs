@@ -519,6 +519,245 @@ fn expr_contains_optional_chain(expr: &Expr) -> bool {
     }
 }
 
+fn body_contains_direct_eval(body: &[Stmt]) -> bool {
+    body.iter().any(stmt_contains_direct_eval)
+}
+
+fn stmt_contains_direct_eval(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Variable(var) => var
+            .declarators
+            .iter()
+            .any(|d| d.init.as_ref().is_some_and(expr_contains_direct_eval)),
+        Stmt::Expression { expr, .. } => expr_contains_direct_eval(expr),
+        Stmt::Block { body, .. } => body_contains_direct_eval(body),
+        Stmt::FunctionDecl { .. } | Stmt::ClassDecl { .. } | Stmt::Empty { .. } => false,
+        Stmt::If {
+            test,
+            consequent,
+            alternate,
+            ..
+        } => {
+            expr_contains_direct_eval(test)
+                || stmt_contains_direct_eval(consequent)
+                || alternate
+                    .as_ref()
+                    .is_some_and(|s| stmt_contains_direct_eval(s))
+        }
+        Stmt::For {
+            init,
+            test,
+            update,
+            body,
+            ..
+        } => {
+            init.as_ref().is_some_and(for_init_contains_direct_eval)
+                || test.as_ref().is_some_and(expr_contains_direct_eval)
+                || update.as_ref().is_some_and(expr_contains_direct_eval)
+                || stmt_contains_direct_eval(body)
+        }
+        Stmt::ForIn {
+            left, right, body, ..
+        }
+        | Stmt::ForOf {
+            left, right, body, ..
+        } => {
+            for_binding_contains_direct_eval(left)
+                || expr_contains_direct_eval(right)
+                || stmt_contains_direct_eval(body)
+        }
+        Stmt::While { test, body, .. } | Stmt::DoWhile { body, test, .. } => {
+            expr_contains_direct_eval(test) || stmt_contains_direct_eval(body)
+        }
+        Stmt::With { object, body, .. } => {
+            expr_contains_direct_eval(object) || stmt_contains_direct_eval(body)
+        }
+        Stmt::Switch {
+            discriminant,
+            cases,
+            ..
+        } => {
+            expr_contains_direct_eval(discriminant)
+                || cases.iter().any(|c| {
+                    c.test.as_ref().is_some_and(expr_contains_direct_eval)
+                        || body_contains_direct_eval(&c.consequent)
+                })
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            stmt_contains_direct_eval(block)
+                || handler
+                    .as_ref()
+                    .is_some_and(|h| stmt_contains_direct_eval(&h.body))
+                || finalizer
+                    .as_ref()
+                    .is_some_and(|s| stmt_contains_direct_eval(s))
+        }
+        Stmt::Return { argument, .. } => argument.as_ref().is_some_and(expr_contains_direct_eval),
+        Stmt::Throw { argument, .. } => expr_contains_direct_eval(argument),
+        Stmt::Break { .. }
+        | Stmt::Continue { .. }
+        | Stmt::Debugger { .. }
+        | Stmt::Opaque { .. } => false,
+        Stmt::Labelled { body, .. } => stmt_contains_direct_eval(body),
+    }
+}
+
+fn for_init_contains_direct_eval(init: &ForInit) -> bool {
+    match init {
+        ForInit::Variable(var) => var
+            .declarators
+            .iter()
+            .any(|d| d.init.as_ref().is_some_and(expr_contains_direct_eval)),
+        ForInit::Expression(expr) => expr_contains_direct_eval(expr),
+    }
+}
+
+fn for_binding_contains_direct_eval(binding: &ForBinding) -> bool {
+    match binding {
+        ForBinding::Decl { target, .. } | ForBinding::Pattern(target) => {
+            binding_pattern_contains_direct_eval(target)
+        }
+        ForBinding::AssignmentTarget(expr) => expr_contains_direct_eval(expr),
+    }
+}
+
+fn binding_pattern_contains_direct_eval(pattern: &BindingPattern) -> bool {
+    match pattern {
+        BindingPattern::Identifier(_) => false,
+        BindingPattern::Array(array) => {
+            array.elements.iter().flatten().any(|el| {
+                binding_pattern_contains_direct_eval(&el.target)
+                    || el.default.as_ref().is_some_and(expr_contains_direct_eval)
+            }) || array
+                .rest
+                .as_ref()
+                .is_some_and(|p| binding_pattern_contains_direct_eval(p))
+        }
+        BindingPattern::Object(object) => object.properties.iter().any(|prop| {
+            matches!(&prop.key, PropertyKey::Computed(expr) if expr_contains_direct_eval(expr))
+                || binding_pattern_contains_direct_eval(&prop.value.target)
+                || prop
+                    .value
+                    .default
+                    .as_ref()
+                    .is_some_and(expr_contains_direct_eval)
+        }),
+    }
+}
+
+fn expr_contains_direct_eval(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call {
+            callee,
+            arguments,
+            optional,
+            ..
+        } => {
+            (!*optional
+                && matches!(callee.as_ref(), Expr::Identifier { name, .. } if name == "eval"))
+                || expr_contains_direct_eval(callee)
+                || arguments.iter().any(argument_contains_direct_eval)
+        }
+        Expr::Parenthesized { expr, .. }
+        | Expr::Update { argument: expr, .. }
+        | Expr::Unary { argument: expr, .. } => expr_contains_direct_eval(expr),
+        Expr::Array { elements, .. } => elements.iter().any(|el| match el {
+            ArrayElement::Elision { .. } => false,
+            ArrayElement::Expr(expr) | ArrayElement::Spread { expr, .. } => {
+                expr_contains_direct_eval(expr)
+            }
+        }),
+        Expr::Object { properties, .. } => properties.iter().any(|prop| match prop {
+            ObjectProperty::Property { key, value, .. } => {
+                matches!(key, ObjectKey::Computed { expr, .. } if expr_contains_direct_eval(expr))
+                    || expr_contains_direct_eval(value)
+            }
+            ObjectProperty::Spread { expr, .. } => expr_contains_direct_eval(expr),
+        }),
+        Expr::Member {
+            object, property, ..
+        } => {
+            expr_contains_direct_eval(object)
+                || matches!(property.as_ref(), MemberProperty::Computed { expr, .. } if expr_contains_direct_eval(expr))
+        }
+        Expr::New {
+            callee, arguments, ..
+        } => {
+            expr_contains_direct_eval(callee) || arguments.iter().any(argument_contains_direct_eval)
+        }
+        Expr::Binary { left, right, .. }
+        | Expr::Assign {
+            target: left,
+            value: right,
+            ..
+        } => expr_contains_direct_eval(left) || expr_contains_direct_eval(right),
+        Expr::Conditional {
+            test,
+            consequent,
+            alternate,
+            ..
+        } => {
+            expr_contains_direct_eval(test)
+                || expr_contains_direct_eval(consequent)
+                || expr_contains_direct_eval(alternate)
+        }
+        Expr::Sequence { expressions, .. } | Expr::TemplateLiteral { expressions, .. } => {
+            expressions.iter().any(expr_contains_direct_eval)
+        }
+        Expr::Class {
+            super_class,
+            members,
+            ..
+        } => {
+            super_class
+                .as_ref()
+                .is_some_and(|e| expr_contains_direct_eval(e))
+                || members
+                    .iter()
+                    .any(class_member_key_or_field_contains_direct_eval)
+        }
+        Expr::Function { .. } | Expr::Arrow { .. } => false,
+        Expr::NullLiteral { .. }
+        | Expr::BoolLiteral { .. }
+        | Expr::NumberLiteral { .. }
+        | Expr::BigIntLiteral { .. }
+        | Expr::StringLiteral { .. }
+        | Expr::Identifier { .. }
+        | Expr::This { .. }
+        | Expr::Super { .. }
+        | Expr::MetaProperty { .. }
+        | Expr::TemplateObject { .. }
+        | Expr::RegExp { .. }
+        | Expr::Opaque { .. } => false,
+    }
+}
+
+fn argument_contains_direct_eval(argument: &Argument) -> bool {
+    match argument {
+        Argument::Expr(expr) | Argument::Spread { expr, .. } => expr_contains_direct_eval(expr),
+    }
+}
+
+fn class_member_key_or_field_contains_direct_eval(member: &ClassMember) -> bool {
+    match member {
+        ClassMember::Method { name, .. } => class_member_name_contains_direct_eval(name),
+        ClassMember::Field { name, init, .. } => {
+            class_member_name_contains_direct_eval(name)
+                || init.as_ref().is_some_and(expr_contains_direct_eval)
+        }
+        ClassMember::StaticBlock { body, .. } => body_contains_direct_eval(body),
+    }
+}
+
+fn class_member_name_contains_direct_eval(name: &ClassMemberName) -> bool {
+    matches!(name, ClassMemberName::Computed { expr, .. } if expr_contains_direct_eval(expr))
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -4498,6 +4737,15 @@ impl Compiler {
         // Ω.5.P03.E2.enclosing-locals-rc: reuse the cached Rc snapshot
         // instead of cloning `self.locals` per child.
         let locals_snap = self.locals_snapshot();
+        let direct_eval_parent_locals: Vec<String> = if body_contains_direct_eval(body) {
+            locals_snap
+                .iter()
+                .filter(|local| !local.name.starts_with('<'))
+                .map(|local| local.name.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
         sub_enclosing.push(EnclosingFrame {
             locals: locals_snap,
             upvalues: self.upvalues.clone(),
@@ -4545,6 +4793,9 @@ impl Compiler {
             // of whether the enclosing top-level was Script or Module.
             script_mode: false,
         };
+        for name in direct_eval_parent_locals {
+            let _ = sub.resolve_upvalue(&name);
+        }
         let param_count = params.len() as u16;
         // Tier-Ω.5.l: track the rest-parameter slot. Per spec only the
         // last parameter can be a rest parameter; the runtime uses this

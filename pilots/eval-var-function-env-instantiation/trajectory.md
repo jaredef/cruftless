@@ -252,3 +252,72 @@ enough; the writeback target itself is missing.
 is monotonic on the focused probe and preserves DELC. Next rung should
 resolve the module-top binding write target before broad global descriptor
 work.
+
+## EVFEI-EXT 3 — syntactic direct-eval parent-local bridge (2026-05-28)
+
+**Change**:
+
+- Added a bytecode compiler scan for syntactic direct eval in a function
+  body.
+- When a function body contains direct eval, pre-captured visible parent
+  locals as upvalues before compiling that function body.
+- Excluded nested function and arrow bodies from the scan so the bridge
+  applies at the function that owns the direct-eval mouth.
+- Left hidden synthetic locals out of the bridge.
+
+This is the smallest compiler-side bridge for the EVFEI.7 interior point:
+direct eval source can mention names that never appear in the containing
+function's AST, so the ordinary static capture pass cannot produce
+runtime write targets for those names.
+
+**Verification**:
+
+```text
+cargo build --release --bin cruft -p cruftless
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  pilots/eval-var-function-env-instantiation/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  pilots/direct-eval-lexical-capture/exemplars/run-exemplars.sh
+cargo test -p rusty-js-bytecode eval_call -- --nocapture
+cargo test -p rusty-js-runtime eval --test run_golden -- --nocapture
+```
+
+Results:
+
+```text
+EVFEI exemplars: PASS=10 FAIL=6 SKIP=0 NOJSON=0 / 16
+Direct-eval lexical exemplars: PASS=3 FAIL=0 / 3
+bytecode eval_call probes: 2 passed
+runtime eval run_golden probes: 6 passed
+```
+
+Closed rows:
+
+- `language/eval-code/direct/var-env-var-init-local-new.js`
+- `language/eval-code/direct/var-env-var-init-local-update.js`
+- `language/eval-code/direct/var-env-func-init-local-new.js`
+
+Remaining rows:
+
+- `language/eval-code/direct/var-env-var-init-global-new.js`
+- `language/eval-code/direct/var-env-var-init-global-exstng.js`
+- `language/eval-code/direct/var-env-func-init-global-new.js`
+- `language/eval-code/direct/var-env-func-init-global-update-configurable.js`
+- `language/eval-code/indirect/var-env-var-init-global-new.js`
+- `language/eval-code/indirect/var-env-func-init-global-new.js`
+
+**Finding EVFEI.8 (local relation closed; global relation remains)**:
+The parent-local bridge closes the module-top local write-target gap
+without regressing DELC. The remaining failure set is now purely the
+global object relation side of EVFEI: creating or updating global
+var/function bindings through eval must respect global environment record
+descriptor relations, including existing configurable properties and
+indirect eval.
+
+**Status**: EVFEI-EXT 3 CLOSED for local-binding materialization. Next
+rung should promote the global-object relation branch rather than widen
+the parent-local bridge.
