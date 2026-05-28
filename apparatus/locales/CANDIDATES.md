@@ -179,11 +179,11 @@ Candidates surfaced by the LPA-EXT 3 positioning-gap audit (`pilots/apparatus/lo
 **Methodology**: pull 10 sample reasons; cluster by parse-tier mechanism; close per-mechanism rungs.
 **Status**: queued, post-PCR; not yet rule-11-checked.
 
-### (w) `cruft-lowering-feature-gaps` — 🟢 RIPE
+### (w) `cruft-lowering-feature-gaps` — **SPAWNED** 2026-05-28 as [`pilots/cruft-lowering-feature-gaps/`](../../pilots/cruft-lowering-feature-gaps/seed.md)
 **Telos**: substrate work on cruft's bytecode compiler to close unimplemented-feature rejections surfaced by PCR-EXT 2's new `availability/missing-lowering-feature` coordinate (~115 fails). Sibling to (v) at the lowering tier; reasons of shape `compile: complex assignment target not yet supported` etc.
 **Anchor**: PCR-EXT 2 categorizer surfaced the coordinate.
 **Methodology**: enumerate `compile: ...` reasons; cluster by lowering-tier mechanism; close per-mechanism rungs.
-**Status**: queued, post-PCR.
+**Status**: FOUNDED as a parent Rule-23 baseline locale under [`apparatus/arcs/2026-05-28-lowering-feature-gap-triage/`](../arcs/2026-05-28-lowering-feature-gap-triage/arc.md). Current pool is 113 rows in `test262-full-2026-05-27-161641`; CLFG-EXT 1 confirms 32/32 exemplars still fail as compiler diagnostics. First child `super-reference-lowering/` is founded; SRL-EXT 2 closes object-literal HomeObject `super` rows (+3 in child suite) and SRL-EXT 3 closes object-method `super[key]` PutValue ordering rows (+2, child suite now 5/22 PASS).
 
 ### (x) `annexB-runtime-quirks` — **SPAWNED** 2026-05-26 as [`pilots/annexB-runtime-quirks/`](../../pilots/annexB-runtime-quirks/seed.md)
 **Status**: FOUNDED. Runtime built-ins scope only: Date legacy methods, String HTML methods, RegExp.prototype.compile, global escape/unescape. Annex B grammar/lowering surfaces remain excluded to avoid collision with HDSB/WBMS/regexp-conformance.

@@ -1,11 +1,11 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 211,
-    "top_level": 126,
-    "nested": 85,
+    "locales": 213,
+    "top_level": 127,
+    "nested": 86,
     "warnings": 0
   },
   "locales": [
@@ -307,6 +307,24 @@
       "status": null
     },
     {
+      "coord": "cruft-lowering-feature-gaps",
+      "tag": "L.cruft-lowering-feature-gaps",
+      "parent": null,
+      "scope": "cruft-lowering-feature-gaps",
+      "depth": 1,
+      "rung_count": 3,
+      "status": "FOUNDED 2026-05-28 under"
+    },
+    {
+      "coord": "cruft-lowering-feature-gaps/super-reference-lowering",
+      "tag": "L.cruft-lowering-feature-gaps.super-reference-lowering",
+      "parent": "L.cruft-lowering-feature-gaps",
+      "scope": "super-reference-lowering",
+      "depth": 2,
+      "rung_count": 4,
+      "status": "FOUNDED 2026-05-28 as the first child of"
+    },
+    {
       "coord": "cruft-symbol-key-hasown-bridge",
       "tag": "L.cruft-symbol-key-hasown-bridge",
       "parent": null,
@@ -402,7 +420,7 @@
       "parent": null,
       "scope": "eval-var-function-env-instantiation",
       "depth": 1,
-      "rung_count": 4,
+      "rung_count": 5,
       "status": null
     },
     {
@@ -636,7 +654,7 @@
       "parent": null,
       "scope": "json-parse-reviver-semantics",
       "depth": 1,
-      "rung_count": 4,
+      "rung_count": 10,
       "status": "FOUNDED 2026-05-28 from the JSON carve-out search after applying"
     },
     {
@@ -1842,7 +1860,7 @@
       "parent": null,
       "scope": "typed-array-wrong-result",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 7,
       "status": null
     },
     {

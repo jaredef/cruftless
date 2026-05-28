@@ -3819,10 +3819,7 @@ fn temporal_seed_plain_time_from_string(o: &mut Object, input: &str) -> Result<(
         };
         (1..=max).contains(&day)
     }
-    if input.is_empty()
-        || input.contains('−')
-        || input.contains("[U-")
-        || input.ends_with("junk")
+    if input.is_empty() || input.contains('−') || input.contains("[U-") || input.ends_with("junk")
     {
         return Err(err());
     }
@@ -3881,9 +3878,7 @@ fn temporal_seed_plain_time_from_string(o: &mut Object, input: &str) -> Result<(
         if matches!((month, day), (Some(month), Some(day)) if valid_month_day(month, day)) {
             return Err(err());
         }
-    } else if input.len() >= 4
-        && input.chars().take(4).all(|ch| ch.is_ascii_digit())
-    {
+    } else if input.len() >= 4 && input.chars().take(4).all(|ch| ch.is_ascii_digit()) {
         let first_two = input[0..2].parse::<i64>().ok();
         let second_two = input[2..4].parse::<i64>().ok();
         if input.as_bytes().get(2) == Some(&b'-') && input.len() >= 5 {
@@ -3984,7 +3979,9 @@ fn temporal_seed_plain_time_from_string(o: &mut Object, input: &str) -> Result<(
         if parts[0].len() != 2
             || parts[1].len() != 2
             || parts.get(2).is_some_and(|part| part.len() != 2)
-            || !parts.iter().all(|part| part.chars().all(|ch| ch.is_ascii_digit()))
+            || !parts
+                .iter()
+                .all(|part| part.chars().all(|ch| ch.is_ascii_digit()))
         {
             return Err(err());
         }
@@ -5324,7 +5321,9 @@ impl Runtime {
     fn install_global_this(&mut self) {
         // GBSU-EXT 7f.4: global_object is always Some (eager-allocated in
         // Runtime::new). Unwrap is provably safe.
-        let gt = self.global_object.expect("global_object eager-allocated in Runtime::new");
+        let gt = self
+            .global_object
+            .expect("global_object eager-allocated in Runtime::new");
         // GBSU-EXT 7f.4: the legacy HashMap-drain loop is gone — all
         // install-time bindings write to the Object directly via
         // define_global_property. globalThis self-reference (§19.1.1)
@@ -6156,13 +6155,13 @@ impl Runtime {
                     key = crate::value::PropertyKey::String(format!("{}@@{}", s, target.0));
                 }
             }
-            let o = rt.obj_mut(target);
             // Class accessors install as enumerable:false per ECMA-262 sec
             // 15.7 MethodDefinitionEvaluation. Object-literal accessors
             // use a separate helper (__install_accessor_obj__) below to
             // get enumerable:true per sec 13.2.5.5 PropertyDefinitionEvaluation.
             let desc =
-                o.properties
+                rt.obj_mut(target)
+                    .dict_mut()
                     .entry(key)
                     .or_insert_with(|| crate::value::PropertyDescriptor {
                         value: Value::Undefined,
@@ -6203,9 +6202,16 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             };
             let fn_v = args.get(3).cloned().unwrap_or(Value::Undefined);
-            let o = rt.obj_mut(target);
+            if let Value::Object(fn_id) = &fn_v {
+                rt.obj_mut(*fn_id).set_private_home(target);
+            }
+            // Accessor descriptors are not Shape-eligible. Route through
+            // dict_mut so an object literal that mixes accessors and later
+            // data properties preserves source insertion order under shape
+            // enrollment.
             let desc =
-                o.properties
+                rt.obj_mut(target)
+                    .dict_mut()
                     .entry(key)
                     .or_insert_with(|| crate::value::PropertyDescriptor {
                         value: Value::Undefined,
@@ -6224,6 +6230,38 @@ impl Runtime {
             } else if kind == "set" {
                 desc.setter = Some(fn_v);
             }
+            Ok(Value::Undefined)
+        });
+        // SRL-EXT 2: object-literal method install. Same descriptor shape
+        // as ordinary object data properties ({w:true, e:true, c:true}),
+        // but records the literal object as the method HomeObject so
+        // compiler-lowered `super` can resolve through its live prototype.
+        register_engine_helper(self, "__install_method_obj__", |rt, args| {
+            let target = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let key = match args.get(1) {
+                Some(v @ (Value::String(_) | Value::Symbol(_) | Value::Number(_))) => {
+                    crate::interp::property_key(v)
+                }
+                _ => return Ok(Value::Undefined),
+            };
+            let fn_v = args.get(2).cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(fn_id) = &fn_v {
+                rt.obj_mut(*fn_id).set_private_home(target);
+            }
+            rt.obj_mut(target).dict_mut().insert(
+                key,
+                crate::value::PropertyDescriptor {
+                    value: fn_v,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
             Ok(Value::Undefined)
         });
         // Ω.5.P03.E2.class-method-non-enumerable: __install_method__(
@@ -6330,6 +6368,97 @@ impl Runtime {
                 cur = o.proto;
             }
             Ok(Value::Undefined)
+        });
+        // SRL-EXT 2: object-literal `super`. Object method HomeObject is
+        // the literal object itself; GetSuperBase reads its live prototype
+        // at call time, after user code may call Object.setPrototypeOf.
+        register_engine_helper(self, "__super_get_home", |rt, args| {
+            let this_val = args.first().cloned().unwrap_or(Value::Undefined);
+            let home = match args.get(1) {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let key: String = match args.get(2) {
+                Some(Value::String(s)) => (**s).clone(),
+                Some(Value::Number(n)) => {
+                    if n.fract() == 0.0 {
+                        format!("{}", *n as i64)
+                    } else {
+                        format!("{}", n)
+                    }
+                }
+                _ => return Ok(Value::Undefined),
+            };
+            let mut cur = rt.obj(home).proto;
+            while let Some(c) = cur {
+                let o = rt.obj(c);
+                if let Some(desc) = o.get_own(&key) {
+                    if let Some(getter) = desc.getter.clone() {
+                        return rt.call_function(getter, this_val, vec![]);
+                    }
+                    return Ok(desc.value.clone());
+                }
+                cur = o.proto;
+            }
+            Ok(Value::Undefined)
+        });
+        register_engine_helper(self, "__super_base_home", |rt, args| {
+            let home = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            Ok(rt
+                .obj(home)
+                .proto
+                .map(Value::Object)
+                .unwrap_or(Value::Undefined))
+        });
+        register_engine_helper(self, "__super_get_base", |rt, args| {
+            let this_val = args.first().cloned().unwrap_or(Value::Undefined);
+            let super_base = match args.get(1) {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(Value::Undefined),
+            };
+            let key = match args.get(2) {
+                Some(Value::Symbol(_)) => crate::interp::property_key(args.get(2).unwrap()),
+                Some(v) => {
+                    crate::interp::property_key(&Value::String(Rc::new(rt.coerce_to_string(v)?)))
+                }
+                None => crate::interp::property_key(&Value::String(Rc::new("undefined".into()))),
+            };
+            if let Some(getter) = rt.find_getter_pk(super_base, &key) {
+                return rt.call_function(getter, this_val, vec![]);
+            }
+            Ok(rt.object_get_pk(super_base, &key))
+        });
+        register_engine_helper(self, "__super_set", |rt, args| {
+            let super_base = match args.first() {
+                Some(Value::Object(id)) => *id,
+                _ => return Ok(args.get(3).cloned().unwrap_or(Value::Undefined)),
+            };
+            let this_val = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let key = match args.get(2) {
+                Some(Value::Symbol(_)) => crate::interp::property_key(args.get(2).unwrap()),
+                Some(v) => {
+                    crate::interp::property_key(&Value::String(Rc::new(rt.coerce_to_string(v)?)))
+                }
+                None => crate::interp::property_key(&Value::String(Rc::new("undefined".into()))),
+            };
+            let value = args.get(3).cloned().unwrap_or(Value::Undefined);
+            if let Some(setter) = rt.find_setter_pk(super_base, &key) {
+                rt.call_function(setter, this_val, vec![value.clone()])?;
+                return Ok(value);
+            }
+            if rt.has_property_pk(super_base, &key) {
+                if let Value::Object(this_id) = this_val {
+                    rt.object_set_pk(this_id, key, value.clone());
+                }
+                return Ok(value);
+            }
+            if let Value::Object(this_id) = this_val {
+                rt.object_set_pk(this_id, key, value.clone());
+            }
+            Ok(value)
         });
         // Ω.5.P04.E1.for-in-nullish-skip: __for_in_keys(obj) returns
         // Object.keys(obj) for object/function receivers, but [] for
@@ -6708,9 +6837,12 @@ impl Runtime {
             // ran against the primordial global_object filtered by allowlist.
             let cp_gt = match rt.object_get(this_id, "__compartment_globalthis") {
                 Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError(
-                    "Compartment.prototype.evaluate: missing __compartment_globalthis slot".into(),
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.evaluate: missing __compartment_globalthis slot"
+                            .into(),
+                    ))
+                }
             };
             let prior_gt = rt.global_object;
             rt.global_object = Some(cp_gt);
@@ -6910,7 +7042,11 @@ impl Runtime {
                                                 "Compartment importHook for '{}' (async) resolved without string `source` field",
                                                 spec_cap
                                             ))));
-                                            crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                            crate::promise::reject_promise(
+                                                rt,
+                                                outer_p,
+                                                Value::Object(err),
+                                            );
                                             return Ok(Value::Undefined);
                                         }
                                     },
@@ -6919,7 +7055,11 @@ impl Runtime {
                                         rt.object_set(err, "message".into(), Value::String(Rc::new(
                                             "Compartment importHook (async) resolved with non-Object value".into(),
                                         )));
-                                        crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                        crate::promise::reject_promise(
+                                            rt,
+                                            outer_p,
+                                            Value::Object(err),
+                                        );
                                         return Ok(Value::Undefined);
                                     }
                                 };
@@ -6942,32 +7082,36 @@ impl Runtime {
                                     ),
                                     Err(e) => {
                                         let err = rt.alloc_object(Object::new_ordinary());
-                                        rt.object_set(err, "message".into(), Value::String(Rc::new(format!("{:?}", e))));
-                                        crate::promise::reject_promise(rt, outer_p, Value::Object(err));
+                                        rt.object_set(
+                                            err,
+                                            "message".into(),
+                                            Value::String(Rc::new(format!("{:?}", e))),
+                                        );
+                                        crate::promise::reject_promise(
+                                            rt,
+                                            outer_p,
+                                            Value::Object(err),
+                                        );
                                     }
                                 }
                                 Ok(Value::Undefined)
                             },
                         );
                         let on_resolve_id = rt.alloc_object(on_resolve_native);
-                        let on_reject_native = make_native_non_ctor(
-                            "compartmentImportReject",
-                            1,
-                            move |rt, args| {
+                        let on_reject_native =
+                            make_native_non_ctor("compartmentImportReject", 1, move |rt, args| {
                                 let err = args.first().cloned().unwrap_or(Value::Undefined);
                                 crate::promise::reject_promise(rt, outer_p, err);
                                 Ok(Value::Undefined)
-                            },
-                        );
+                            });
                         let on_reject_id = rt.alloc_object(on_reject_native);
                         // Wire reactions on the hook promise. PromiseReaction
                         // chains expect a downstream Promise; we don't observe
                         // it, so allocate throwaway chains.
-                        let hook_status =
-                            match &rt.obj(record_id).internal_kind {
-                                crate::value::InternalKind::Promise(ps) => ps.status,
-                                _ => unreachable!(),
-                            };
+                        let hook_status = match &rt.obj(record_id).internal_kind {
+                            crate::value::InternalKind::Promise(ps) => ps.status,
+                            _ => unreachable!(),
+                        };
                         match hook_status {
                             crate::value::PromiseStatus::Pending => {
                                 let chain_a = crate::promise::new_promise(rt);
@@ -7073,12 +7217,14 @@ impl Runtime {
         // Object.getOwnPropertyDescriptor(Compartment.prototype, 'globalThis')
         // shape checks (returned MISSING).
         let gt_getter = make_native_with_length("get globalThis", 0, |rt, _args| {
-            let this_id = match rt.current_this() {
-                Value::Object(id) => id,
-                _ => return Err(RuntimeError::TypeError(
-                    "Compartment.prototype.globalThis getter: receiver is not a Compartment".into(),
-                )),
-            };
+            let this_id =
+                match rt.current_this() {
+                    Value::Object(id) => id,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Compartment.prototype.globalThis getter: receiver is not a Compartment"
+                            .into(),
+                    )),
+                };
             let v = rt.object_get(this_id, "__compartment_globalthis");
             if matches!(v, Value::Undefined) {
                 return Err(RuntimeError::TypeError(
@@ -7696,7 +7842,8 @@ impl Runtime {
                     // not a JS-visible global.
                     if let Some(gt) = rt.global_object {
                         rt.obj_mut(gt).remove_str(&stash_key);
-                    }                    Ok(result)
+                    }
+                    Ok(result)
                 }
                 Err(e) => Err(e),
             }
@@ -8074,12 +8221,19 @@ impl Runtime {
         let temporal = self.alloc_object(Object::new_ordinary());
         // Temporal.Now sub-namespace.
         let now = self.alloc_object(Object::new_ordinary());
-        for method in &["plainDateTimeISO", "zonedDateTimeISO", "instant",
-                        "plainDateISO", "plainTimeISO", "timeZoneId"] {
+        for method in &[
+            "plainDateTimeISO",
+            "zonedDateTimeISO",
+            "instant",
+            "plainDateISO",
+            "plainTimeISO",
+            "timeZoneId",
+        ] {
             let m = (*method).to_string();
             register_intrinsic_method(self, now, method, 0, move |_rt, _args| {
                 Err(RuntimeError::TypeError(format!(
-                    "Temporal.Now.{} not implemented (Tier-L stub)", m
+                    "Temporal.Now.{} not implemented (Tier-L stub)",
+                    m
                 )))
             });
         }
@@ -8089,11 +8243,15 @@ impl Runtime {
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.Now".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
-        self.obj_mut(temporal).set_own_internal("Now".into(), Value::Object(now));
+        self.obj_mut(temporal)
+            .set_own_internal("Now".into(), Value::Object(now));
         // Temporal class stubs — each is a constructor-shaped function that
         // throws "not implemented" when invoked, but exists as an object
         // so `Temporal.PlainDate` etc. is defined and `instanceof` checks
@@ -8107,21 +8265,25 @@ impl Runtime {
                 "@@toStringTag".into(),
                 PropertyDescriptor {
                     value: Value::String(Rc::new(format!("Temporal.{}", cn))),
-                    writable: false, enumerable: false, configurable: true,
-                    getter: None, setter: None,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
                 },
             );
-            self.obj_mut(temporal).set_own_internal(
-                (*class_name).into(),
-                Value::Object(stub),
-            );
+            self.obj_mut(temporal)
+                .set_own_internal((*class_name).into(), Value::Object(stub));
         }
         self.obj_mut(temporal).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         // TDur-EXT 1 (duration-ctor-fields): install Temporal.Duration as
@@ -8135,8 +8297,16 @@ impl Runtime {
         let dur_proto = self.alloc_object(Object::new_ordinary());
         // 10 unit field getters. Each reads the __td_<unit> sentinel.
         const UNITS: &[&str] = &[
-            "years", "months", "weeks", "days", "hours",
-            "minutes", "seconds", "milliseconds", "microseconds", "nanoseconds",
+            "years",
+            "months",
+            "weeks",
+            "days",
+            "hours",
+            "minutes",
+            "seconds",
+            "milliseconds",
+            "microseconds",
+            "nanoseconds",
         ];
         for unit in UNITS {
             let unit_name: &'static str = unit;
@@ -8145,16 +8315,16 @@ impl Runtime {
             // `d.years` invokes the getter; tests probing
             // Object.getOwnPropertyDescriptor(proto, 'years').get also see it.
             let k = key.clone();
-            let getter_obj = make_native_non_ctor(
-                &format!("get {}", unit_name),
-                0,
-                move |rt, _args| {
+            let getter_obj =
+                make_native_non_ctor(&format!("get {}", unit_name), 0, move |rt, _args| {
                     let id = match rt.current_this() {
                         Value::Object(o) => o,
-                        _ => return Err(RuntimeError::TypeError(format!(
-                            "Temporal.Duration.prototype.{}: this is not an object",
-                            unit_name
-                        ))),
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Temporal.Duration.prototype.{}: this is not an object",
+                                unit_name
+                            )))
+                        }
                     };
                     // Brand-check: this must be a Temporal.Duration instance.
                     // Use sentinel presence as the brand.
@@ -8165,8 +8335,7 @@ impl Runtime {
                         ))),
                         v => Ok(v),
                     }
-                },
-            );
+                });
             let getter_id = self.alloc_object(getter_obj);
             self.obj_mut(dur_proto).dict_mut().insert(
                 unit_name.into(),
@@ -8184,7 +8353,7 @@ impl Runtime {
         // not orderable / comparable via valueOf coercion).
         register_intrinsic_method(self, dur_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.Duration valueOf cannot be used; use compare()".into()
+                "Temporal.Duration valueOf cannot be used; use compare()".into(),
             ))
         });
         // DDP-EXT 1 (duration-derived-properties): sign + blank accessors,
@@ -8197,12 +8366,15 @@ impl Runtime {
         fn validate_uniform_sign(units: &[f64; 10]) -> Result<(), RuntimeError> {
             let mut sign: f64 = 0.0;
             for &u in units {
-                if u == 0.0 { continue; }
+                if u == 0.0 {
+                    continue;
+                }
                 let s = u.signum();
-                if sign == 0.0 { sign = s; }
-                else if sign != s {
+                if sign == 0.0 {
+                    sign = s;
+                } else if sign != s {
                     return Err(RuntimeError::RangeError(
-                        "Temporal.Duration: all non-zero unit fields must share sign".into()
+                        "Temporal.Duration: all non-zero unit fields must share sign".into(),
                     ));
                 }
             }
@@ -8211,13 +8383,22 @@ impl Runtime {
         // Helper: read all 10 unit sentinels from `this`. Returns
         // [years..nanoseconds] or TypeError if `this` isn't a Duration.
         fn read_units(rt: &mut Runtime, this_id: ObjectRef) -> Result<[f64; 10], RuntimeError> {
-            let units = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let units = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             // Brand-check: first sentinel must be present.
             if matches!(rt.object_get(this_id, "__td_years"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "this is not a Temporal.Duration".into()
+                    "this is not a Temporal.Duration".into(),
                 ));
             }
             let mut out = [0.0f64; 10];
@@ -8231,9 +8412,18 @@ impl Runtime {
         }
         // Helper: allocate a new Duration instance with given units.
         fn make_duration(rt: &mut Runtime, proto: ObjectRef, units: [f64; 10]) -> Value {
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(proto);
             let id = rt.alloc_object(o);
@@ -8251,21 +8441,29 @@ impl Runtime {
             let getter = make_native_non_ctor("get sign", 0, move |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Duration.prototype.sign: this is not an object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.Duration.prototype.sign: this is not an object".into(),
+                        ))
+                    }
                 };
                 let units = read_units(rt, id)?;
-                let s = units.iter().find(|&&u| u != 0.0).map_or(0.0, |&u| u.signum());
+                let s = units
+                    .iter()
+                    .find(|&&u| u != 0.0)
+                    .map_or(0.0, |&u| u.signum());
                 Ok(Value::Number(s))
             });
             let getter_id = self.alloc_object(getter);
             self.obj_mut(dur_proto).dict_mut().insert(
                 "sign".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -8274,9 +8472,11 @@ impl Runtime {
             let getter = make_native_non_ctor("get blank", 0, move |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Duration.prototype.blank: this is not an object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.Duration.prototype.blank: this is not an object".into(),
+                        ))
+                    }
                 };
                 let units = read_units(rt, id)?;
                 Ok(Value::Boolean(units.iter().all(|&u| u == 0.0)))
@@ -8285,9 +8485,12 @@ impl Runtime {
             self.obj_mut(dur_proto).dict_mut().insert(
                 "blank".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -8295,12 +8498,16 @@ impl Runtime {
         register_intrinsic_method(self, dur_proto, "abs", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.abs: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.abs: this is not an object".into(),
+                    ))
+                }
             };
             let mut units = read_units(rt, id)?;
-            for u in units.iter_mut() { *u = u.abs(); }
+            for u in units.iter_mut() {
+                *u = u.abs();
+            }
             Ok(make_duration(rt, proto_for_derived, units))
         });
         // DWith-EXT 1 (duration-with): with(durationLike) returns a new
@@ -8310,31 +8517,47 @@ impl Runtime {
         register_intrinsic_method(self, dur_proto, "with", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.with: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.with: this is not an object".into(),
+                    ))
+                }
             };
             let mut units = read_units(rt, id)?;
             // Argument must be an Object (not undefined / null / primitive).
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let arg_id = match arg {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.with: argument must be an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.with: argument must be an object".into(),
+                    ))
+                }
             };
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut has_any = false;
             for (i, u) in units_names.iter().enumerate() {
                 let v = rt.object_get(arg_id, u);
-                if matches!(v, Value::Undefined) { continue; }
+                if matches!(v, Value::Undefined) {
+                    continue;
+                }
                 has_any = true;
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.Duration.prototype.with: {} must be a finite integer", u
+                        "Temporal.Duration.prototype.with: {} must be a finite integer",
+                        u
                     )));
                 }
                 units[i] = if n == 0.0 { 0.0 } else { n };
@@ -8353,20 +8576,27 @@ impl Runtime {
         register_intrinsic_method(self, dur_proto, "negated", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.negated: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.negated: this is not an object".into(),
+                    ))
+                }
             };
             let mut units = read_units(rt, id)?;
-            for u in units.iter_mut() { *u = if *u == 0.0 { 0.0 } else { -*u }; }
+            for u in units.iter_mut() {
+                *u = if *u == 0.0 { 0.0 } else { -*u };
+            }
             Ok(make_duration(rt, proto_for_derived, units))
         });
         self.obj_mut(dur_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.Duration".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let proto_for_ctor = dur_proto;
@@ -8374,7 +8604,7 @@ impl Runtime {
             // Per §11.1.1 step 1: if NewTarget is undefined, throw TypeError.
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.Duration constructor cannot be called as a function".into()
+                    "Temporal.Duration constructor cannot be called as a function".into(),
                 ));
             }
             // ToIntegerIfIntegral for each of 10 args; undefined -> 0.
@@ -8390,12 +8620,12 @@ impl Runtime {
                 // Sign-uniformity check deferred to duration-arithmetic.
                 if !n.is_finite() {
                     return Err(RuntimeError::RangeError(
-                        "Temporal.Duration: arguments must be finite integers".into()
+                        "Temporal.Duration: arguments must be finite integers".into(),
                     ));
                 }
                 if n != n.trunc() {
                     return Err(RuntimeError::RangeError(
-                        "Temporal.Duration: arguments must be integers".into()
+                        "Temporal.Duration: arguments must be integers".into(),
                     ));
                 }
                 // Normalize -0 to 0.
@@ -8424,18 +8654,30 @@ impl Runtime {
         // and sub-day units balance via total-ns carry.
         // Spec: Duration.prototype.add(other) returns a new Duration.
         fn read_duration_units(rt: &mut Runtime, v: Value) -> Result<[f64; 10], RuntimeError> {
-            let names = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0.0f64; 10];
             if let Value::String(s) = &v {
-                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.Duration arithmetic: invalid ISO 8601 duration: {:?}", s
-                )))?;
+                let parsed = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.Duration arithmetic: invalid ISO 8601 duration: {:?}",
+                        s
+                    ))
+                })?;
                 for (i, &u) in parsed.iter().enumerate() {
                     if !u.is_finite() || u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.Duration arithmetic: fractional unit out of position".into()
+                            "Temporal.Duration arithmetic: fractional unit out of position".into(),
                         ));
                     }
                     units[i] = u;
@@ -8443,21 +8685,33 @@ impl Runtime {
             } else if let Value::Object(id) = v {
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, n) in names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", n)
+                    } else {
+                        (*n).to_string()
+                    };
                     if let Value::Number(v) = rt.object_get(id, &key) {
                         units[i] = v;
                     }
                 }
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.Duration arithmetic: argument must be Duration, object, or string".into()
+                    "Temporal.Duration arithmetic: argument must be Duration, object, or string"
+                        .into(),
                 ));
             }
             Ok(units)
         }
-        fn duration_add_impl(rt: &mut Runtime, dur_proto: ObjectRef, a: [f64; 10], b: [f64; 10]) -> Result<Value, RuntimeError> {
+        fn duration_add_impl(
+            rt: &mut Runtime,
+            dur_proto: ObjectRef,
+            a: [f64; 10],
+            b: [f64; 10],
+        ) -> Result<Value, RuntimeError> {
             let mut sum = [0.0f64; 10];
-            for i in 0..10 { sum[i] = a[i] + b[i]; }
+            for i in 0..10 {
+                sum[i] = a[i] + b[i];
+            }
             // Sub-day balancing per §11.4.4: compose total ns from days
             // through nanoseconds; if result has uniform sign and is
             // representable, redistribute into days/hours/min/sec/ms/μs/ns.
@@ -8469,7 +8723,13 @@ impl Runtime {
                 + (sum[7] as i64).saturating_mul(1_000_000)
                 + (sum[8] as i64).saturating_mul(1_000)
                 + (sum[9] as i64);
-            let sign_subday: i64 = if total_subday_ns > 0 { 1 } else if total_subday_ns < 0 { -1 } else { 0 };
+            let sign_subday: i64 = if total_subday_ns > 0 {
+                1
+            } else if total_subday_ns < 0 {
+                -1
+            } else {
+                0
+            };
             // Decompose abs total into days+hours+min+sec+ms+μs+ns.
             let mut rem = total_subday_ns.abs();
             let days = rem / 86_400_000_000_000;
@@ -8495,8 +8755,10 @@ impl Runtime {
             // Sign-uniformity validation between year/month/week and the
             // sub-day group: if both groups present and signs differ -> RangeError
             // (cannot balance without relativeTo).
-            let date_sign: f64 = [sum[0], sum[1], sum[2]].iter()
-                .find(|&&u| u != 0.0).map_or(0.0, |&u| u.signum());
+            let date_sign: f64 = [sum[0], sum[1], sum[2]]
+                .iter()
+                .find(|&&u| u != 0.0)
+                .map_or(0.0, |&u| u.signum());
             let sub_sign = sign_subday as f64;
             if date_sign != 0.0 && sub_sign != 0.0 && date_sign != sub_sign {
                 return Err(RuntimeError::RangeError(
@@ -8510,32 +8772,44 @@ impl Runtime {
         register_intrinsic_method(self, dur_proto, "add", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.add: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.add: this is not an object".into(),
+                    ))
+                }
             };
             let this_units = read_units(rt, id).map(|u| {
                 let mut out = [0.0f64; 10];
-                for i in 0..10 { out[i] = u[i]; }
+                for i in 0..10 {
+                    out[i] = u[i];
+                }
                 out
             })?;
-            let other_units = read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let other_units =
+                read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             duration_add_impl(rt, dur_proto_for_arith, this_units, other_units)
         });
         register_intrinsic_method(self, dur_proto, "subtract", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.subtract: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.subtract: this is not an object".into(),
+                    ))
+                }
             };
             let this_units = read_units(rt, id).map(|u| {
                 let mut out = [0.0f64; 10];
-                for i in 0..10 { out[i] = u[i]; }
+                for i in 0..10 {
+                    out[i] = u[i];
+                }
                 out
             })?;
-            let mut other_units = read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            for u in other_units.iter_mut() { *u = -*u; }
+            let mut other_units =
+                read_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for u in other_units.iter_mut() {
+                *u = -*u;
+            }
             duration_add_impl(rt, dur_proto_for_arith, this_units, other_units)
         });
         // DSC-EXT 1 (duration-string-conversion): toString / toJSON /
@@ -8549,13 +8823,25 @@ impl Runtime {
         // - Sub-seconds combine: total_frac_ns = ms*10^6 + μs*10^3 + ns.
         //   Carries (>1e9) propagate into the seconds field. Fractional
         //   portion zero-pad to 9 digits then trim trailing zeros.
-        fn duration_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+        fn duration_to_iso_string(
+            rt: &mut Runtime,
+            this_id: ObjectRef,
+        ) -> Result<String, RuntimeError> {
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             if matches!(rt.object_get(this_id, "__td_years"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.Duration: this is not a Temporal.Duration".into()
+                    "Temporal.Duration: this is not a Temporal.Duration".into(),
                 ));
             }
             let mut u = [0i64; 10];
@@ -8567,7 +8853,9 @@ impl Runtime {
             }
             // Negative if any non-zero unit is negative.
             let neg = u.iter().any(|&x| x < 0);
-            for x in u.iter_mut() { *x = x.abs(); }
+            for x in u.iter_mut() {
+                *x = x.abs();
+            }
             // Sub-second roll-up: combine ms*1e6 + μs*1e3 + ns → total ns,
             // then carry into seconds.
             let total_subsec_ns: i64 = u[7] * 1_000_000 + u[8] * 1_000 + u[9];
@@ -8578,20 +8866,33 @@ impl Runtime {
             let any_date = u[0] != 0 || u[1] != 0 || u[2] != 0 || u[3] != 0;
             let any_time = u[4] != 0 || u[5] != 0 || seconds_total != 0 || frac_ns != 0;
             let mut out = String::new();
-            if neg { out.push('-'); }
+            if neg {
+                out.push('-');
+            }
             out.push('P');
-            if u[0] != 0 { out.push_str(&format!("{}Y", u[0])); }
-            if u[1] != 0 { out.push_str(&format!("{}M", u[1])); }
-            if u[2] != 0 { out.push_str(&format!("{}W", u[2])); }
-            if u[3] != 0 { out.push_str(&format!("{}D", u[3])); }
+            if u[0] != 0 {
+                out.push_str(&format!("{}Y", u[0]));
+            }
+            if u[1] != 0 {
+                out.push_str(&format!("{}M", u[1]));
+            }
+            if u[2] != 0 {
+                out.push_str(&format!("{}W", u[2]));
+            }
+            if u[3] != 0 {
+                out.push_str(&format!("{}D", u[3]));
+            }
             if any_time {
                 out.push('T');
-                if u[4] != 0 { out.push_str(&format!("{}H", u[4])); }
-                if u[5] != 0 { out.push_str(&format!("{}M", u[5])); }
+                if u[4] != 0 {
+                    out.push_str(&format!("{}H", u[4]));
+                }
+                if u[5] != 0 {
+                    out.push_str(&format!("{}M", u[5]));
+                }
                 // Seconds: emit if seconds_total != 0 OR frac_ns != 0 OR
                 // neither date nor other time units present (PT0S fallback).
-                let need_seconds = seconds_total != 0 || frac_ns != 0
-                    || (u[4] == 0 && u[5] == 0);
+                let need_seconds = seconds_total != 0 || frac_ns != 0 || (u[4] == 0 && u[5] == 0);
                 if need_seconds {
                     if frac_ns > 0 {
                         let frac_str = format!("{:09}", frac_ns);
@@ -8610,27 +8911,33 @@ impl Runtime {
         register_intrinsic_method(self, dur_proto, "toString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.toString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.toString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, dur_proto, "toJSON", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.toJSON: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.toJSON: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, dur_proto, "toLocaleString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.prototype.toLocaleString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.prototype.toLocaleString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(duration_to_iso_string(rt, id)?)))
         });
@@ -8650,11 +8957,20 @@ impl Runtime {
             let mut i = 0;
             // Optional sign.
             let sign: f64 = match bytes.get(i) {
-                Some(b'+') => { i += 1; 1.0 }
-                Some(b'-') => { i += 1; -1.0 }
-                Some(0xE2) if bytes.get(i+1) == Some(&0x88) && bytes.get(i+2) == Some(&0x92) => {
+                Some(b'+') => {
+                    i += 1;
+                    1.0
+                }
+                Some(b'-') => {
+                    i += 1;
+                    -1.0
+                }
+                Some(0xE2)
+                    if bytes.get(i + 1) == Some(&0x88) && bytes.get(i + 2) == Some(&0x92) =>
+                {
                     // U+2212 MINUS SIGN per spec also accepted.
-                    i += 3; -1.0
+                    i += 3;
+                    -1.0
                 }
                 _ => 1.0,
             };
@@ -8666,19 +8982,19 @@ impl Runtime {
             let mut units = [0.0f64; 10];
             // Designator order: Y, M, W, D (date part); then T, H, M, S (time part).
             // Date-part Ms are months; time-part Ms are minutes.
-            let date_designators: [(u8, usize); 4] = [
-                (b'Y', 0), (b'M', 1), (b'W', 2), (b'D', 3),
-            ];
-            let time_designators: [(u8, usize); 3] = [
-                (b'H', 4), (b'M', 5), (b'S', 6),
-            ];
+            let date_designators: [(u8, usize); 4] = [(b'Y', 0), (b'M', 1), (b'W', 2), (b'D', 3)];
+            let time_designators: [(u8, usize); 3] = [(b'H', 4), (b'M', 5), (b'S', 6)];
             let mut any_designator = false;
             // Helper: parse a number (possibly fractional). Returns
             // (integer_part, fractional_part, new_index, has_fractional).
             fn parse_number(b: &[u8], mut j: usize) -> Option<(f64, f64, usize, bool)> {
                 let int_start = j;
-                while j < b.len() && b[j].is_ascii_digit() { j += 1; }
-                if j == int_start { return None; }
+                while j < b.len() && b[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j == int_start {
+                    return None;
+                }
                 let int_str = std::str::from_utf8(&b[int_start..j]).ok()?;
                 let int_val: f64 = int_str.parse().ok()?;
                 let mut frac_val: f64 = 0.0;
@@ -8687,8 +9003,12 @@ impl Runtime {
                     has_frac = true;
                     j += 1;
                     let frac_start = j;
-                    while j < b.len() && b[j].is_ascii_digit() { j += 1; }
-                    if j == frac_start { return None; } // dot without digits
+                    while j < b.len() && b[j].is_ascii_digit() {
+                        j += 1;
+                    }
+                    if j == frac_start {
+                        return None;
+                    } // dot without digits
                     let frac_str = std::str::from_utf8(&b[frac_start..j]).ok()?;
                     let frac_int: f64 = frac_str.parse().ok()?;
                     let divisor = 10f64.powi((j - frac_start) as i32);
@@ -8719,16 +9039,22 @@ impl Runtime {
                         Some(t) => t,
                         None => break,
                     };
-                    if new_i >= b.len() { return None; }
+                    if new_i >= b.len() {
+                        return None;
+                    }
                     let designator_byte = b[new_i].to_ascii_uppercase();
                     // Skip designators until we find this one.
                     while next_d < designators.len() && designators[next_d].0 != designator_byte {
                         next_d += 1;
                     }
-                    if next_d >= designators.len() { return None; }
+                    if next_d >= designators.len() {
+                        return None;
+                    }
                     let slot = designators[next_d].1;
                     units[slot] = sign * (int_val + frac_val);
-                    if has_frac { *fractional_taken = Some(slot); }
+                    if has_frac {
+                        *fractional_taken = Some(slot);
+                    }
                     consumed_any = true;
                     next_d += 1; // can only use each designator once and in order
                     i = new_i + 1; // consume the designator byte
@@ -8738,24 +9064,42 @@ impl Runtime {
             // Date part: indices 0..3 in `units` are years/months/weeks/days.
             let mut fractional_taken: Option<usize> = None;
             let (mut i, consumed_date) = consume_part(
-                bytes, i, &date_designators, &mut units, sign, &mut fractional_taken
+                bytes,
+                i,
+                &date_designators,
+                &mut units,
+                sign,
+                &mut fractional_taken,
             )?;
-            if consumed_date { any_designator = true; }
+            if consumed_date {
+                any_designator = true;
+            }
             // Optional T section.
             if i < bytes.len() && (bytes[i] == b'T' || bytes[i] == b't') {
                 i += 1;
                 // Time-part Ms are minutes (slot 5), not months (slot 1).
                 // The shared designators table uses slot indices into units.
                 let (new_i, consumed_time) = consume_part(
-                    bytes, i, &time_designators, &mut units, sign, &mut fractional_taken
+                    bytes,
+                    i,
+                    &time_designators,
+                    &mut units,
+                    sign,
+                    &mut fractional_taken,
                 )?;
-                if !consumed_time { return None; } // T with no time units
+                if !consumed_time {
+                    return None;
+                } // T with no time units
                 any_designator = true;
                 i = new_i;
             }
             // Must have consumed at least one designator AND reached end.
-            if !any_designator { return None; }
-            if i != bytes.len() { return None; }
+            if !any_designator {
+                return None;
+            }
+            if i != bytes.len() {
+                return None;
+            }
             // IFP-EXT 1 (iso-fractional-propagation): per §13.27, fractional
             // on H/M/S propagates DOWNWARD into smaller units. Fractional H
             // = (int hours, frac_h*3600 seconds); same for M (frac*60 sec)
@@ -8775,7 +9119,11 @@ impl Runtime {
                 let int_part = v.trunc();
                 let frac = v - int_part;
                 // Reset the slot to the integer part with sign.
-                units[slot] = if units[slot] < 0.0 { -int_part } else { int_part };
+                units[slot] = if units[slot] < 0.0 {
+                    -int_part
+                } else {
+                    int_part
+                };
                 let sign_propagate: f64 = sign;
                 // Cascade fractional down: HOURS -> MINUTES, MINUTES -> SECONDS,
                 // SECONDS -> ms/μs/ns. Each step: frac * 60 (or *1e9 for sub-sec).
@@ -8821,29 +9169,44 @@ impl Runtime {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             // IDP-EXT 1: parse ISO 8601 duration string per §11.8.1.
             if let Value::String(s) = &item {
-                let units = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.Duration.from(string): invalid ISO 8601 duration: {:?}", s
-                )))?;
+                let units = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.Duration.from(string): invalid ISO 8601 duration: {:?}",
+                        s
+                    ))
+                })?;
                 // Integer-validate (spec: each unit must be integer).
                 for u in &units {
                     if !u.is_finite() || *u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.Duration.from(string): fractional unit out of position".into()
+                            "Temporal.Duration.from(string): fractional unit out of position"
+                                .into(),
                         ));
                     }
                 }
                 validate_uniform_sign(&units)?;
                 return Ok(make_duration(rt, proto_for_from, units));
             }
-            let id = match item {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Duration.from: argument must be a Duration, object, or string".into()
-                )),
-            };
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+            let id =
+                match item {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Duration.from: argument must be a Duration, object, or string"
+                            .into(),
+                    )),
+                };
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0.0f64; 10];
             // If the object is already a Temporal.Duration, clone its
             // internal slots. Brand-check via __td_years sentinel.
@@ -8862,12 +9225,15 @@ impl Runtime {
                 let mut has_any_unit = false;
                 for (i, u) in units_names.iter().enumerate() {
                     let v = rt.object_get(id, u);
-                    if matches!(v, Value::Undefined) { continue; }
+                    if matches!(v, Value::Undefined) {
+                        continue;
+                    }
                     has_any_unit = true;
                     let n = crate::abstract_ops::to_number(&v);
                     if !n.is_finite() || n != n.trunc() {
                         return Err(RuntimeError::RangeError(format!(
-                            "Temporal.Duration.from: {} must be a finite integer", u
+                            "Temporal.Duration.from: {} must be a finite integer",
+                            u
                         )));
                     }
                     units[i] = if n == 0.0 { 0.0 } else { n };
@@ -8891,9 +9257,12 @@ impl Runtime {
             fn coerce(rt: &mut Runtime, v: Value) -> Result<[f64; 10], RuntimeError> {
                 if let Value::String(s) = &v {
                     // IDP-EXT 1: parse ISO duration string for compare.
-                    let units = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.Duration.compare(string): invalid ISO 8601 duration: {:?}", s
-                    )))?;
+                    let units = parse_iso_duration(s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
+                            "Temporal.Duration.compare(string): invalid ISO 8601 duration: {:?}",
+                            s
+                        ))
+                    })?;
                     for u in &units {
                         if !u.is_finite() || *u != u.trunc() {
                             return Err(RuntimeError::RangeError(
@@ -8906,16 +9275,30 @@ impl Runtime {
                 let id = match v {
                     Value::Object(o) => o,
                     _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Duration.compare: argument must be Duration, object, or string".into()
+                        "Temporal.Duration.compare: argument must be Duration, object, or string"
+                            .into(),
                     )),
                 };
-                let units_names = ["years", "months", "weeks", "days", "hours",
-                                   "minutes", "seconds", "milliseconds",
-                                   "microseconds", "nanoseconds"];
+                let units_names = [
+                    "years",
+                    "months",
+                    "weeks",
+                    "days",
+                    "hours",
+                    "minutes",
+                    "seconds",
+                    "milliseconds",
+                    "microseconds",
+                    "nanoseconds",
+                ];
                 let mut out = [0.0f64; 10];
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, u) in units_names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", u) } else { (*u).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", u)
+                    } else {
+                        (*u).to_string()
+                    };
                     if let Value::Number(n) = rt.object_get(id, &key) {
                         out[i] = n;
                     }
@@ -8927,8 +9310,12 @@ impl Runtime {
             // If any year/month/week present in either, relativeTo is
             // required. Without it (and without our temporal-relative-to
             // substrate), throw RangeError per spec.
-            let needs_relative = ua[0] != 0.0 || ua[1] != 0.0 || ua[2] != 0.0
-                              || ub[0] != 0.0 || ub[1] != 0.0 || ub[2] != 0.0;
+            let needs_relative = ua[0] != 0.0
+                || ua[1] != 0.0
+                || ua[2] != 0.0
+                || ub[0] != 0.0
+                || ub[1] != 0.0
+                || ub[2] != 0.0;
             if needs_relative {
                 // Check options.relativeTo; if present, defer (not implemented).
                 let opts = args.get(2).cloned().unwrap_or(Value::Undefined);
@@ -8951,16 +9338,22 @@ impl Runtime {
             // and the spec defines this path as the no-relativeTo case).
             fn to_ns(u: [f64; 10]) -> f64 {
                 u[3] * 86_400e9
-                + u[4] * 3600e9
-                + u[5] * 60e9
-                + u[6] * 1e9
-                + u[7] * 1e6
-                + u[8] * 1e3
-                + u[9]
+                    + u[4] * 3600e9
+                    + u[5] * 60e9
+                    + u[6] * 1e9
+                    + u[7] * 1e6
+                    + u[8] * 1e3
+                    + u[9]
             }
             let na = to_ns(ua);
             let nb = to_ns(ub);
-            Ok(Value::Number(if na < nb { -1.0 } else if na > nb { 1.0 } else { 0.0 }))
+            Ok(Value::Number(if na < nb {
+                -1.0
+            } else if na > nb {
+                1.0
+            } else {
+                0.0
+            }))
         });
         // Overwrite the Duration stub on the Temporal namespace with the real ctor.
         self.obj_mut(temporal)
@@ -8972,12 +9365,14 @@ impl Runtime {
         // epochNanoseconds accessor — returns the BigInt sentinel directly.
         {
             let getter = make_native_non_ctor("get epochNanoseconds", 0, |rt, _args| {
-                let id = match rt.current_this() {
-                    Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.prototype.epochNanoseconds: this is not an object".into()
-                    )),
-                };
+                let id =
+                    match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.epochNanoseconds: this is not an object"
+                                .into(),
+                        )),
+                    };
                 match rt.object_get(id, "__ti_ns") {
                     Value::Undefined => Err(RuntimeError::TypeError(
                         "Temporal.Instant.prototype.epochNanoseconds: this is not a Temporal.Instant".into()
@@ -8989,21 +9384,26 @@ impl Runtime {
             self.obj_mut(inst_proto).dict_mut().insert(
                 "epochNanoseconds".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         // epochMilliseconds accessor — derives from __ti_ns by floor-div 1_000_000.
         {
             let getter = make_native_non_ctor("get epochMilliseconds", 0, |rt, _args| {
-                let id = match rt.current_this() {
-                    Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.prototype.epochMilliseconds: this is not an object".into()
-                    )),
-                };
+                let id =
+                    match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.epochMilliseconds: this is not an object"
+                                .into(),
+                        )),
+                    };
                 let ns = match rt.object_get(id, "__ti_ns") {
                     Value::BigInt(b) => b,
                     _ => return Err(RuntimeError::TypeError(
@@ -9021,24 +9421,30 @@ impl Runtime {
             self.obj_mut(inst_proto).dict_mut().insert(
                 "epochMilliseconds".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         // valueOf throws TypeError per spec (Instant is not orderable via valueOf).
         register_intrinsic_method(self, inst_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.Instant valueOf cannot be used; use compare() or equals()".into()
+                "Temporal.Instant valueOf cannot be used; use compare() or equals()".into(),
             ))
         });
         self.obj_mut(inst_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.Instant".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let inst_proto_for_ctor = inst_proto;
@@ -9046,23 +9452,25 @@ impl Runtime {
         let inst_ctor_obj = make_native_with_length("Instant", 1, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.Instant constructor cannot be called as a function".into()
+                    "Temporal.Instant constructor cannot be called as a function".into(),
                 ));
             }
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             // ToBigInt — handles BigInt, bool, string (SyntaxError on bad string).
             let ns = match crate::abstract_ops::to_bigint(rt, &arg)? {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant: argument must be a BigInt".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant: argument must be a BigInt".into(),
+                    ))
+                }
             };
             // Range check: |ns| <= 8.64e21. Use the BigInt's f64 conversion
             // for the bounds test; range is well within f64 precision.
             let ns_f = ns.to_f64();
             if !ns_f.is_finite() || ns_f.abs() > 8.64e21 {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into()
+                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into(),
                 ));
             }
             let mut o = Object::new_ordinary();
@@ -9085,40 +9493,61 @@ impl Runtime {
         // ignored; the explicit offset dominates).
         fn parse_iso_datetime(s: &str) -> Option<(i64, i64)> {
             let b = s.as_bytes();
-            if b.len() < 16 { return None; } // minimum YYYY-MM-DDTHH:MMZ
-            // Helper: parse N digits at index i.
+            if b.len() < 16 {
+                return None;
+            } // minimum YYYY-MM-DDTHH:MMZ
+              // Helper: parse N digits at index i.
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
             }
             let mut i = 0;
-            let year = rd(b, i, 4)?; i += 4;
-            if b.get(i) != Some(&b'-') { return None; } i += 1;
-            let month = rd(b, i, 2)?; i += 2;
-            if b.get(i) != Some(&b'-') { return None; } i += 1;
-            let day = rd(b, i, 2)?; i += 2;
+            let year = rd(b, i, 4)?;
+            i += 4;
+            if b.get(i) != Some(&b'-') {
+                return None;
+            }
+            i += 1;
+            let month = rd(b, i, 2)?;
+            i += 2;
+            if b.get(i) != Some(&b'-') {
+                return None;
+            }
+            i += 1;
+            let day = rd(b, i, 2)?;
+            i += 2;
             // Time separator: T, t, or space.
             match b.get(i) {
                 Some(b'T') | Some(b't') | Some(b' ') => i += 1,
                 _ => return None,
             }
-            let hour = rd(b, i, 2)?; i += 2;
+            let hour = rd(b, i, 2)?;
+            i += 2;
             // Minutes: separator ':' required or absent (compact form).
             // For v1 simplicity, require ':' separator (basic-form deferred).
-            if b.get(i) != Some(&b':') { return None; } i += 1;
-            let minute = rd(b, i, 2)?; i += 2;
+            if b.get(i) != Some(&b':') {
+                return None;
+            }
+            i += 1;
+            let minute = rd(b, i, 2)?;
+            i += 2;
             // Optional seconds.
             let mut second = 0i64;
             let mut frac_ns: i64 = 0;
             if b.get(i) == Some(&b':') {
                 i += 1;
-                second = rd(b, i, 2)?; i += 2;
+                second = rd(b, i, 2)?;
+                i += 2;
                 if matches!(b.get(i), Some(b'.') | Some(b',')) {
                     i += 1;
                     let frac_start = i;
@@ -9126,35 +9555,46 @@ impl Runtime {
                         i += 1;
                     }
                     let n_digits = i - frac_start;
-                    if n_digits == 0 { return None; }
+                    if n_digits == 0 {
+                        return None;
+                    }
                     let mut frac = 0i64;
                     for k in 0..n_digits {
                         frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
                     }
                     // pad to nanosecond precision (9 digits)
-                    for _ in 0..(9 - n_digits) { frac *= 10; }
+                    for _ in 0..(9 - n_digits) {
+                        frac *= 10;
+                    }
                     frac_ns = frac;
                 }
             }
             // Offset: Z (or z) or ±HH:MM[:SS].
             let offset_sec: i64 = match b.get(i) {
-                Some(b'Z') | Some(b'z') => { i += 1; 0 }
+                Some(b'Z') | Some(b'z') => {
+                    i += 1;
+                    0
+                }
                 Some(b'+') | Some(b'-') => {
                     let sign: i64 = if b[i] == b'+' { 1 } else { -1 };
                     i += 1;
-                    let oh = rd(b, i, 2)?; i += 2;
+                    let oh = rd(b, i, 2)?;
+                    i += 2;
                     let om;
                     if b.get(i) == Some(&b':') {
                         i += 1;
-                        om = rd(b, i, 2)?; i += 2;
+                        om = rd(b, i, 2)?;
+                        i += 2;
                     } else {
                         // Compact form ±HHMM
-                        om = rd(b, i, 2)?; i += 2;
+                        om = rd(b, i, 2)?;
+                        i += 2;
                     }
                     let mut os = 0i64;
                     if b.get(i) == Some(&b':') {
                         i += 1;
-                        os = rd(b, i, 2)?; i += 2;
+                        os = rd(b, i, 2)?;
+                        i += 2;
                         // sub-minute offsets are allowed but spec rejects
                         // for fixed-offset; we accept and use.
                     }
@@ -9165,11 +9605,17 @@ impl Runtime {
             // Optional bracketed annotations: '[' anything-until-']' ']' (repeatable).
             while b.get(i) == Some(&b'[') {
                 i += 1;
-                while i < b.len() && b[i] != b']' { i += 1; }
-                if b.get(i) != Some(&b']') { return None; }
+                while i < b.len() && b[i] != b']' {
+                    i += 1;
+                }
+                if b.get(i) != Some(&b']') {
+                    return None;
+                }
                 i += 1;
             }
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             // Compute epoch-seconds via correct Howard Hinnant chrono algo.
             // cruft's ymd_to_ms helper has a latent month-convention bug
             // (skips Feb when month >= 2); using an inline correct version
@@ -9199,18 +9645,24 @@ impl Runtime {
         }
         // TIS-EXT 1 (instant-static): from / fromEpochMilliseconds /
         // fromEpochNanoseconds / compare on Temporal.Instant ctor.
-        fn make_instant(rt: &mut Runtime, proto: ObjectRef, ns: crate::value::Value) -> Result<Value, RuntimeError> {
+        fn make_instant(
+            rt: &mut Runtime,
+            proto: ObjectRef,
+            ns: crate::value::Value,
+        ) -> Result<Value, RuntimeError> {
             // ns must be BigInt; range-checked.
             let big = match ns {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant: epochNanoseconds must be a BigInt".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant: epochNanoseconds must be a BigInt".into(),
+                    ))
+                }
             };
             let f = big.to_f64();
             if !f.is_finite() || f.abs() > 8.64e21 {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into()
+                    "Temporal.Instant: epochNanoseconds out of range (|ns| > 8.64e21)".into(),
                 ));
             }
             let mut o = Object::new_ordinary();
@@ -9224,9 +9676,12 @@ impl Runtime {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             // IDTP-EXT 1: parse ISO 8601 datetime per §11.8.2.
             if let Value::String(s) = &item {
-                let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.Instant.from(string): invalid ISO 8601 datetime: {:?}", s
-                )))?;
+                let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.Instant.from(string): invalid ISO 8601 datetime: {:?}",
+                        s
+                    ))
+                })?;
                 // Compose epoch_sec * 1e9 + frac_ns as BigInt.
                 // Use string concat path (consistent with fromEpochMilliseconds).
                 let ns_str = if frac_ns == 0 {
@@ -9249,79 +9704,106 @@ impl Runtime {
                         format!("{}", epoch_ns_int)
                     }
                 };
-                let bi = crate::bigint::JsBigInt::from_decimal(&ns_str)
-                    .ok_or_else(|| RuntimeError::RangeError(
-                        "Temporal.Instant.from(string): cannot encode nanoseconds".into()
-                    ))?;
+                let bi = crate::bigint::JsBigInt::from_decimal(&ns_str).ok_or_else(|| {
+                    RuntimeError::RangeError(
+                        "Temporal.Instant.from(string): cannot encode nanoseconds".into(),
+                    )
+                })?;
                 return make_instant(rt, proto_for_static, Value::BigInt(std::rc::Rc::new(bi)));
             }
             let id = match item {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.from: argument must be an Instant or string".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.from: argument must be an Instant or string".into(),
+                    ))
+                }
             };
             // Brand-check via __ti_ns presence; if present, clone.
             match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => make_instant(rt, proto_for_static, Value::BigInt(b)),
                 _ => Err(RuntimeError::TypeError(
-                    "Temporal.Instant.from: argument is not a Temporal.Instant".into()
+                    "Temporal.Instant.from: argument is not a Temporal.Instant".into(),
                 )),
             }
         });
-        register_intrinsic_method(self, inst_ctor, "fromEpochMilliseconds", 1, move |rt, args| {
-            // Per spec: ToNumber then convert to BigInt nanoseconds.
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let ms = crate::abstract_ops::to_number(&v);
-            if !ms.is_finite() {
-                return Err(RuntimeError::RangeError(
-                    "Temporal.Instant.fromEpochMilliseconds: argument must be finite".into()
-                ));
-            }
-            // Truncate then convert to ns BigInt (× 1_000_000).
-            let ms_int = ms.trunc() as i64;
-            let ns_str = format!("{}000000", ms_int);
-            let ns = crate::bigint::JsBigInt::from_decimal(&ns_str)
-                .ok_or_else(|| RuntimeError::RangeError(
-                    "Temporal.Instant.fromEpochMilliseconds: cannot convert to BigInt".into()
-                ))?;
-            make_instant(rt, proto_for_static, Value::BigInt(std::rc::Rc::new(ns)))
-        });
-        register_intrinsic_method(self, inst_ctor, "fromEpochNanoseconds", 1, move |rt, args| {
-            // Per spec: argument must already be BigInt (no Number coercion).
-            let v = args.first().cloned().unwrap_or(Value::Undefined);
-            match v {
-                Value::BigInt(_) => make_instant(rt, proto_for_static, v),
-                _ => Err(RuntimeError::TypeError(
-                    "Temporal.Instant.fromEpochNanoseconds: argument must be a BigInt".into()
-                )),
-            }
-        });
+        register_intrinsic_method(
+            self,
+            inst_ctor,
+            "fromEpochMilliseconds",
+            1,
+            move |rt, args| {
+                // Per spec: ToNumber then convert to BigInt nanoseconds.
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                let ms = crate::abstract_ops::to_number(&v);
+                if !ms.is_finite() {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.Instant.fromEpochMilliseconds: argument must be finite".into(),
+                    ));
+                }
+                // Truncate then convert to ns BigInt (× 1_000_000).
+                let ms_int = ms.trunc() as i64;
+                let ns_str = format!("{}000000", ms_int);
+                let ns = crate::bigint::JsBigInt::from_decimal(&ns_str).ok_or_else(|| {
+                    RuntimeError::RangeError(
+                        "Temporal.Instant.fromEpochMilliseconds: cannot convert to BigInt".into(),
+                    )
+                })?;
+                make_instant(rt, proto_for_static, Value::BigInt(std::rc::Rc::new(ns)))
+            },
+        );
+        register_intrinsic_method(
+            self,
+            inst_ctor,
+            "fromEpochNanoseconds",
+            1,
+            move |rt, args| {
+                // Per spec: argument must already be BigInt (no Number coercion).
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                match v {
+                    Value::BigInt(_) => make_instant(rt, proto_for_static, v),
+                    _ => Err(RuntimeError::TypeError(
+                        "Temporal.Instant.fromEpochNanoseconds: argument must be a BigInt".into(),
+                    )),
+                }
+            },
+        );
         register_intrinsic_method(self, inst_ctor, "compare", 2, move |rt, args| {
             fn extract_ns(rt: &mut Runtime, v: Value) -> Result<f64, RuntimeError> {
                 if let Value::String(s) = &v {
                     // IDTP-EXT 1: parse ISO datetime per §11.8.2.
-                    let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.Instant.compare(string): invalid ISO 8601 datetime: {:?}", s
-                    )))?;
+                    let (epoch_sec, frac_ns) = parse_iso_datetime(s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
+                            "Temporal.Instant.compare(string): invalid ISO 8601 datetime: {:?}",
+                            s
+                        ))
+                    })?;
                     return Ok((epoch_sec as f64) * 1e9 + (frac_ns as f64));
                 }
                 let id = match v {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.compare: argument must be Instant or string".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.compare: argument must be Instant or string".into(),
+                        ))
+                    }
                 };
                 match rt.object_get(id, "__ti_ns") {
                     Value::BigInt(b) => Ok(b.to_f64()),
                     _ => Err(RuntimeError::TypeError(
-                        "Temporal.Instant.compare: argument is not a Temporal.Instant".into()
+                        "Temporal.Instant.compare: argument is not a Temporal.Instant".into(),
                     )),
                 }
             }
             let a = extract_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let b = extract_ns(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+            Ok(Value::Number(if a < b {
+                -1.0
+            } else if a > b {
+                1.0
+            } else {
+                0.0
+            }))
         });
         // ISC-EXT 1 (instant-string-conversion): toString/toJSON/toLocaleString.
         // Format: 'YYYY-MM-DDTHH:MM:SS[.fff]Z' per §11.6.4 (UTC; second-arg
@@ -9333,21 +9815,26 @@ impl Runtime {
             let z = days + 719468;
             let era = if z >= 0 { z } else { z - 146096 } / 146097;
             let doe = z - era * 146097;
-            let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+            let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
             let y = yoe + era * 400;
-            let doy = doe - (365*yoe + yoe/4 - yoe/100);
-            let mp = (5*doy + 2) / 153;
-            let d = doy - (153*mp + 2)/5 + 1;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
             let m = if mp < 10 { mp + 3 } else { mp - 9 };
             let y_final = if m <= 2 { y + 1 } else { y };
             (y_final, m, d)
         }
-        fn instant_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
+        fn instant_to_iso_string(
+            rt: &mut Runtime,
+            this_id: ObjectRef,
+        ) -> Result<String, RuntimeError> {
             let big = match rt.object_get(this_id, "__ti_ns") {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant: this is not a Temporal.Instant".into(),
+                    ))
+                }
             };
             // Decompose: epoch_sec (i64) + frac_ns (0..1e9).
             // Use the BigInt's decimal-string form to extract digits.
@@ -9358,16 +9845,18 @@ impl Runtime {
             // Pad to at least 10 digits so we can split last 9 as nanoseconds.
             let padded = if abs_str.len() < 10 {
                 format!("{:0>10}", abs_str)
-            } else { abs_str.to_string() };
+            } else {
+                abs_str.to_string()
+            };
             let split = padded.len() - 9;
             let sec_str = &padded[..split];
             let ns_str = &padded[split..];
-            let mut epoch_sec: i64 = sec_str.parse().map_err(|_| RuntimeError::RangeError(
-                "Temporal.Instant.toString: epoch_sec overflow".into()
-            ))?;
-            let mut frac_ns: i64 = ns_str.parse().map_err(|_| RuntimeError::RangeError(
-                "Temporal.Instant.toString: nanos overflow".into()
-            ))?;
+            let mut epoch_sec: i64 = sec_str.parse().map_err(|_| {
+                RuntimeError::RangeError("Temporal.Instant.toString: epoch_sec overflow".into())
+            })?;
+            let mut frac_ns: i64 = ns_str.parse().map_err(|_| {
+                RuntimeError::RangeError("Temporal.Instant.toString: nanos overflow".into())
+            })?;
             if neg {
                 // For negative epoch_ns, abs gave us |total|. The split is
                 // |sec|.|frac|. To get spec'd value:
@@ -9415,27 +9904,33 @@ impl Runtime {
         register_intrinsic_method(self, inst_proto, "toString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.toString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.toString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, inst_proto, "toJSON", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.toJSON: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.toJSON: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, inst_proto, "toLocaleString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.toLocaleString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.toLocaleString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(instant_to_iso_string(rt, id)?)))
         });
@@ -9444,19 +9939,31 @@ impl Runtime {
         // week/day are forbidden (no calendar context).
         // since/until: return Duration with seconds + sub-second fields.
         fn duration_to_sub_day_ns(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
-            let names = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0i64; 10];
             // String form: parse as ISO duration via parse_iso_duration (hoisted).
             if let Value::String(s) = &v {
-                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.Instant arithmetic: invalid ISO 8601 duration: {:?}", s
-                )))?;
+                let parsed = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.Instant arithmetic: invalid ISO 8601 duration: {:?}",
+                        s
+                    ))
+                })?;
                 for (i, &u) in parsed.iter().enumerate() {
                     if !u.is_finite() || u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.Instant arithmetic: fractional unit out of position".into()
+                            "Temporal.Instant arithmetic: fractional unit out of position".into(),
                         ));
                     }
                     units[i] = u as i64;
@@ -9464,20 +9971,26 @@ impl Runtime {
             } else if let Value::Object(id) = v {
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, n) in names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", n)
+                    } else {
+                        (*n).to_string()
+                    };
                     if let Value::Number(v) = rt.object_get(id, &key) {
                         units[i] = v as i64;
                     }
                 }
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.Instant arithmetic: argument must be a Duration, object, or string".into()
+                    "Temporal.Instant arithmetic: argument must be a Duration, object, or string"
+                        .into(),
                 ));
             }
             // Forbid year/month/week/day for Instant arithmetic.
             if units[0] != 0 || units[1] != 0 || units[2] != 0 || units[3] != 0 {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.Instant arithmetic: years / months / weeks / days are not allowed".into()
+                    "Temporal.Instant arithmetic: years / months / weeks / days are not allowed"
+                        .into(),
                 ));
             }
             // Compose sub-day ns. h*3600e9 + m*60e9 + s*1e9 + ms*1e6 + μs*1e3 + ns.
@@ -9494,43 +10007,58 @@ impl Runtime {
         register_intrinsic_method(self, inst_proto, "add", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.add: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.add: this is not an object".into(),
+                    ))
+                }
             };
             let this_ns = match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.add: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.add: this is not a Temporal.Instant".into(),
+                    ))
+                }
             };
-            let dur_ns = duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let dur_ns =
+                duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             // BigInt add: convert dur_ns to BigInt via decimal string.
-            let other_bi = crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string())
-                .ok_or_else(|| RuntimeError::RangeError(
-                    "Temporal.Instant.prototype.add: BigInt encode failed".into()
-                ))?;
+            let other_bi =
+                crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string()).ok_or_else(|| {
+                    RuntimeError::RangeError(
+                        "Temporal.Instant.prototype.add: BigInt encode failed".into(),
+                    )
+                })?;
             let sum = this_ns.add(&other_bi);
             make_instant(rt, proto_for_arith, Value::BigInt(std::rc::Rc::new(sum)))
         });
         register_intrinsic_method(self, inst_proto, "subtract", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.subtract: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.subtract: this is not an object".into(),
+                    ))
+                }
             };
             let this_ns = match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.subtract: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.subtract: this is not a Temporal.Instant"
+                            .into(),
+                    ))
+                }
             };
-            let dur_ns = duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            let other_bi = crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string())
-                .ok_or_else(|| RuntimeError::RangeError(
-                    "Temporal.Instant.prototype.subtract: BigInt encode failed".into()
-                ))?;
+            let dur_ns =
+                duration_to_sub_day_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let other_bi =
+                crate::bigint::JsBigInt::from_decimal(&dur_ns.to_string()).ok_or_else(|| {
+                    RuntimeError::RangeError(
+                        "Temporal.Instant.prototype.subtract: BigInt encode failed".into(),
+                    )
+                })?;
             let diff = this_ns.sub(&other_bi);
             make_instant(rt, proto_for_arith, Value::BigInt(std::rc::Rc::new(diff)))
         });
@@ -9546,13 +10074,26 @@ impl Runtime {
             let us = (frac_ns / 1_000) % 1_000;
             let ns = frac_ns % 1_000;
             let mut units = [0.0f64; 10];
-            units[6] = if neg { -(total_sec as f64) } else { total_sec as f64 };
+            units[6] = if neg {
+                -(total_sec as f64)
+            } else {
+                total_sec as f64
+            };
             units[7] = if neg { -(ms as f64) } else { ms as f64 };
             units[8] = if neg { -(us as f64) } else { us as f64 };
             units[9] = if neg { -(ns as f64) } else { ns as f64 };
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(dur_proto);
             let id = rt.alloc_object(o);
@@ -9566,68 +10107,100 @@ impl Runtime {
         register_intrinsic_method(self, inst_proto, "since", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.since: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.since: this is not an object".into(),
+                    ))
+                }
             };
             let this_ns = match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => b.to_f64(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.since: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.since: this is not a Temporal.Instant".into(),
+                    ))
+                }
             };
             let other = args.first().cloned().unwrap_or(Value::Undefined);
-            let other_ns = match other {
-                Value::String(s) => {
-                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.Instant.prototype.since: invalid ISO 8601 datetime: {:?}", s
-                    )))?;
-                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
-                }
-                Value::Object(o) => match rt.object_get(o, "__ti_ns") {
-                    Value::BigInt(b) => b.to_f64(),
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.prototype.since: argument is not a Temporal.Instant".into()
-                    )),
-                },
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.since: argument must be Instant or string".into()
-                )),
-            };
-            Ok(diff_to_duration(rt, dur_proto_for_arith, this_ns - other_ns))
+            let other_ns =
+                match other {
+                    Value::String(s) => {
+                        let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| {
+                            RuntimeError::RangeError(format!(
+                                "Temporal.Instant.prototype.since: invalid ISO 8601 datetime: {:?}",
+                                s
+                            ))
+                        })?;
+                        (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                    }
+                    Value::Object(o) => match rt.object_get(o, "__ti_ns") {
+                        Value::BigInt(b) => b.to_f64(),
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.since: argument is not a Temporal.Instant"
+                                .into(),
+                        )),
+                    },
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.since: argument must be Instant or string"
+                                .into(),
+                        ))
+                    }
+                };
+            Ok(diff_to_duration(
+                rt,
+                dur_proto_for_arith,
+                this_ns - other_ns,
+            ))
         });
         register_intrinsic_method(self, inst_proto, "until", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.until: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.until: this is not an object".into(),
+                    ))
+                }
             };
             let this_ns = match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => b.to_f64(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.until: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.until: this is not a Temporal.Instant".into(),
+                    ))
+                }
             };
             let other = args.first().cloned().unwrap_or(Value::Undefined);
-            let other_ns = match other {
-                Value::String(s) => {
-                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.Instant.prototype.until: invalid ISO 8601 datetime: {:?}", s
-                    )))?;
-                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
-                }
-                Value::Object(o) => match rt.object_get(o, "__ti_ns") {
-                    Value::BigInt(b) => b.to_f64(),
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.Instant.prototype.until: argument is not a Temporal.Instant".into()
-                    )),
-                },
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.until: argument must be Instant or string".into()
-                )),
-            };
-            Ok(diff_to_duration(rt, dur_proto_for_arith, other_ns - this_ns))
+            let other_ns =
+                match other {
+                    Value::String(s) => {
+                        let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| {
+                            RuntimeError::RangeError(format!(
+                                "Temporal.Instant.prototype.until: invalid ISO 8601 datetime: {:?}",
+                                s
+                            ))
+                        })?;
+                        (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                    }
+                    Value::Object(o) => match rt.object_get(o, "__ti_ns") {
+                        Value::BigInt(b) => b.to_f64(),
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.until: argument is not a Temporal.Instant"
+                                .into(),
+                        )),
+                    },
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.Instant.prototype.until: argument must be Instant or string"
+                                .into(),
+                        ))
+                    }
+                };
+            Ok(diff_to_duration(
+                rt,
+                dur_proto_for_arith,
+                other_ns - this_ns,
+            ))
         });
         // IE-EXT 1 (instant-equals): equals(other) returns true iff
         // epochNanoseconds (BigInt) values are equal. `other` may be an
@@ -9635,36 +10208,43 @@ impl Runtime {
         register_intrinsic_method(self, inst_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.equals: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.equals: this is not an object".into(),
+                    ))
+                }
             };
             let this_ns = match rt.object_get(id, "__ti_ns") {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.equals: this is not a Temporal.Instant".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.equals: this is not a Temporal.Instant".into(),
+                    ))
+                }
             };
             let other = args.first().cloned().unwrap_or(Value::Undefined);
-            let other_ns_f = match other {
-                Value::String(s) => {
-                    let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| RuntimeError::RangeError(format!(
+            let other_ns_f =
+                match other {
+                    Value::String(s) => {
+                        let (epoch_sec, frac_ns) = parse_iso_datetime(&s).ok_or_else(|| {
+                            RuntimeError::RangeError(format!(
                         "Temporal.Instant.prototype.equals: invalid ISO 8601 datetime: {:?}", s
-                    )))?;
-                    (epoch_sec as f64) * 1e9 + (frac_ns as f64)
-                }
-                Value::Object(o) => {
-                    match rt.object_get(o, "__ti_ns") {
+                    ))
+                        })?;
+                        (epoch_sec as f64) * 1e9 + (frac_ns as f64)
+                    }
+                    Value::Object(o) => match rt.object_get(o, "__ti_ns") {
                         Value::BigInt(b) => b.to_f64(),
                         _ => return Err(RuntimeError::TypeError(
-                            "Temporal.Instant.prototype.equals: argument is not a Temporal.Instant".into()
+                            "Temporal.Instant.prototype.equals: argument is not a Temporal.Instant"
+                                .into(),
                         )),
-                    }
-                }
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.Instant.prototype.equals: argument must be an Instant or string".into()
-                )),
-            };
+                    },
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.Instant.prototype.equals: argument must be an Instant or string"
+                            .into(),
+                    )),
+                };
             let this_ns_f = this_ns.to_f64();
             Ok(Value::Boolean(this_ns_f == other_ns_f))
         });
@@ -9688,16 +10268,16 @@ impl Runtime {
             let unit_name: &'static str = unit;
             let key = format!("__pt_{}", unit);
             let k = key.clone();
-            let getter_obj = make_native_non_ctor(
-                &format!("get {}", unit_name),
-                0,
-                move |rt, _args| {
+            let getter_obj =
+                make_native_non_ctor(&format!("get {}", unit_name), 0, move |rt, _args| {
                     let id = match rt.current_this() {
                         Value::Object(o) => o,
-                        _ => return Err(RuntimeError::TypeError(format!(
-                            "Temporal.PlainTime.prototype.{}: this is not an object",
-                            unit_name
-                        ))),
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Temporal.PlainTime.prototype.{}: this is not an object",
+                                unit_name
+                            )))
+                        }
                     };
                     match rt.object_get(id, &k) {
                         Value::Undefined => Err(RuntimeError::TypeError(format!(
@@ -9706,21 +10286,23 @@ impl Runtime {
                         ))),
                         v => Ok(v),
                     }
-                },
-            );
+                });
             let getter_id = self.alloc_object(getter_obj);
             self.obj_mut(pt_proto).dict_mut().insert(
                 unit_name.into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         register_intrinsic_method(self, pt_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into()
+                "Temporal.PlainTime valueOf cannot be used; use compare() or equals()".into(),
             ))
         });
         // PTSC-EXT 1 (plain-time-string-conversion): toString / toJSON /
@@ -9729,12 +10311,18 @@ impl Runtime {
         // count (no trailing zeros), and absent entirely if sub-second
         // parts are all zero.
         fn pt_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
-            let unit_names = ["hour", "minute", "second", "millisecond",
-                              "microsecond", "nanosecond"];
+            let unit_names = [
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             // Brand-check.
             if matches!(rt.object_get(this_id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime: this is not a Temporal.PlainTime".into(),
                 ));
             }
             let mut u = [0i64; 6];
@@ -9759,9 +10347,11 @@ impl Runtime {
         register_intrinsic_method(self, pt_proto, "toString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.toString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.toString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
         });
@@ -9769,9 +10359,11 @@ impl Runtime {
             // toJSON ignores its argument (per spec, no options).
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.toJSON: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.toJSON: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
         });
@@ -9781,9 +10373,11 @@ impl Runtime {
         register_intrinsic_method(self, pt_proto, "toLocaleString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.toLocaleString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.toLocaleString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pt_to_iso_string(rt, id)?)))
         });
@@ -9793,18 +10387,30 @@ impl Runtime {
         // since negates and until preserves (or vice versa).
         const NS_PER_DAY: i64 = 86_400_000_000_000;
         fn duration_to_subday_ns_pt(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
-            let names = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0i64; 10];
             if let Value::String(s) = &v {
-                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainTime arithmetic: invalid ISO duration: {:?}", s
-                )))?;
+                let parsed = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime arithmetic: invalid ISO duration: {:?}",
+                        s
+                    ))
+                })?;
                 for (i, &u) in parsed.iter().enumerate() {
                     if !u.is_finite() || u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.PlainTime arithmetic: fractional unit out of position".into()
+                            "Temporal.PlainTime arithmetic: fractional unit out of position".into(),
                         ));
                     }
                     units[i] = u as i64;
@@ -9812,20 +10418,25 @@ impl Runtime {
             } else if let Value::Object(id) = v {
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, n) in names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", n)
+                    } else {
+                        (*n).to_string()
+                    };
                     if let Value::Number(v) = rt.object_get(id, &key) {
                         units[i] = v as i64;
                     }
                 }
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime arithmetic: argument must be Duration, object, or string".into()
+                    "Temporal.PlainTime arithmetic: argument must be Duration, object, or string"
+                        .into(),
                 ));
             }
             // Per §11.7.6 add: year/month/week date units are rejected.
             if units[0] != 0 || units[1] != 0 || units[2] != 0 {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.PlainTime arithmetic: years / months / weeks are not allowed".into()
+                    "Temporal.PlainTime arithmetic: years / months / weeks are not allowed".into(),
                 ));
             }
             // Days × 24h roll up into total ns.
@@ -9871,8 +10482,12 @@ impl Runtime {
             o.proto = Some(proto);
             let id = rt.alloc_object(o);
             for (k, v) in [
-                ("hour", hour), ("minute", minute), ("second", second),
-                ("millisecond", ms), ("microsecond", us), ("nanosecond", nsec),
+                ("hour", hour),
+                ("minute", minute),
+                ("second", second),
+                ("millisecond", ms),
+                ("microsecond", us),
+                ("nanosecond", nsec),
             ] {
                 rt.set_engine_sentinel(id, &format!("__pt_{}", k), Value::Number(v as f64));
             }
@@ -9883,32 +10498,39 @@ impl Runtime {
         register_intrinsic_method(self, pt_proto, "add", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.add: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.add: this is not an object".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.add: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.add: this is not a Temporal.PlainTime".into(),
                 ));
             }
-            let dur_ns = duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let dur_ns =
+                duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let total = pt_ns_of_day(rt, id) + dur_ns;
             Ok(pt_from_ns_of_day(rt, pt_proto_for_arith, total))
         });
         register_intrinsic_method(self, pt_proto, "subtract", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.subtract: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.subtract: this is not an object".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.subtract: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.subtract: this is not a Temporal.PlainTime"
+                        .into(),
                 ));
             }
-            let dur_ns = duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let dur_ns =
+                duration_to_subday_ns_pt(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let total = pt_ns_of_day(rt, id) - dur_ns;
             Ok(pt_from_ns_of_day(rt, pt_proto_for_arith, total))
         });
@@ -9919,7 +10541,9 @@ impl Runtime {
             // Normalize to (-NS_PER_DAY/2, +NS_PER_DAY/2].
             let half = NS_PER_DAY / 2;
             let mut d = diff_ns.rem_euclid(NS_PER_DAY);
-            if d > half { d -= NS_PER_DAY; }
+            if d > half {
+                d -= NS_PER_DAY;
+            }
             let neg = d < 0;
             let abs = d.abs();
             let hour = abs / 3_600_000_000_000;
@@ -9932,12 +10556,31 @@ impl Runtime {
             let r4 = r3 % 1_000_000;
             let us = r4 / 1_000;
             let ns = r4 % 1_000;
-            let units_names = ["years", "months", "weeks", "days", "hours",
-                               "minutes", "seconds", "milliseconds",
-                               "microseconds", "nanoseconds"];
+            let units_names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
-            let units = [0.0, 0.0, 0.0, 0.0, signed(hour), signed(minute),
-                         signed(second), signed(ms), signed(us), signed(ns)];
+            let units = [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                signed(hour),
+                signed(minute),
+                signed(second),
+                signed(ms),
+                signed(us),
+                signed(ns),
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(dur_proto);
             let id = rt.alloc_object(o);
@@ -9948,9 +10591,12 @@ impl Runtime {
         }
         fn coerce_pt_to_ns(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
             if let Value::String(s) = &v {
-                let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainTime: invalid ISO time: {:?}", s
-                )))?;
+                let parsed = parse_iso_time(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime: invalid ISO time: {:?}",
+                        s
+                    ))
+                })?;
                 return Ok(parsed[0] * 3_600_000_000_000
                     + parsed[1] * 60_000_000_000
                     + parsed[2] * 1_000_000_000
@@ -9978,74 +10624,104 @@ impl Runtime {
                 return Ok(ns);
             }
             Err(RuntimeError::TypeError(
-                "Temporal.PlainTime: argument must be a PlainTime, object, or string".into()
+                "Temporal.PlainTime: argument must be a PlainTime, object, or string".into(),
             ))
         }
         register_intrinsic_method(self, pt_proto, "since", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.since: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.since: this is not an object".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.since: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.since: this is not a Temporal.PlainTime".into(),
                 ));
             }
             let this_ns = pt_ns_of_day(rt, id);
             let other_ns = coerce_pt_to_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            Ok(diff_to_pt_duration(rt, dur_proto_for_pt_arith, this_ns - other_ns))
+            Ok(diff_to_pt_duration(
+                rt,
+                dur_proto_for_pt_arith,
+                this_ns - other_ns,
+            ))
         });
         register_intrinsic_method(self, pt_proto, "until", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.until: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.until: this is not an object".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.until: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.until: this is not a Temporal.PlainTime".into(),
                 ));
             }
             let this_ns = pt_ns_of_day(rt, id);
             let other_ns = coerce_pt_to_ns(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            Ok(diff_to_pt_duration(rt, dur_proto_for_pt_arith, other_ns - this_ns))
+            Ok(diff_to_pt_duration(
+                rt,
+                dur_proto_for_pt_arith,
+                other_ns - this_ns,
+            ))
         });
         // PTE-EXT 1 (plain-time-equals): equals(other) returns true iff
         // every unit equals. Coerces `other` via PlainTime.from-like logic.
         register_intrinsic_method(self, pt_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.equals: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.equals: this is not an object".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.equals: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.equals: this is not a Temporal.PlainTime".into(),
                 ));
             }
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             // Coerce `other` to a PlainTime via from-like logic: string or
             // brand-checked PlainTime or property-bag.
-            let unit_names = ["hour", "minute", "second", "millisecond",
-                              "microsecond", "nanosecond"];
+            let unit_names = [
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let unit_maxes = [23i64, 59, 59, 999, 999, 999];
             let mut other_units = [0i64; 6];
             // String form: use parse_iso_time (hoisted via block-scoped fn).
             if let Value::String(s) = &other {
-                let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainTime.prototype.equals: invalid ISO 8601 time: {:?}", s
-                )))?;
+                let parsed = parse_iso_time(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime.prototype.equals: invalid ISO 8601 time: {:?}",
+                        s
+                    ))
+                })?;
                 other_units = parsed;
                 // Skip the object-coercion path below.
                 let mut eq = true;
                 for (i, u) in unit_names.iter().enumerate() {
                     let key = format!("__pt_{}", u);
-                    let this_val = if let Value::Number(n) = rt.object_get(id, &key) { n as i64 } else { 0 };
-                    if this_val != other_units[i] { eq = false; break; }
+                    let this_val = if let Value::Number(n) = rt.object_get(id, &key) {
+                        n as i64
+                    } else {
+                        0
+                    };
+                    if this_val != other_units[i] {
+                        eq = false;
+                        break;
+                    }
                 }
                 return Ok(Value::Boolean(eq));
             }
@@ -10067,18 +10743,22 @@ impl Runtime {
                 let mut has_any = false;
                 for (i, u) in unit_names.iter().enumerate() {
                     let v = rt.object_get(other_id, u);
-                    if matches!(v, Value::Undefined) { continue; }
+                    if matches!(v, Value::Undefined) {
+                        continue;
+                    }
                     has_any = true;
                     let n = crate::abstract_ops::to_number(&v);
                     if !n.is_finite() || n != n.trunc() {
                         return Err(RuntimeError::RangeError(format!(
-                            "Temporal.PlainTime.prototype.equals: {} must be integer", u
+                            "Temporal.PlainTime.prototype.equals: {} must be integer",
+                            u
                         )));
                     }
                     let ni = n as i64;
                     if ni < 0 || ni > unit_maxes[i] {
                         return Err(RuntimeError::RangeError(format!(
-                            "Temporal.PlainTime.prototype.equals: {} {} out of range", u, ni
+                            "Temporal.PlainTime.prototype.equals: {} {} out of range",
+                            u, ni
                         )));
                     }
                     other_units[i] = ni;
@@ -10093,8 +10773,15 @@ impl Runtime {
             let mut eq = true;
             for (i, u) in unit_names.iter().enumerate() {
                 let key = format!("__pt_{}", u);
-                let this_val = if let Value::Number(n) = rt.object_get(id, &key) { n as i64 } else { 0 };
-                if this_val != other_units[i] { eq = false; break; }
+                let this_val = if let Value::Number(n) = rt.object_get(id, &key) {
+                    n as i64
+                } else {
+                    0
+                };
+                if this_val != other_units[i] {
+                    eq = false;
+                    break;
+                }
             }
             Ok(Value::Boolean(eq))
         });
@@ -10104,25 +10791,35 @@ impl Runtime {
         register_intrinsic_method(self, pt_proto, "with", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.with: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.with: this is not an object".into(),
+                    ))
+                }
             };
             // Brand-check: __pt_hour sentinel.
             if matches!(rt.object_get(id, "__pt_hour"), Value::Undefined) {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.with: this is not a Temporal.PlainTime".into()
+                    "Temporal.PlainTime.prototype.with: this is not a Temporal.PlainTime".into(),
                 ));
             }
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let arg_id = match arg {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.prototype.with: argument must be an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.prototype.with: argument must be an object".into(),
+                    ))
+                }
             };
-            let unit_names = ["hour", "minute", "second", "millisecond",
-                              "microsecond", "nanosecond"];
+            let unit_names = [
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let unit_maxes = [23i64, 59, 59, 999, 999, 999];
             // Read current values.
             let mut units = [0i64; 6];
@@ -10148,18 +10845,22 @@ impl Runtime {
             let mut has_any = false;
             for (i, u) in unit_names.iter().enumerate() {
                 let v = rt.object_get(arg_id, u);
-                if matches!(v, Value::Undefined) { continue; }
+                if matches!(v, Value::Undefined) {
+                    continue;
+                }
                 has_any = true;
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime.prototype.with: {} must be integer", u
+                        "Temporal.PlainTime.prototype.with: {} must be integer",
+                        u
                     )));
                 }
                 let ni = n as i64;
                 if ni < 0 || ni > unit_maxes[i] {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime.prototype.with: {} {} out of range", u, ni
+                        "Temporal.PlainTime.prototype.with: {} {} out of range",
+                        u, ni
                     )));
                 }
                 units[i] = ni;
@@ -10182,15 +10883,18 @@ impl Runtime {
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.PlainTime".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let pt_proto_for_ctor = pt_proto;
         let pt_ctor_obj = make_native_with_length("PlainTime", 0, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime constructor cannot be called as a function".into()
+                    "Temporal.PlainTime constructor cannot be called as a function".into(),
                 ));
             }
             let mut units = [0i64; 6];
@@ -10202,18 +10906,21 @@ impl Runtime {
                 };
                 if !n.is_finite() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime: {} must be finite", unit
+                        "Temporal.PlainTime: {} must be finite",
+                        unit
                     )));
                 }
                 if n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime: {} must be an integer", unit
+                        "Temporal.PlainTime: {} must be an integer",
+                        unit
                     )));
                 }
                 let ni = n as i64;
                 if ni < *min || ni > *max {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime: {} {} out of range [{}, {}]", unit, ni, min, max
+                        "Temporal.PlainTime: {} {} out of range [{}, {}]",
+                        unit, ni, min, max
                     )));
                 }
                 units[i] = ni;
@@ -10236,13 +10943,19 @@ impl Runtime {
         // ISO time parser: HH:MM[:SS[.fff]] — same shape as datetime time-part.
         fn parse_iso_time(s: &str) -> Option<[i64; 6]> {
             let b = s.as_bytes();
-            if b.len() < 5 { return None; } // minimum HH:MM
+            if b.len() < 5 {
+                return None;
+            } // minimum HH:MM
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
@@ -10251,7 +10964,9 @@ impl Runtime {
             // Optional date prefix: YYYY-MM-DD followed by T/t/space.
             // PlainTime.from accepts a full datetime and extracts the
             // time portion per §11.7.1.
-            if b.len() >= 11 && b.get(4) == Some(&b'-') && b.get(7) == Some(&b'-')
+            if b.len() >= 11
+                && b.get(4) == Some(&b'-')
+                && b.get(7) == Some(&b'-')
                 && matches!(b.get(10), Some(b'T') | Some(b't') | Some(b' '))
             {
                 // Validate date digits but don't store; just advance.
@@ -10261,17 +10976,25 @@ impl Runtime {
                 i = 11;
             }
             // Optional leading 'T'/'t' (after date or standalone).
-            if matches!(b.get(i), Some(b'T') | Some(b't')) { i += 1; }
-            let hour = rd(b, i, 2)?; i += 2;
-            if b.get(i) != Some(&b':') { return None; } i += 1;
-            let minute = rd(b, i, 2)?; i += 2;
+            if matches!(b.get(i), Some(b'T') | Some(b't')) {
+                i += 1;
+            }
+            let hour = rd(b, i, 2)?;
+            i += 2;
+            if b.get(i) != Some(&b':') {
+                return None;
+            }
+            i += 1;
+            let minute = rd(b, i, 2)?;
+            i += 2;
             let mut sec = 0i64;
             let mut ms = 0i64;
             let mut us = 0i64;
             let mut ns = 0i64;
             if b.get(i) == Some(&b':') {
                 i += 1;
-                sec = rd(b, i, 2)?; i += 2;
+                sec = rd(b, i, 2)?;
+                i += 2;
                 if matches!(b.get(i), Some(b'.') | Some(b',')) {
                     i += 1;
                     let frac_start = i;
@@ -10279,13 +11002,17 @@ impl Runtime {
                         i += 1;
                     }
                     let n_digits = i - frac_start;
-                    if n_digits == 0 { return None; }
+                    if n_digits == 0 {
+                        return None;
+                    }
                     let mut frac = 0i64;
                     for k in 0..n_digits {
                         frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
                     }
                     // Pad to nanoseconds.
-                    for _ in 0..(9 - n_digits) { frac *= 10; }
+                    for _ in 0..(9 - n_digits) {
+                        frac *= 10;
+                    }
                     ns = frac % 1000;
                     us = (frac / 1000) % 1000;
                     ms = frac / 1_000_000;
@@ -10301,63 +11028,90 @@ impl Runtime {
             // since per-spec rejection of capital/critical annotations
             // is required (spawning that rung as plain-time-annotation-
             // validation).
-            if matches!(b.get(i), Some(b'Z') | Some(b'z')) { i += 1; }
-            else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+            if matches!(b.get(i), Some(b'Z') | Some(b'z')) {
                 i += 1;
-                if rd(b, i, 2).is_none() { return None; } i += 2;
-                if b.get(i) == Some(&b':') { i += 1; }
-                if rd(b, i, 2).is_some() { i += 2; }
+            } else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+                i += 1;
+                if rd(b, i, 2).is_none() {
+                    return None;
+                }
+                i += 2;
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                }
+                if rd(b, i, 2).is_some() {
+                    i += 2;
+                }
             }
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             Some([hour, minute, sec, ms, us, ns])
         }
         let pt_proto_for_static = pt_proto;
         register_intrinsic_method(self, pt_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
-            let read_plain_time_overflow =
-                |rt: &mut Runtime, options: Option<&Value>| -> Result<Option<String>, RuntimeError> {
-                    if let Some(options) = options {
-                        if !matches!(options, Value::Undefined | Value::Object(_)) {
-                            return Err(RuntimeError::TypeError(
-                                "Temporal.PlainTime.from options must be an object".into(),
-                            ));
-                        }
-                    }
-                    let overflow = temporal_read_overflow_option(rt, options);
-                    if matches!(overflow.as_deref(), Some(v) if v != "constrain" && v != "reject")
-                    {
-                        return Err(RuntimeError::RangeError(
-                            "Temporal.PlainTime.from invalid overflow".into(),
+            let read_plain_time_overflow = |rt: &mut Runtime,
+                                            options: Option<&Value>|
+             -> Result<Option<String>, RuntimeError> {
+                if let Some(options) = options {
+                    if !matches!(options, Value::Undefined | Value::Object(_)) {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainTime.from options must be an object".into(),
                         ));
                     }
-                    Ok(overflow)
-                };
+                }
+                let overflow = temporal_read_overflow_option(rt, options);
+                if matches!(overflow.as_deref(), Some(v) if v != "constrain" && v != "reject") {
+                    return Err(RuntimeError::RangeError(
+                        "Temporal.PlainTime.from invalid overflow".into(),
+                    ));
+                }
+                Ok(overflow)
+            };
             // String form: parse ISO time per §11.8.2 time-portion.
             if let Value::String(s) = &item {
-                let units = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainTime.from(string): invalid ISO 8601 time: {:?}", s
-                )))?;
+                let units = parse_iso_time(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainTime.from(string): invalid ISO 8601 time: {:?}",
+                        s
+                    ))
+                })?;
                 read_plain_time_overflow(rt, args.get(1))?;
                 let mut o = Object::new_ordinary();
                 o.proto = Some(pt_proto_for_static);
                 let id = rt.alloc_object(o);
-                let unit_names = ["hour", "minute", "second", "millisecond",
-                                  "microsecond", "nanosecond"];
+                let unit_names = [
+                    "hour",
+                    "minute",
+                    "second",
+                    "millisecond",
+                    "microsecond",
+                    "nanosecond",
+                ];
                 for (i, u) in unit_names.iter().enumerate() {
                     let key = format!("__pt_{}", u);
                     rt.set_engine_sentinel(id, &key, Value::Number(units[i] as f64));
                 }
                 return Ok(Value::Object(id));
             }
-            let id = match item {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainTime.from: argument must be a PlainTime, object, or string".into()
-                )),
-            };
+            let id =
+                match item {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainTime.from: argument must be a PlainTime, object, or string"
+                            .into(),
+                    )),
+                };
             let overflow = read_plain_time_overflow(rt, args.get(1))?;
-            let unit_names = ["hour", "minute", "second", "millisecond",
-                              "microsecond", "nanosecond"];
+            let unit_names = [
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let unit_maxes = [23i64, 59, 59, 999, 999, 999];
             let mut units = [0i64; 6];
             // Brand-check: __pt_hour sentinel present?
@@ -10374,19 +11128,23 @@ impl Runtime {
                 let mut has_any = false;
                 for (i, u) in unit_names.iter().enumerate() {
                     let v = rt.object_get(id, u);
-                    if matches!(v, Value::Undefined) { continue; }
+                    if matches!(v, Value::Undefined) {
+                        continue;
+                    }
                     has_any = true;
                     let n = crate::abstract_ops::to_number(&v);
                     if !n.is_finite() || n != n.trunc() {
                         return Err(RuntimeError::RangeError(format!(
-                            "Temporal.PlainTime.from: {} must be integer", u
+                            "Temporal.PlainTime.from: {} must be integer",
+                            u
                         )));
                     }
                     let mut ni = n as i64;
                     if ni < 0 || ni > unit_maxes[i] {
                         if overflow.as_deref() == Some("reject") {
                             return Err(RuntimeError::RangeError(format!(
-                                "Temporal.PlainTime.from: {} {} out of range", u, ni
+                                "Temporal.PlainTime.from: {} {} out of range",
+                                u, ni
                             )));
                         }
                         ni = ni.clamp(0, unit_maxes[i]);
@@ -10395,7 +11153,8 @@ impl Runtime {
                 }
                 if !has_any {
                     return Err(RuntimeError::TypeError(
-                        "Temporal.PlainTime.from: object must have at least one time unit property".into()
+                        "Temporal.PlainTime.from: object must have at least one time unit property"
+                            .into(),
                     ));
                 }
             }
@@ -10412,13 +11171,22 @@ impl Runtime {
             // Coerce each arg to nanoseconds-of-day. PlainTime instance or
             // property bag or ISO string accepted.
             fn to_ns_of_day(rt: &mut Runtime, v: Value) -> Result<i64, RuntimeError> {
-                let unit_names = ["hour", "minute", "second", "millisecond",
-                                  "microsecond", "nanosecond"];
+                let unit_names = [
+                    "hour",
+                    "minute",
+                    "second",
+                    "millisecond",
+                    "microsecond",
+                    "nanosecond",
+                ];
                 let mut u = [0i64; 6];
                 if let Value::String(s) = &v {
-                    let parsed = parse_iso_time(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.PlainTime.compare(string): invalid ISO 8601 time: {:?}", s
-                    )))?;
+                    let parsed = parse_iso_time(s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
+                            "Temporal.PlainTime.compare(string): invalid ISO 8601 time: {:?}",
+                            s
+                        ))
+                    })?;
                     u = parsed;
                 } else if let Value::Object(id) = v {
                     let is_pt = !matches!(rt.object_get(id, "__pt_hour"), Value::Undefined);
@@ -10431,19 +11199,26 @@ impl Runtime {
                     }
                 } else {
                     return Err(RuntimeError::TypeError(
-                        "Temporal.PlainTime.compare: argument must be PlainTime, object, or string".into()
+                        "Temporal.PlainTime.compare: argument must be PlainTime, object, or string"
+                            .into(),
                     ));
                 }
                 Ok(u[0] * 3_600_000_000_000
-                 + u[1] * 60_000_000_000
-                 + u[2] * 1_000_000_000
-                 + u[3] * 1_000_000
-                 + u[4] * 1_000
-                 + u[5])
+                    + u[1] * 60_000_000_000
+                    + u[2] * 1_000_000_000
+                    + u[3] * 1_000_000
+                    + u[4] * 1_000
+                    + u[5])
             }
             let a = to_ns_of_day(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let b = to_ns_of_day(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+            Ok(Value::Number(if a < b {
+                -1.0
+            } else if a > b {
+                1.0
+            } else {
+                0.0
+            }))
         });
         self.obj_mut(temporal)
             .set_own_internal("PlainTime".into(), Value::Object(pt_ctor));
@@ -10456,16 +11231,16 @@ impl Runtime {
             let unit_name: &'static str = field;
             let key = format!("__pd_{}", field);
             let k = key.clone();
-            let getter_obj = make_native_non_ctor(
-                &format!("get {}", unit_name),
-                0,
-                move |rt, _args| {
+            let getter_obj =
+                make_native_non_ctor(&format!("get {}", unit_name), 0, move |rt, _args| {
                     let id = match rt.current_this() {
                         Value::Object(o) => o,
-                        _ => return Err(RuntimeError::TypeError(format!(
-                            "Temporal.PlainDate.prototype.{}: this is not an object",
-                            unit_name
-                        ))),
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Temporal.PlainDate.prototype.{}: this is not an object",
+                                unit_name
+                            )))
+                        }
                     };
                     match rt.object_get(id, &k) {
                         Value::Undefined => Err(RuntimeError::TypeError(format!(
@@ -10474,15 +11249,17 @@ impl Runtime {
                         ))),
                         v => Ok(v),
                     }
-                },
-            );
+                });
             let getter_id = self.alloc_object(getter_obj);
             self.obj_mut(pd_proto).dict_mut().insert(
                 unit_name.into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -10491,13 +11268,16 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDate.prototype.calendarId: this is not an object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.prototype.calendarId: this is not an object".into(),
+                        ))
+                    }
                 };
                 match rt.object_get(id, "__pd_calendar") {
                     Value::Undefined => Err(RuntimeError::TypeError(
-                        "Temporal.PlainDate.prototype.calendarId: this is not a Temporal.PlainDate".into()
+                        "Temporal.PlainDate.prototype.calendarId: this is not a Temporal.PlainDate"
+                            .into(),
                     )),
                     v => Ok(v),
                 }
@@ -10506,9 +11286,12 @@ impl Runtime {
             self.obj_mut(pd_proto).dict_mut().insert(
                 "calendarId".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -10517,14 +11300,17 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDate.prototype.monthCode: this is not an object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.prototype.monthCode: this is not an object".into(),
+                        ))
+                    }
                 };
                 let m = match rt.object_get(id, "__pd_month") {
                     Value::Number(n) => n as i64,
                     _ => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDate.prototype.monthCode: this is not a Temporal.PlainDate".into()
+                        "Temporal.PlainDate.prototype.monthCode: this is not a Temporal.PlainDate"
+                            .into(),
                     )),
                 };
                 Ok(Value::String(Rc::new(format!("M{:02}", m))))
@@ -10533,59 +11319,73 @@ impl Runtime {
             self.obj_mut(pd_proto).dict_mut().insert(
                 "monthCode".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         // valueOf throws TypeError.
         register_intrinsic_method(self, pd_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.PlainDate valueOf cannot be used; use compare() or equals()".into()
+                "Temporal.PlainDate valueOf cannot be used; use compare() or equals()".into(),
             ))
         });
         self.obj_mut(pd_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.PlainDate".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let pd_proto_for_ctor = pd_proto;
         let pd_ctor_obj = make_native_with_length("PlainDate", 3, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate constructor cannot be called as a function".into()
+                    "Temporal.PlainDate constructor cannot be called as a function".into(),
                 ));
             }
             // year, month, day are required (length=3); calendar optional default "iso8601".
-            let year = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
-            let month = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
-            let day = crate::abstract_ops::to_number(&args.get(2).cloned().unwrap_or(Value::Undefined));
+            let year =
+                crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let month =
+                crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let day =
+                crate::abstract_ops::to_number(&args.get(2).cloned().unwrap_or(Value::Undefined));
             let calendar = match args.get(3).cloned().unwrap_or(Value::Undefined) {
                 Value::Undefined => "iso8601".to_string(),
                 Value::String(s) => s.to_lowercase(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate: calendar must be a string or undefined".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate: calendar must be a string or undefined".into(),
+                    ))
+                }
             };
             if calendar != "iso8601" {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate: only 'iso8601' calendar supported in v1; got {:?}", calendar
+                    "Temporal.PlainDate: only 'iso8601' calendar supported in v1; got {:?}",
+                    calendar
                 )));
             }
             // Validate y/m/d: must be finite integers.
             for (n, name) in [(year, "year"), (month, "month"), (day, "day")] {
                 if !n.is_finite() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate: {} must be finite", name
+                        "Temporal.PlainDate: {} must be finite",
+                        name
                     )));
                 }
                 if n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate: {} must be an integer", name
+                        "Temporal.PlainDate: {} must be an integer",
+                        name
                     )));
                 }
             }
@@ -10595,7 +11395,8 @@ impl Runtime {
             // Range checks per ISO calendar.
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate: month {} out of range [1, 12]", m
+                    "Temporal.PlainDate: month {} out of range [1, 12]",
+                    m
                 )));
             }
             // Day range depends on month + leap year.
@@ -10603,18 +11404,26 @@ impl Runtime {
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&d) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate: day {} out of range [1, {}] for {}-{:02}", d, max_day, y, m
+                    "Temporal.PlainDate: day {} out of range [1, {}] for {}-{:02}",
+                    d, max_day, y, m
                 )));
             }
             // Year range per spec: ±271820 approximately. Use a wide bound.
             if y.abs() > 999_999 {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate: year {} out of range", y
+                    "Temporal.PlainDate: year {} out of range",
+                    y
                 )));
             }
             let mut o = Object::new_ordinary();
@@ -10638,11 +11447,11 @@ impl Runtime {
             let z = days + 719468;
             let era = if z >= 0 { z } else { z - 146096 } / 146097;
             let doe = z - era * 146097;
-            let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+            let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
             let y = yoe + era * 400;
-            let doy = doe - (365*yoe + yoe/4 - yoe/100);
-            let mp = (5*doy + 2) / 153;
-            let d = doy - (153*mp + 2)/5 + 1;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
             let m = if mp < 10 { mp + 3 } else { mp - 9 };
             let y_final = if m <= 2 { y + 1 } else { y };
             (y_final, m, d)
@@ -10664,23 +11473,41 @@ impl Runtime {
             match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if pda_is_leap(y) { 29 } else { 28 },
+                2 => {
+                    if pda_is_leap(y) {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => 0,
             }
         }
         fn pda_duration_units(rt: &mut Runtime, v: Value) -> Result<[i64; 10], RuntimeError> {
-            let names = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0i64; 10];
             if let Value::String(s) = &v {
-                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate arithmetic: invalid ISO 8601 duration: {:?}", s
-                )))?;
+                let parsed = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate arithmetic: invalid ISO 8601 duration: {:?}",
+                        s
+                    ))
+                })?;
                 for (i, &u) in parsed.iter().enumerate() {
                     if !u.is_finite() || u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.PlainDate arithmetic: fractional unit out of position".into()
+                            "Temporal.PlainDate arithmetic: fractional unit out of position".into(),
                         ));
                     }
                     units[i] = u as i64;
@@ -10688,21 +11515,31 @@ impl Runtime {
             } else if let Value::Object(id) = v {
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, n) in names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", n)
+                    } else {
+                        (*n).to_string()
+                    };
                     if let Value::Number(v) = rt.object_get(id, &key) {
                         units[i] = v as i64;
                     }
                 }
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate arithmetic: argument must be Duration, object, or string".into()
+                    "Temporal.PlainDate arithmetic: argument must be Duration, object, or string"
+                        .into(),
                 ));
             }
             // PlainDate arithmetic forbids sub-day units (hours+).
-            if units[4] != 0 || units[5] != 0 || units[6] != 0
-                || units[7] != 0 || units[8] != 0 || units[9] != 0 {
+            if units[4] != 0
+                || units[5] != 0
+                || units[6] != 0
+                || units[7] != 0
+                || units[8] != 0
+                || units[9] != 0
+            {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.PlainDate arithmetic: sub-day units (hours+) are not allowed".into()
+                    "Temporal.PlainDate arithmetic: sub-day units (hours+) are not allowed".into(),
                 ));
             }
             Ok(units)
@@ -10712,7 +11549,11 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "add", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PlainDate.add: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PlainDate.add: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = pd_read_ymd(rt, id, "add")?;
             let units = pda_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
@@ -10728,7 +11569,8 @@ impl Runtime {
             if day_offset != 0 {
                 let base_days = pda_days_from_civil(new_y, new_m, new_d);
                 let (yy, mm, dd) = pda_civil_from_days(base_days + day_offset);
-                new_y = yy; let _ = (new_m, new_d);
+                new_y = yy;
+                let _ = (new_m, new_d);
                 return Ok(make_plain_date(rt, pd_proto_for_arith, yy, mm, dd));
             }
             Ok(make_plain_date(rt, pd_proto_for_arith, new_y, new_m, new_d))
@@ -10736,11 +11578,18 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "subtract", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PlainDate.subtract: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PlainDate.subtract: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = pd_read_ymd(rt, id, "subtract")?;
-            let mut units = pda_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            for u in units.iter_mut() { *u = -*u; }
+            let mut units =
+                pda_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for u in units.iter_mut() {
+                *u = -*u;
+            }
             // Same logic as add.
             let mut new_y = y + units[0];
             let total_months = (m - 1) + units[1];
@@ -10760,22 +11609,37 @@ impl Runtime {
         // largestUnit "week"). years/months largestUnit deferred.
         fn pda_extract_ymd(rt: &mut Runtime, v: Value) -> Result<(i64, i64, i64), RuntimeError> {
             if let Value::String(s) = &v {
-                return parse_iso_date(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate since/until(string): invalid ISO 8601 date: {:?}", s
-                )));
+                return parse_iso_date(&s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate since/until(string): invalid ISO 8601 date: {:?}",
+                        s
+                    ))
+                });
             }
             if let Value::Object(id) = v {
                 if let Value::Number(y) = rt.object_get(id, "__pd_year") {
-                    let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
-                    let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                    let m = match rt.object_get(id, "__pd_month") {
+                        Value::Number(n) => n as i64,
+                        _ => 0,
+                    };
+                    let d = match rt.object_get(id, "__pd_day") {
+                        Value::Number(n) => n as i64,
+                        _ => 0,
+                    };
                     return Ok((y as i64, m, d));
                 }
             }
             Err(RuntimeError::TypeError(
-                "Temporal.PlainDate since/until: argument must be PlainDate, object, or string".into()
+                "Temporal.PlainDate since/until: argument must be PlainDate, object, or string"
+                    .into(),
             ))
         }
-        fn pda_make_duration_days(rt: &mut Runtime, dur_proto: ObjectRef, days: i64, largest: &str) -> Result<Value, RuntimeError> {
+        fn pda_make_duration_days(
+            rt: &mut Runtime,
+            dur_proto: ObjectRef,
+            days: i64,
+            largest: &str,
+        ) -> Result<Value, RuntimeError> {
             let mut units = [0.0f64; 10];
             let (weeks, day_rem) = if largest == "weeks" || largest == "week" {
                 (days / 7, days % 7)
@@ -10791,9 +11655,18 @@ impl Runtime {
             let mut o = Object::new_ordinary();
             o.proto = Some(dur_proto);
             let id = rt.alloc_object(o);
-            let names = ["years", "months", "weeks", "days", "hours",
-                         "minutes", "seconds", "milliseconds",
-                         "microseconds", "nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             for (i, n) in names.iter().enumerate() {
                 rt.set_engine_sentinel(id, &format!("__td_{}", n), Value::Number(units[i]));
             }
@@ -10802,10 +11675,15 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "since", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PlainDate.since: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PlainDate.since: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = pd_read_ymd(rt, id, "since")?;
-            let (oy, om, od) = pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let (oy, om, od) =
+                pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let largest = match args.get(1).cloned().unwrap_or(Value::Undefined) {
                 Value::Object(o) => match rt.object_get(o, "largestUnit") {
                     Value::String(s) => (*s).to_string(),
@@ -10819,10 +11697,15 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "until", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PlainDate.until: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PlainDate.until: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = pd_read_ymd(rt, id, "until")?;
-            let (oy, om, od) = pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            let (oy, om, od) =
+                pda_extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let largest = match args.get(1).cloned().unwrap_or(Value::Undefined) {
                 Value::Object(o) => match rt.object_get(o, "largestUnit") {
                     Value::String(s) => (*s).to_string(),
@@ -10839,33 +11722,43 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "with", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PlainDate.with: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PlainDate.with: this not object".into(),
+                    ))
+                }
             };
             let (mut y, mut m, mut d) = pd_read_ymd(rt, id, "with")?;
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let arg_id = match arg {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.with: argument must be an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.with: argument must be an object".into(),
+                    ))
+                }
             };
             // Reject if arg is a Temporal class instance (per spec).
             for marker in &["__pd_year", "__pt_hour", "__td_years", "__ti_ns"] {
                 if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
                     return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDate.prototype.with: argument cannot be a Temporal instance".into()
+                        "Temporal.PlainDate.prototype.with: argument cannot be a Temporal instance"
+                            .into(),
                     ));
                 }
             }
             let mut has_any = false;
             for (name, slot) in [("year", 0u8), ("month", 1), ("day", 2)] {
                 let v = rt.object_get(arg_id, name);
-                if matches!(v, Value::Undefined) { continue; }
+                if matches!(v, Value::Undefined) {
+                    continue;
+                }
                 has_any = true;
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate.prototype.with: {} must be integer", name
+                        "Temporal.PlainDate.prototype.with: {} must be integer",
+                        name
                     )));
                 }
                 let ni = n as i64;
@@ -10884,19 +11777,27 @@ impl Runtime {
             // Range checks after merge.
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate.prototype.with: month {} out of range [1, 12]", m
+                    "Temporal.PlainDate.prototype.with: month {} out of range [1, 12]",
+                    m
                 )));
             }
             let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&d) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate.prototype.with: day {} out of range", d
+                    "Temporal.PlainDate.prototype.with: day {} out of range",
+                    d
                 )));
             }
             Ok(make_plain_date(rt, pd_proto_for_with, y, m, d))
@@ -10920,19 +11821,38 @@ impl Runtime {
             match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if pd_is_leap(y) { 29 } else { 28 },
+                2 => {
+                    if pd_is_leap(y) {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => 0,
             }
         }
-        fn pd_read_ymd(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64, i64), RuntimeError> {
+        fn pd_read_ymd(
+            rt: &mut Runtime,
+            id: ObjectRef,
+            name: &str,
+        ) -> Result<(i64, i64, i64), RuntimeError> {
             let y = match rt.object_get(id, "__pd_year") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "Temporal.PlainDate.prototype.{}: this is not a Temporal.PlainDate", name
-                ))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Temporal.PlainDate.prototype.{}: this is not a Temporal.PlainDate",
+                        name
+                    )))
+                }
             };
-            let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
-            let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let m = match rt.object_get(id, "__pd_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let d = match rt.object_get(id, "__pd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             Ok((y, m, d))
         }
         // Install simple-getter accessors via a helper closure.
@@ -10943,62 +11863,114 @@ impl Runtime {
                 self.obj_mut(pd_proto).dict_mut().insert(
                     $name.into(),
                     PropertyDescriptor {
-                        value: Value::Undefined, writable: false,
-                        enumerable: false, configurable: true,
-                        getter: Some(Value::Object(getter_id)), setter: None,
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: Some(Value::Object(getter_id)),
+                        setter: None,
                     },
                 );
             }};
         }
         pd_getter!("dayOfWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfWeek: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("dayOfWeek: this not object".into())),
+            };
             let (y, m, d) = pd_read_ymd(rt, id, "dayOfWeek")?;
             let days = pd_days_from_civil(y, m, d);
             // 1970-01-01 was a Thursday (4). Map (days + 3) mod 7 -> [0..7),
             // with 0 = Mon. Then output Mon=1..Sun=7.
-            let dow0 = (days + 3).rem_euclid(7);  // 0..7 with Thu=3, Fri=4, Sat=5, Sun=6, Mon=0
+            let dow0 = (days + 3).rem_euclid(7); // 0..7 with Thu=3, Fri=4, Sat=5, Sun=6, Mon=0
             Ok(Value::Number((dow0 + 1) as f64))
         });
         pd_getter!("dayOfYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("dayOfYear: this not object".into())),
+            };
             let (y, m, d) = pd_read_ymd(rt, id, "dayOfYear")?;
             let mut doy = d;
-            for mm in 1..m { doy += pd_days_in_month(y, mm); }
+            for mm in 1..m {
+                doy += pd_days_in_month(y, mm);
+            }
             Ok(Value::Number(doy as f64))
         });
         pd_getter!("daysInMonth", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInMonth: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "daysInMonth: this not object".into(),
+                    ))
+                }
+            };
             let (y, m, _) = pd_read_ymd(rt, id, "daysInMonth")?;
             Ok(Value::Number(pd_days_in_month(y, m) as f64))
         });
         pd_getter!("daysInWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInWeek: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "daysInWeek: this not object".into(),
+                    ))
+                }
+            };
             let _ = pd_read_ymd(rt, id, "daysInWeek")?;
             Ok(Value::Number(7.0))
         });
         pd_getter!("daysInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "daysInYear: this not object".into(),
+                    ))
+                }
+            };
             let (y, _, _) = pd_read_ymd(rt, id, "daysInYear")?;
             Ok(Value::Number(if pd_is_leap(y) { 366.0 } else { 365.0 }))
         });
         pd_getter!("monthsInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("monthsInYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "monthsInYear: this not object".into(),
+                    ))
+                }
+            };
             let _ = pd_read_ymd(rt, id, "monthsInYear")?;
             Ok(Value::Number(12.0))
         });
         pd_getter!("inLeapYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("inLeapYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "inLeapYear: this not object".into(),
+                    ))
+                }
+            };
             let (y, _, _) = pd_read_ymd(rt, id, "inLeapYear")?;
             Ok(Value::Boolean(pd_is_leap(y)))
         });
         pd_getter!("era", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("era: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("era: this not object".into())),
+            };
             let _ = pd_read_ymd(rt, id, "era")?;
             // ISO calendar has no eras per spec.
             Ok(Value::Undefined)
         });
         pd_getter!("eraYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("eraYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("eraYear: this not object".into())),
+            };
             let _ = pd_read_ymd(rt, id, "eraYear")?;
             Ok(Value::Undefined)
         });
@@ -11017,7 +11989,7 @@ impl Runtime {
                 let jan4_days = pd_days_from_civil(cand_y, 1, 4);
                 let jan4_dow0 = (jan4_days + 3).rem_euclid(7);
                 let week1_mon_days = jan4_days - jan4_dow0 as i64;
-                let week_diff = thursday_days - 3 - week1_mon_days;  // mon-of-week - mon-of-week-1
+                let week_diff = thursday_days - 3 - week1_mon_days; // mon-of-week - mon-of-week-1
                 if week_diff >= 0 {
                     let week = week_diff / 7 + 1;
                     // Verify week is in range [1, 52 or 53].
@@ -11032,13 +12004,27 @@ impl Runtime {
             (y, 1) // fallback
         }
         pd_getter!("weekOfYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("weekOfYear: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "weekOfYear: this not object".into(),
+                    ))
+                }
+            };
             let (y, m, d) = pd_read_ymd(rt, id, "weekOfYear")?;
             let (_, w) = pd_iso_week(y, m, d);
             Ok(Value::Number(w as f64))
         });
         pd_getter!("yearOfWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("yearOfWeek: this not object".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "yearOfWeek: this not object".into(),
+                    ))
+                }
+            };
             let (y, m, d) = pd_read_ymd(rt, id, "yearOfWeek")?;
             let (yw, _) = pd_iso_week(y, m, d);
             Ok(Value::Number(yw as f64))
@@ -11049,9 +12035,11 @@ impl Runtime {
         fn pd_to_iso_string(rt: &mut Runtime, this_id: ObjectRef) -> Result<String, RuntimeError> {
             let y = match rt.object_get(this_id, "__pd_year") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate: this is not a Temporal.PlainDate".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate: this is not a Temporal.PlainDate".into(),
+                    ))
+                }
             };
             let m = match rt.object_get(this_id, "__pd_month") {
                 Value::Number(n) => n as i64,
@@ -11073,27 +12061,33 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "toString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.toString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.toString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, pd_proto, "toJSON", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.toJSON: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.toJSON: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
         });
         register_intrinsic_method(self, pd_proto, "toLocaleString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.toLocaleString: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.toLocaleString: this is not an object".into(),
+                    ))
+                }
             };
             Ok(Value::String(Rc::new(pd_to_iso_string(rt, id)?)))
         });
@@ -11101,17 +12095,30 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.equals: this is not an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.prototype.equals: this is not an object".into(),
+                    ))
+                }
             };
-            let (ty, tm, td) = (
-                match rt.object_get(id, "__pd_year") { Value::Number(n) => n as i64, _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.prototype.equals: this is not a Temporal.PlainDate".into()
-                ))},
-                match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 },
-                match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 },
-            );
+            let (ty, tm, td) =
+                (
+                    match rt.object_get(id, "__pd_year") {
+                        Value::Number(n) => n as i64,
+                        _ => return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDate.prototype.equals: this is not a Temporal.PlainDate"
+                                .into(),
+                        )),
+                    },
+                    match rt.object_get(id, "__pd_month") {
+                        Value::Number(n) => n as i64,
+                        _ => 0,
+                    },
+                    match rt.object_get(id, "__pd_day") {
+                        Value::Number(n) => n as i64,
+                        _ => 0,
+                    },
+                );
             // Coerce other.
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let (oy, om, od) = match other {
@@ -11159,33 +12166,53 @@ impl Runtime {
         // Parse ISO date (with optional time/offset/annotation tail).
         fn parse_iso_date(s: &str) -> Option<(i64, i64, i64)> {
             let b = s.as_bytes();
-            if b.len() < 10 { return None; }
+            if b.len() < 10 {
+                return None;
+            }
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
             }
             // Optional ±YYYYYY expanded year (deferred for v1).
             let year = rd(b, 0, 4)?;
-            if b.get(4) != Some(&b'-') { return None; }
+            if b.get(4) != Some(&b'-') {
+                return None;
+            }
             let month = rd(b, 5, 2)?;
-            if b.get(7) != Some(&b'-') { return None; }
+            if b.get(7) != Some(&b'-') {
+                return None;
+            }
             let day = rd(b, 8, 2)?;
             // Range checks per ISO.
-            if !(1..=12).contains(&month) { return None; }
+            if !(1..=12).contains(&month) {
+                return None;
+            }
             let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
             let max_day = match month {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => return None,
             };
-            if !(1..=max_day).contains(&day) { return None; }
+            if !(1..=max_day).contains(&day) {
+                return None;
+            }
             // Tail (time/offset/annotation) accepted and ignored.
             let mut i = 10;
             if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
@@ -11193,7 +12220,9 @@ impl Runtime {
                 // Skip everything to end (time part, offset, annotations).
                 i = b.len();
             }
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             Some((year, month, day))
         }
         let pd_proto_for_static = pd_proto;
@@ -11204,27 +12233,42 @@ impl Runtime {
             rt.set_engine_sentinel(id, "__pd_year", Value::Number(y as f64));
             rt.set_engine_sentinel(id, "__pd_month", Value::Number(m as f64));
             rt.set_engine_sentinel(id, "__pd_day", Value::Number(d as f64));
-            rt.set_engine_sentinel(id, "__pd_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                id,
+                "__pd_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Value::Object(id)
         }
         register_intrinsic_method(self, pd_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             if let Value::String(s) = &item {
-                let (y, m, d) = parse_iso_date(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate.from(string): invalid ISO 8601 date: {:?}", s
-                )))?;
+                let (y, m, d) = parse_iso_date(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDate.from(string): invalid ISO 8601 date: {:?}",
+                        s
+                    ))
+                })?;
                 return Ok(make_plain_date(rt, pd_proto_for_static, y, m, d));
             }
-            let id = match item {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.from: argument must be a PlainDate, object, or string".into()
-                )),
-            };
+            let id =
+                match item {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDate.from: argument must be a PlainDate, object, or string"
+                            .into(),
+                    )),
+                };
             // Brand-check: __pd_year sentinel -> clone.
             if let Value::Number(y) = rt.object_get(id, "__pd_year") {
-                let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
-                let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                let m = match rt.object_get(id, "__pd_month") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
+                let d = match rt.object_get(id, "__pd_day") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
                 return Ok(make_plain_date(rt, pd_proto_for_static, y as i64, m, d));
             }
             // Property bag: {year, month, day, [calendar]}.
@@ -11232,26 +12276,30 @@ impl Runtime {
             let mut vals = [0i64; 3];
             for (i, name) in ["year", "month", "day"].iter().enumerate() {
                 let v = rt.object_get(id, name);
-                if matches!(v, Value::Undefined) { continue; }
+                if matches!(v, Value::Undefined) {
+                    continue;
+                }
                 have[i] = true;
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate.from: {} must be integer", name
+                        "Temporal.PlainDate.from: {} must be integer",
+                        name
                     )));
                 }
                 vals[i] = n as i64;
             }
             if !have[0] || !have[1] || !have[2] {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.from: object must have year, month, and day".into()
+                    "Temporal.PlainDate.from: object must have year, month, and day".into(),
                 ));
             }
             // Calendar check.
             if let Value::String(s) = rt.object_get(id, "calendar") {
                 if s.to_lowercase() != "iso8601" {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate.from: only iso8601 calendar supported; got {:?}", s
+                        "Temporal.PlainDate.from: only iso8601 calendar supported; got {:?}",
+                        s
                     )));
                 }
             }
@@ -11259,19 +12307,27 @@ impl Runtime {
             let (y, m, d) = (vals[0], vals[1], vals[2]);
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate.from: month {} out of range [1, 12]", m
+                    "Temporal.PlainDate.from: month {} out of range [1, 12]",
+                    m
                 )));
             }
             let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&d) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDate.from: day {} out of range", d
+                    "Temporal.PlainDate.from: day {} out of range",
+                    d
                 )));
             }
             Ok(make_plain_date(rt, pd_proto_for_static, y, m, d))
@@ -11279,44 +12335,69 @@ impl Runtime {
         register_intrinsic_method(self, pd_ctor, "compare", 2, move |rt, args| {
             fn extract_ymd(rt: &mut Runtime, v: Value) -> Result<(i64, i64, i64), RuntimeError> {
                 if let Value::String(s) = &v {
-                    return parse_iso_date(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.PlainDate.compare(string): invalid ISO 8601 date: {:?}", s
-                    )));
+                    return parse_iso_date(s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
+                            "Temporal.PlainDate.compare(string): invalid ISO 8601 date: {:?}",
+                            s
+                        ))
+                    });
                 }
                 if let Value::Object(id) = v {
                     if let Value::Number(y) = rt.object_get(id, "__pd_year") {
-                        let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
-                        let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
+                        let m = match rt.object_get(id, "__pd_month") {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
+                        let d = match rt.object_get(id, "__pd_day") {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
                         return Ok((y as i64, m, d));
                     }
                     // Property bag.
                     let y = match rt.object_get(id, "year") {
                         Value::Number(n) => n as i64,
-                        _ => return Err(RuntimeError::TypeError(
-                            "Temporal.PlainDate.compare: object must have year/month/day".into()
-                        )),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.compare: object must have year/month/day"
+                                    .into(),
+                            ))
+                        }
                     };
                     let m = match rt.object_get(id, "month") {
                         Value::Number(n) => n as i64,
-                        _ => return Err(RuntimeError::TypeError(
-                            "Temporal.PlainDate.compare: object must have year/month/day".into()
-                        )),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.compare: object must have year/month/day"
+                                    .into(),
+                            ))
+                        }
                     };
                     let d = match rt.object_get(id, "day") {
                         Value::Number(n) => n as i64,
-                        _ => return Err(RuntimeError::TypeError(
-                            "Temporal.PlainDate.compare: object must have year/month/day".into()
-                        )),
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "Temporal.PlainDate.compare: object must have year/month/day"
+                                    .into(),
+                            ))
+                        }
                     };
                     return Ok((y, m, d));
                 }
                 Err(RuntimeError::TypeError(
-                    "Temporal.PlainDate.compare: argument must be PlainDate, object, or string".into()
+                    "Temporal.PlainDate.compare: argument must be PlainDate, object, or string"
+                        .into(),
                 ))
             }
             let a = extract_ymd(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let b = extract_ymd(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            let ord = if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 };
+            let ord = if a < b {
+                -1.0
+            } else if a > b {
+                1.0
+            } else {
+                0.0
+            };
             Ok(Value::Number(ord))
         });
         self.obj_mut(temporal)
@@ -11328,9 +12409,15 @@ impl Runtime {
         let pdt_proto = self.alloc_object(Object::new_ordinary());
         // 9 unit field getters + calendarId + monthCode.
         const PDT_NUMERIC_FIELDS: &[&str] = &[
-            "year", "month", "day",
-            "hour", "minute", "second",
-            "millisecond", "microsecond", "nanosecond",
+            "year",
+            "month",
+            "day",
+            "hour",
+            "minute",
+            "second",
+            "millisecond",
+            "microsecond",
+            "nanosecond",
         ];
         for field in PDT_NUMERIC_FIELDS {
             let unit_name: &'static str = field;
@@ -11342,9 +12429,12 @@ impl Runtime {
                 move |rt, _args| {
                     let id = match rt.current_this() {
                         Value::Object(o) => o,
-                        _ => return Err(RuntimeError::TypeError(format!(
-                            "Temporal.PlainDateTime.prototype.{}: this is not an object", unit_name
-                        ))),
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Temporal.PlainDateTime.prototype.{}: this is not an object",
+                                unit_name
+                            )))
+                        }
                     };
                     match rt.object_get(id, &k) {
                         Value::Undefined => Err(RuntimeError::TypeError(format!(
@@ -11358,9 +12448,12 @@ impl Runtime {
             self.obj_mut(pdt_proto).dict_mut().insert(
                 unit_name.into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -11369,9 +12462,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDateTime.prototype.calendarId: this not object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDateTime.prototype.calendarId: this not object".into(),
+                        ))
+                    }
                 };
                 match rt.object_get(id, "__pdt_calendar") {
                     Value::Undefined => Err(RuntimeError::TypeError(
@@ -11384,9 +12479,12 @@ impl Runtime {
             self.obj_mut(pdt_proto).dict_mut().insert(
                 "calendarId".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -11395,9 +12493,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDateTime.prototype.monthCode: this not object".into()
-                    )),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDateTime.prototype.monthCode: this not object".into(),
+                        ))
+                    }
                 };
                 let m = match rt.object_get(id, "__pdt_month") {
                     Value::Number(n) => n as i64,
@@ -11411,30 +12511,36 @@ impl Runtime {
             self.obj_mut(pdt_proto).dict_mut().insert(
                 "monthCode".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         register_intrinsic_method(self, pdt_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.PlainDateTime valueOf cannot be used".into()
+                "Temporal.PlainDateTime valueOf cannot be used".into(),
             ))
         });
         self.obj_mut(pdt_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.PlainDateTime".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let pdt_proto_for_ctor = pdt_proto;
         let pdt_ctor_obj = make_native_with_length("PlainDateTime", 3, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime constructor cannot be called as a function".into()
+                    "Temporal.PlainDateTime constructor cannot be called as a function".into(),
                 ));
             }
             // 9 numeric args; first 3 (year/month/day) required, rest default 0.
@@ -11447,12 +12553,14 @@ impl Runtime {
                 };
                 if !n.is_finite() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDateTime: {} must be finite", PDT_NUMERIC_FIELDS[i]
+                        "Temporal.PlainDateTime: {} must be finite",
+                        PDT_NUMERIC_FIELDS[i]
                     )));
                 }
                 if n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDateTime: {} must be an integer", PDT_NUMERIC_FIELDS[i]
+                        "Temporal.PlainDateTime: {} must be an integer",
+                        PDT_NUMERIC_FIELDS[i]
                     )));
                 }
                 vals[i] = n as i64;
@@ -11460,46 +12568,61 @@ impl Runtime {
             let calendar = match args.get(9).cloned().unwrap_or(Value::Undefined) {
                 Value::Undefined => "iso8601".to_string(),
                 Value::String(s) => s.to_lowercase(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime: calendar must be a string or undefined".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime: calendar must be a string or undefined".into(),
+                    ))
+                }
             };
             if calendar != "iso8601" {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime: only iso8601 calendar supported; got {:?}", calendar
+                    "Temporal.PlainDateTime: only iso8601 calendar supported; got {:?}",
+                    calendar
                 )));
             }
             let (y, m, d) = (vals[0], vals[1], vals[2]);
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime: month {} out of range", m
+                    "Temporal.PlainDateTime: month {} out of range",
+                    m
                 )));
             }
             let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&d) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime: day {} out of range", d
+                    "Temporal.PlainDateTime: day {} out of range",
+                    d
                 )));
             }
             if y.abs() > 999_999 {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime: year {} out of range", y
+                    "Temporal.PlainDateTime: year {} out of range",
+                    y
                 )));
             }
             // Time range checks per PlainTime.
-            let time_ranges = [(0,23), (0,59), (0,59), (0,999), (0,999), (0,999)];
+            let time_ranges = [(0, 23), (0, 59), (0, 59), (0, 999), (0, 999), (0, 999)];
             for (i, (lo, hi)) in time_ranges.iter().enumerate() {
                 let v = vals[3 + i];
                 if v < *lo || v > *hi {
                     return Err(RuntimeError::RangeError(format!(
                         "Temporal.PlainDateTime: {} {} out of range [{}, {}]",
-                        PDT_NUMERIC_FIELDS[3 + i], v, lo, hi
+                        PDT_NUMERIC_FIELDS[3 + i],
+                        v,
+                        lo,
+                        hi
                     )));
                 }
             }
@@ -11507,7 +12630,11 @@ impl Runtime {
             o.proto = Some(pdt_proto_for_ctor);
             let id = rt.alloc_object(o);
             for (i, name) in PDT_NUMERIC_FIELDS.iter().enumerate() {
-                rt.set_engine_sentinel(id, &format!("__pdt_{}", name), Value::Number(vals[i] as f64));
+                rt.set_engine_sentinel(
+                    id,
+                    &format!("__pdt_{}", name),
+                    Value::Number(vals[i] as f64),
+                );
             }
             rt.set_engine_sentinel(id, "__pdt_calendar", Value::String(Rc::new(calendar)));
             Ok(Value::Object(id))
@@ -11520,16 +12647,31 @@ impl Runtime {
         // PDTA-EXT 1 (plain-date-time-arithmetic): add / subtract / since / until.
         // Composes PD calendar arithmetic + PT time arithmetic.
         fn pdt_duration_units(rt: &mut Runtime, v: Value) -> Result<[i64; 10], RuntimeError> {
-            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut units = [0i64; 10];
             if let Value::String(s) = &v {
-                let parsed = parse_iso_duration(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime arithmetic: invalid ISO duration: {:?}", s
-                )))?;
+                let parsed = parse_iso_duration(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime arithmetic: invalid ISO duration: {:?}",
+                        s
+                    ))
+                })?;
                 for (i, &u) in parsed.iter().enumerate() {
                     if !u.is_finite() || u != u.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.PlainDateTime arithmetic: fractional unit out of position".into()
+                            "Temporal.PlainDateTime arithmetic: fractional unit out of position"
+                                .into(),
                         ));
                     }
                     units[i] = u as i64;
@@ -11537,7 +12679,11 @@ impl Runtime {
             } else if let Value::Object(id) = v {
                 let is_dur = !matches!(rt.object_get(id, "__td_years"), Value::Undefined);
                 for (i, n) in names.iter().enumerate() {
-                    let key = if is_dur { format!("__td_{}", n) } else { (*n).to_string() };
+                    let key = if is_dur {
+                        format!("__td_{}", n)
+                    } else {
+                        (*n).to_string()
+                    };
                     if let Value::Number(v) = rt.object_get(id, &key) {
                         units[i] = v as i64;
                     }
@@ -11549,7 +12695,12 @@ impl Runtime {
             }
             Ok(units)
         }
-        fn pdt_add_apply(rt: &mut Runtime, proto: ObjectRef, u: [i64; 9], dur: [i64; 10]) -> Result<Value, RuntimeError> {
+        fn pdt_add_apply(
+            rt: &mut Runtime,
+            proto: ObjectRef,
+            u: [i64; 9],
+            dur: [i64; 10],
+        ) -> Result<Value, RuntimeError> {
             // Step 1: date part (years + months + weeks + days).
             let (mut y, m_in, d_in) = (u[0], u[1], u[2]);
             let mut new_y = y + dur[0];
@@ -11562,8 +12713,11 @@ impl Runtime {
             if day_offset != 0 {
                 let base_days = pda_days_from_civil(new_y, new_m, new_d);
                 let (yy, mm, dd) = pda_civil_from_days(base_days + day_offset);
-                new_y = yy; let _ = (new_m, new_d);
-                let mut date_days_total_y = yy; let mm_v = mm; let dd_v = dd;
+                new_y = yy;
+                let _ = (new_m, new_d);
+                let mut date_days_total_y = yy;
+                let mm_v = mm;
+                let dd_v = dd;
                 // Step 2: time part (h/m/s/ms/μs/ns).
                 let cur_time_ns: i64 = u[3] * 3_600_000_000_000
                     + u[4] * 60_000_000_000
@@ -11580,10 +12734,14 @@ impl Runtime {
                 let total_time_ns = cur_time_ns + dur_time_ns;
                 let extra_days = total_time_ns.div_euclid(86_400_000_000_000);
                 let mut time_ns = total_time_ns.rem_euclid(86_400_000_000_000);
-                let hh = time_ns / 3_600_000_000_000; time_ns %= 3_600_000_000_000;
-                let mi = time_ns / 60_000_000_000; time_ns %= 60_000_000_000;
-                let se = time_ns / 1_000_000_000; time_ns %= 1_000_000_000;
-                let ms = time_ns / 1_000_000; time_ns %= 1_000_000;
+                let hh = time_ns / 3_600_000_000_000;
+                time_ns %= 3_600_000_000_000;
+                let mi = time_ns / 60_000_000_000;
+                time_ns %= 60_000_000_000;
+                let se = time_ns / 1_000_000_000;
+                time_ns %= 1_000_000_000;
+                let ms = time_ns / 1_000_000;
+                time_ns %= 1_000_000;
                 let us = time_ns / 1_000;
                 let ns = time_ns % 1_000;
                 if extra_days != 0 {
@@ -11592,7 +12750,11 @@ impl Runtime {
                     return Ok(make_pdt(rt, proto, [y2, m2, d2, hh, mi, se, ms, us, ns]));
                 }
                 let _ = date_days_total_y;
-                return Ok(make_pdt(rt, proto, [yy, mm_v, dd_v, hh, mi, se, ms, us, ns]));
+                return Ok(make_pdt(
+                    rt,
+                    proto,
+                    [yy, mm_v, dd_v, hh, mi, se, ms, us, ns],
+                ));
             }
             // No date offset; only time arithmetic.
             let cur_time_ns: i64 = u[3] * 3_600_000_000_000
@@ -11610,10 +12772,14 @@ impl Runtime {
             let total_time_ns = cur_time_ns + dur_time_ns;
             let extra_days = total_time_ns.div_euclid(86_400_000_000_000);
             let mut time_ns = total_time_ns.rem_euclid(86_400_000_000_000);
-            let hh = time_ns / 3_600_000_000_000; time_ns %= 3_600_000_000_000;
-            let mi = time_ns / 60_000_000_000; time_ns %= 60_000_000_000;
-            let se = time_ns / 1_000_000_000; time_ns %= 1_000_000_000;
-            let ms = time_ns / 1_000_000; time_ns %= 1_000_000;
+            let hh = time_ns / 3_600_000_000_000;
+            time_ns %= 3_600_000_000_000;
+            let mi = time_ns / 60_000_000_000;
+            time_ns %= 60_000_000_000;
+            let se = time_ns / 1_000_000_000;
+            time_ns %= 1_000_000_000;
+            let ms = time_ns / 1_000_000;
+            time_ns %= 1_000_000;
             let us = time_ns / 1_000;
             let ns = time_ns % 1_000;
             let _ = y;
@@ -11622,7 +12788,11 @@ impl Runtime {
                 let (y2, m2, d2) = pda_civil_from_days(final_days);
                 return Ok(make_pdt(rt, proto, [y2, m2, d2, hh, mi, se, ms, us, ns]));
             }
-            Ok(make_pdt(rt, proto, [new_y, new_m, new_d, hh, mi, se, ms, us, ns]))
+            Ok(make_pdt(
+                rt,
+                proto,
+                [new_y, new_m, new_d, hh, mi, se, ms, us, ns],
+            ))
         }
         let pdt_proto_for_arith = pdt_proto;
         let dur_proto_for_pdt_arith = dur_proto;
@@ -11638,11 +12808,18 @@ impl Runtime {
         register_intrinsic_method(self, pdt_proto, "subtract", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PDT.subtract: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.subtract: this not object".into(),
+                    ))
+                }
             };
             let u = pdt_read_all(rt, id)?;
-            let mut dur = pdt_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
-            for x in dur.iter_mut() { *x = -*x; }
+            let mut dur =
+                pdt_duration_units(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
+            for x in dur.iter_mut() {
+                *x = -*x;
+            }
             pdt_add_apply(rt, pdt_proto_for_arith, u, dur)
         });
         register_intrinsic_method(self, pdt_proto, "since", 1, move |rt, args| {
@@ -11654,24 +12831,44 @@ impl Runtime {
             // Coerce other.
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let ou = match other {
-                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime.prototype.since(string): invalid: {:?}", s
-                )))?,
+                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.prototype.since(string): invalid: {:?}",
+                        s
+                    ))
+                })?,
                 Value::Object(o) => {
-                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) { pdt_read_all(rt, o)? }
-                    else { return Err(RuntimeError::TypeError("PDT.since: argument not PDT".into())); }
+                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) {
+                        pdt_read_all(rt, o)?
+                    } else {
+                        return Err(RuntimeError::TypeError(
+                            "PDT.since: argument not PDT".into(),
+                        ));
+                    }
                 }
-                _ => return Err(RuntimeError::TypeError("PDT.since: argument must be PDT or string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.since: argument must be PDT or string".into(),
+                    ))
+                }
             };
             // Compute diff in nanoseconds-since-epoch-day-zero.
             let this_days = pda_days_from_civil(u[0], u[1], u[2]);
             let this_ns = this_days * 86_400_000_000_000
-                + u[3] * 3_600_000_000_000 + u[4] * 60_000_000_000 + u[5] * 1_000_000_000
-                + u[6] * 1_000_000 + u[7] * 1_000 + u[8];
+                + u[3] * 3_600_000_000_000
+                + u[4] * 60_000_000_000
+                + u[5] * 1_000_000_000
+                + u[6] * 1_000_000
+                + u[7] * 1_000
+                + u[8];
             let other_days = pda_days_from_civil(ou[0], ou[1], ou[2]);
             let other_ns = other_days * 86_400_000_000_000
-                + ou[3] * 3_600_000_000_000 + ou[4] * 60_000_000_000 + ou[5] * 1_000_000_000
-                + ou[6] * 1_000_000 + ou[7] * 1_000 + ou[8];
+                + ou[3] * 3_600_000_000_000
+                + ou[4] * 60_000_000_000
+                + ou[5] * 1_000_000_000
+                + ou[6] * 1_000_000
+                + ou[7] * 1_000
+                + ou[8];
             let diff = this_ns - other_ns;
             // Output Duration with hours+m+s+sub-second (default largestUnit
             // for PlainDateTime since/until is "day"; v1 returns time-only
@@ -11691,9 +12888,30 @@ impl Runtime {
             let us = r5 / 1_000;
             let ns = r5 % 1_000;
             let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
-            let units = [0.0, 0.0, 0.0, signed(days), signed(hours), signed(minutes),
-                         signed(seconds), signed(ms), signed(us), signed(ns)];
-            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let units = [
+                0.0,
+                0.0,
+                0.0,
+                signed(days),
+                signed(hours),
+                signed(minutes),
+                signed(seconds),
+                signed(ms),
+                signed(us),
+                signed(ns),
+            ];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(dur_proto_for_pdt_arith);
             let id_new = rt.alloc_object(o);
@@ -11710,23 +12928,43 @@ impl Runtime {
             let u = pdt_read_all(rt, id)?;
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let ou = match other {
-                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime.prototype.until(string): invalid: {:?}", s
-                )))?,
+                Value::String(s) => parse_iso_pdt(&s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.prototype.until(string): invalid: {:?}",
+                        s
+                    ))
+                })?,
                 Value::Object(o) => {
-                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) { pdt_read_all(rt, o)? }
-                    else { return Err(RuntimeError::TypeError("PDT.until: argument not PDT".into())); }
+                    if !matches!(rt.object_get(o, "__pdt_year"), Value::Undefined) {
+                        pdt_read_all(rt, o)?
+                    } else {
+                        return Err(RuntimeError::TypeError(
+                            "PDT.until: argument not PDT".into(),
+                        ));
+                    }
                 }
-                _ => return Err(RuntimeError::TypeError("PDT.until: argument must be PDT or string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.until: argument must be PDT or string".into(),
+                    ))
+                }
             };
             let this_days = pda_days_from_civil(u[0], u[1], u[2]);
             let this_ns = this_days * 86_400_000_000_000
-                + u[3] * 3_600_000_000_000 + u[4] * 60_000_000_000 + u[5] * 1_000_000_000
-                + u[6] * 1_000_000 + u[7] * 1_000 + u[8];
+                + u[3] * 3_600_000_000_000
+                + u[4] * 60_000_000_000
+                + u[5] * 1_000_000_000
+                + u[6] * 1_000_000
+                + u[7] * 1_000
+                + u[8];
             let other_days = pda_days_from_civil(ou[0], ou[1], ou[2]);
             let other_ns = other_days * 86_400_000_000_000
-                + ou[3] * 3_600_000_000_000 + ou[4] * 60_000_000_000 + ou[5] * 1_000_000_000
-                + ou[6] * 1_000_000 + ou[7] * 1_000 + ou[8];
+                + ou[3] * 3_600_000_000_000
+                + ou[4] * 60_000_000_000
+                + ou[5] * 1_000_000_000
+                + ou[6] * 1_000_000
+                + ou[7] * 1_000
+                + ou[8];
             let diff = other_ns - this_ns;
             let neg = diff < 0;
             let abs = diff.abs();
@@ -11743,9 +12981,30 @@ impl Runtime {
             let us = r5 / 1_000;
             let ns = r5 % 1_000;
             let signed = |x: i64| if neg { -(x as f64) } else { x as f64 };
-            let units = [0.0, 0.0, 0.0, signed(days), signed(hours), signed(minutes),
-                         signed(seconds), signed(ms), signed(us), signed(ns)];
-            let names = ["years","months","weeks","days","hours","minutes","seconds","milliseconds","microseconds","nanoseconds"];
+            let units = [
+                0.0,
+                0.0,
+                0.0,
+                signed(days),
+                signed(hours),
+                signed(minutes),
+                signed(seconds),
+                signed(ms),
+                signed(us),
+                signed(ns),
+            ];
+            let names = [
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(dur_proto_for_pdt_arith);
             let id_new = rt.alloc_object(o);
@@ -11765,56 +13024,92 @@ impl Runtime {
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let arg_id = match arg {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime.prototype.with: argument must be an object".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.prototype.with: argument must be an object".into(),
+                    ))
+                }
             };
-            for marker in &["__pdt_year", "__pd_year", "__pt_hour", "__td_years", "__ti_ns"] {
+            for marker in &[
+                "__pdt_year",
+                "__pd_year",
+                "__pt_hour",
+                "__td_years",
+                "__ti_ns",
+            ] {
                 if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
                     return Err(RuntimeError::TypeError(
                         "Temporal.PlainDateTime.prototype.with: argument cannot be a Temporal instance".into()
                     ));
                 }
             }
-            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let names = [
+                "year",
+                "month",
+                "day",
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let mut has_any = false;
             for (i, name) in names.iter().enumerate() {
                 let v = rt.object_get(arg_id, name);
-                if matches!(v, Value::Undefined) { continue; }
+                if matches!(v, Value::Undefined) {
+                    continue;
+                }
                 has_any = true;
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDateTime.prototype.with: {} must be integer", name
+                        "Temporal.PlainDateTime.prototype.with: {} must be integer",
+                        name
                     )));
                 }
                 u[i] = n as i64;
             }
             if !has_any {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime.prototype.with: argument must have at least one field".into()
+                    "Temporal.PlainDateTime.prototype.with: argument must have at least one field"
+                        .into(),
                 ));
             }
             // Range checks after merge.
             if !(1..=12).contains(&u[1]) {
-                return Err(RuntimeError::RangeError(format!("month {} out of range", u[1])));
+                return Err(RuntimeError::RangeError(format!(
+                    "month {} out of range",
+                    u[1]
+                )));
             }
             let leap = (u[0] % 4 == 0 && u[0] % 100 != 0) || (u[0] % 400 == 0);
             let max_day = match u[1] {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&u[2]) {
-                return Err(RuntimeError::RangeError(format!("day {} out of range", u[2])));
+                return Err(RuntimeError::RangeError(format!(
+                    "day {} out of range",
+                    u[2]
+                )));
             }
-            let time_bounds = [(0,23i64), (0,59), (0,59), (0,999), (0,999), (0,999)];
+            let time_bounds = [(0, 23i64), (0, 59), (0, 59), (0, 999), (0, 999), (0, 999)];
             for (i, (lo, hi)) in time_bounds.iter().enumerate() {
                 let v = u[3 + i];
                 if v < *lo || v > *hi {
                     return Err(RuntimeError::RangeError(format!(
-                        "{} {} out of range", names[3 + i], v
+                        "{} {} out of range",
+                        names[3 + i],
+                        v
                     )));
                 }
             }
@@ -11822,15 +13117,28 @@ impl Runtime {
         });
         // PDTDP-EXT 1 (plain-date-time-derived-properties): 11 calendar
         // getters that mirror PDDP, reading from __pdt_year/month/day.
-        fn pdt_read_ymd(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64, i64), RuntimeError> {
+        fn pdt_read_ymd(
+            rt: &mut Runtime,
+            id: ObjectRef,
+            name: &str,
+        ) -> Result<(i64, i64, i64), RuntimeError> {
             let y = match rt.object_get(id, "__pdt_year") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "Temporal.PlainDateTime.prototype.{}: this is not a Temporal.PlainDateTime", name
-                ))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Temporal.PlainDateTime.prototype.{}: this is not a Temporal.PlainDateTime",
+                        name
+                    )))
+                }
             };
-            let m = match rt.object_get(id, "__pdt_month") { Value::Number(n) => n as i64, _ => 0 };
-            let d = match rt.object_get(id, "__pdt_day") { Value::Number(n) => n as i64, _ => 0 };
+            let m = match rt.object_get(id, "__pdt_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let d = match rt.object_get(id, "__pdt_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             Ok((y, m, d))
         }
         macro_rules! pdt_getter {
@@ -11840,59 +13148,91 @@ impl Runtime {
                 self.obj_mut(pdt_proto).dict_mut().insert(
                     $name.into(),
                     PropertyDescriptor {
-                        value: Value::Undefined, writable: false,
-                        enumerable: false, configurable: true,
-                        getter: Some(Value::Object(getter_id)), setter: None,
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: Some(Value::Object(getter_id)),
+                        setter: None,
                     },
                 );
             }};
         }
         pdt_getter!("dayOfWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfWeek".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("dayOfWeek".into())),
+            };
             let (y, m, d) = pdt_read_ymd(rt, id, "dayOfWeek")?;
             let days = pda_days_from_civil(y, m, d);
             let dow0 = (days + 3).rem_euclid(7);
             Ok(Value::Number((dow0 + 1) as f64))
         });
         pdt_getter!("dayOfYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("dayOfYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("dayOfYear".into())),
+            };
             let (y, m, d) = pdt_read_ymd(rt, id, "dayOfYear")?;
             let mut doy = d;
-            for mm in 1..m { doy += pda_days_in_month(y, mm); }
+            for mm in 1..m {
+                doy += pda_days_in_month(y, mm);
+            }
             Ok(Value::Number(doy as f64))
         });
         pdt_getter!("daysInMonth", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInMonth".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("daysInMonth".into())),
+            };
             let (y, m, _) = pdt_read_ymd(rt, id, "daysInMonth")?;
             Ok(Value::Number(pda_days_in_month(y, m) as f64))
         });
         pdt_getter!("daysInWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInWeek".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("daysInWeek".into())),
+            };
             let _ = pdt_read_ymd(rt, id, "daysInWeek")?;
             Ok(Value::Number(7.0))
         });
         pdt_getter!("daysInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("daysInYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("daysInYear".into())),
+            };
             let (y, _, _) = pdt_read_ymd(rt, id, "daysInYear")?;
             Ok(Value::Number(if pda_is_leap(y) { 366.0 } else { 365.0 }))
         });
         pdt_getter!("monthsInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("monthsInYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("monthsInYear".into())),
+            };
             let _ = pdt_read_ymd(rt, id, "monthsInYear")?;
             Ok(Value::Number(12.0))
         });
         pdt_getter!("inLeapYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("inLeapYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("inLeapYear".into())),
+            };
             let (y, _, _) = pdt_read_ymd(rt, id, "inLeapYear")?;
             Ok(Value::Boolean(pda_is_leap(y)))
         });
         pdt_getter!("era", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("era".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("era".into())),
+            };
             let _ = pdt_read_ymd(rt, id, "era")?;
             Ok(Value::Undefined)
         });
         pdt_getter!("eraYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("eraYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("eraYear".into())),
+            };
             let _ = pdt_read_ymd(rt, id, "eraYear")?;
             Ok(Value::Undefined)
         });
@@ -11920,12 +13260,18 @@ impl Runtime {
             (y, 1)
         }
         pdt_getter!("weekOfYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("weekOfYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("weekOfYear".into())),
+            };
             let (y, m, d) = pdt_read_ymd(rt, id, "weekOfYear")?;
             Ok(Value::Number(pdt_iso_week(y, m, d).1 as f64))
         });
         pdt_getter!("yearOfWeek", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("yearOfWeek".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("yearOfWeek".into())),
+            };
             let (y, m, d) = pdt_read_ymd(rt, id, "yearOfWeek")?;
             Ok(Value::Number(pdt_iso_week(y, m, d).0 as f64))
         });
@@ -11934,44 +13280,79 @@ impl Runtime {
         // (PDT has no TZ; offset and annotation are accepted and IGNORED).
         fn parse_iso_pdt(s: &str) -> Option<[i64; 9]> {
             let b = s.as_bytes();
-            if b.len() < 10 { return None; }
+            if b.len() < 10 {
+                return None;
+            }
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
             }
             let mut i = 0;
-            let year = rd(b, i, 4)?; i += 4;
-            if b.get(i) != Some(&b'-') { return None; } i += 1;
-            let month = rd(b, i, 2)?; i += 2;
-            if b.get(i) != Some(&b'-') { return None; } i += 1;
-            let day = rd(b, i, 2)?; i += 2;
+            let year = rd(b, i, 4)?;
+            i += 4;
+            if b.get(i) != Some(&b'-') {
+                return None;
+            }
+            i += 1;
+            let month = rd(b, i, 2)?;
+            i += 2;
+            if b.get(i) != Some(&b'-') {
+                return None;
+            }
+            i += 1;
+            let day = rd(b, i, 2)?;
+            i += 2;
             // Validate y/m/d range.
-            if !(1..=12).contains(&month) { return None; }
+            if !(1..=12).contains(&month) {
+                return None;
+            }
             let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
             let max_day = match month {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => return None,
             };
-            if !(1..=max_day).contains(&day) { return None; }
-            let mut hour = 0i64; let mut minute = 0i64; let mut second = 0i64;
-            let mut ms = 0i64; let mut us = 0i64; let mut ns = 0i64;
+            if !(1..=max_day).contains(&day) {
+                return None;
+            }
+            let mut hour = 0i64;
+            let mut minute = 0i64;
+            let mut second = 0i64;
+            let mut ms = 0i64;
+            let mut us = 0i64;
+            let mut ns = 0i64;
             // Time portion optional for PD-style strings; full PDT typically has T.
             if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
                 i += 1;
-                hour = rd(b, i, 2)?; i += 2;
-                if b.get(i) != Some(&b':') { return None; } i += 1;
-                minute = rd(b, i, 2)?; i += 2;
+                hour = rd(b, i, 2)?;
+                i += 2;
+                if b.get(i) != Some(&b':') {
+                    return None;
+                }
+                i += 1;
+                minute = rd(b, i, 2)?;
+                i += 2;
                 if b.get(i) == Some(&b':') {
                     i += 1;
-                    second = rd(b, i, 2)?; i += 2;
+                    second = rd(b, i, 2)?;
+                    i += 2;
                     if matches!(b.get(i), Some(b'.') | Some(b',')) {
                         i += 1;
                         let frac_start = i;
@@ -11979,61 +13360,99 @@ impl Runtime {
                             i += 1;
                         }
                         let n_digits = i - frac_start;
-                        if n_digits == 0 { return None; }
+                        if n_digits == 0 {
+                            return None;
+                        }
                         let mut frac = 0i64;
                         for k in 0..n_digits {
                             frac = frac * 10 + (b[frac_start + k] - b'0') as i64;
                         }
-                        for _ in 0..(9 - n_digits) { frac *= 10; }
+                        for _ in 0..(9 - n_digits) {
+                            frac *= 10;
+                        }
                         ms = frac / 1_000_000;
                         us = (frac / 1_000) % 1_000;
                         ns = frac % 1_000;
                     }
                 }
-                if hour > 23 || minute > 59 || second > 59 { return None; }
+                if hour > 23 || minute > 59 || second > 59 {
+                    return None;
+                }
             }
             // Optional offset (Z, ±HH:MM) — accepted and IGNORED for PDT.
-            if matches!(b.get(i), Some(b'Z') | Some(b'z')) { i += 1; }
-            else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+            if matches!(b.get(i), Some(b'Z') | Some(b'z')) {
                 i += 1;
-                if rd(b, i, 2).is_none() { return None; } i += 2;
-                if b.get(i) == Some(&b':') { i += 1; }
-                if rd(b, i, 2).is_some() { i += 2; }
+            } else if matches!(b.get(i), Some(b'+') | Some(b'-')) {
+                i += 1;
+                if rd(b, i, 2).is_none() {
+                    return None;
+                }
+                i += 2;
                 if b.get(i) == Some(&b':') {
                     i += 1;
-                    if rd(b, i, 2).is_some() { i += 2; }
+                }
+                if rd(b, i, 2).is_some() {
+                    i += 2;
+                }
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                    if rd(b, i, 2).is_some() {
+                        i += 2;
+                    }
                 }
             }
             // Annotations [...] — currently strict-reject to avoid PTS-like
             // regression on critical/uppercase tests.
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             Some([year, month, day, hour, minute, second, ms, us, ns])
         }
         let pdt_proto_for_static = pdt_proto;
         fn make_pdt(rt: &mut Runtime, proto: ObjectRef, u: [i64; 9]) -> Value {
-            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let names = [
+                "year",
+                "month",
+                "day",
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let mut o = Object::new_ordinary();
             o.proto = Some(proto);
             let id = rt.alloc_object(o);
             for (i, n) in names.iter().enumerate() {
                 rt.set_engine_sentinel(id, &format!("__pdt_{}", n), Value::Number(u[i] as f64));
             }
-            rt.set_engine_sentinel(id, "__pdt_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                id,
+                "__pdt_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Value::Object(id)
         }
         register_intrinsic_method(self, pdt_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             if let Value::String(s) = &item {
-                let u = parse_iso_pdt(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainDateTime.from(string): invalid ISO 8601 datetime: {:?}", s
-                )))?;
+                let u = parse_iso_pdt(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainDateTime.from(string): invalid ISO 8601 datetime: {:?}",
+                        s
+                    ))
+                })?;
                 return Ok(make_pdt(rt, pdt_proto_for_static, u));
             }
             let id = match item {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime.from: argument must be PDT, object, or string".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainDateTime.from: argument must be PDT, object, or string"
+                            .into(),
+                    ))
+                }
             };
             // PDT brand → clone.
             if !matches!(rt.object_get(id, "__pdt_year"), Value::Undefined) {
@@ -12042,21 +13461,45 @@ impl Runtime {
             }
             // PD brand → use PD fields + default time = 0.
             if !matches!(rt.object_get(id, "__pd_year"), Value::Undefined) {
-                let y = match rt.object_get(id, "__pd_year") { Value::Number(n) => n as i64, _ => 0 };
-                let m = match rt.object_get(id, "__pd_month") { Value::Number(n) => n as i64, _ => 0 };
-                let d = match rt.object_get(id, "__pd_day") { Value::Number(n) => n as i64, _ => 0 };
-                return Ok(make_pdt(rt, pdt_proto_for_static, [y, m, d, 0, 0, 0, 0, 0, 0]));
+                let y = match rt.object_get(id, "__pd_year") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
+                let m = match rt.object_get(id, "__pd_month") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
+                let d = match rt.object_get(id, "__pd_day") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
+                return Ok(make_pdt(
+                    rt,
+                    pdt_proto_for_static,
+                    [y, m, d, 0, 0, 0, 0, 0, 0],
+                ));
             }
             // Property bag.
             let mut u = [0i64; 9];
-            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let names = [
+                "year",
+                "month",
+                "day",
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let required = ["year", "month", "day"];
             for (i, name) in names.iter().enumerate() {
                 let v = rt.object_get(id, name);
                 if matches!(v, Value::Undefined) {
                     if required.contains(name) {
                         return Err(RuntimeError::TypeError(format!(
-                            "Temporal.PlainDateTime.from: object must have {}", name
+                            "Temporal.PlainDateTime.from: object must have {}",
+                            name
                         )));
                     }
                     continue;
@@ -12064,7 +13507,8 @@ impl Runtime {
                 let n = crate::abstract_ops::to_number(&v);
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainDateTime.from: {} must be integer", name
+                        "Temporal.PlainDateTime.from: {} must be integer",
+                        name
                     )));
                 }
                 u[i] = n as i64;
@@ -12077,7 +13521,13 @@ impl Runtime {
             let max_day = match u[1] {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&u[2]) {
@@ -12088,9 +13538,11 @@ impl Runtime {
         register_intrinsic_method(self, pdt_ctor, "compare", 2, move |rt, args| {
             fn extract(rt: &mut Runtime, v: Value) -> Result<[i64; 9], RuntimeError> {
                 if let Value::String(s) = &v {
-                    return parse_iso_pdt(s).ok_or_else(|| RuntimeError::RangeError(format!(
+                    return parse_iso_pdt(s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
                         "Temporal.PlainDateTime.compare(string): invalid ISO 8601 datetime: {:?}", s
-                    )));
+                    ))
+                    });
                 }
                 if let Value::Object(id) = v {
                     if !matches!(rt.object_get(id, "__pdt_year"), Value::Undefined) {
@@ -12098,26 +13550,44 @@ impl Runtime {
                     }
                 }
                 Err(RuntimeError::TypeError(
-                    "Temporal.PlainDateTime.compare: argument must be PDT or string".into()
+                    "Temporal.PlainDateTime.compare: argument must be PDT or string".into(),
                 ))
             }
             let a = extract(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let b = extract(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            let ord = if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 };
+            let ord = if a < b {
+                -1.0
+            } else if a > b {
+                1.0
+            } else {
+                0.0
+            };
             Ok(Value::Number(ord))
         });
         // PDTSC-EXT 1 (plain-date-time-string-conversion): toString/toJSON.
         // Format: 'YYYY-MM-DDTHH:MM:SS[.fff]' per §11.5.5.
         fn pdt_read_all(rt: &mut Runtime, this_id: ObjectRef) -> Result<[i64; 9], RuntimeError> {
-            let names = ["year","month","day","hour","minute","second","millisecond","microsecond","nanosecond"];
+            let names = [
+                "year",
+                "month",
+                "day",
+                "hour",
+                "minute",
+                "second",
+                "millisecond",
+                "microsecond",
+                "nanosecond",
+            ];
             let mut u = [0i64; 9];
             for (i, n) in names.iter().enumerate() {
                 let key = format!("__pdt_{}", n);
                 match rt.object_get(this_id, &key) {
                     Value::Number(v) => u[i] = v as i64,
-                    Value::Undefined if i == 0 => return Err(RuntimeError::TypeError(
-                        "Temporal.PlainDateTime: this is not a Temporal.PlainDateTime".into()
-                    )),
+                    Value::Undefined if i == 0 => {
+                        return Err(RuntimeError::TypeError(
+                            "Temporal.PlainDateTime: this is not a Temporal.PlainDateTime".into(),
+                        ))
+                    }
                     _ => {}
                 }
             }
@@ -12149,9 +13619,12 @@ impl Runtime {
             register_intrinsic_method(self, pdt_proto, method, 0, move |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(format!(
-                        "Temporal.PlainDateTime.prototype.{}: this not object", m
-                    ))),
+                    _ => {
+                        return Err(RuntimeError::TypeError(format!(
+                            "Temporal.PlainDateTime.prototype.{}: this not object",
+                            m
+                        )))
+                    }
                 };
                 Ok(Value::String(Rc::new(pdt_to_iso_string(rt, id)?)))
             });
@@ -12160,7 +13633,11 @@ impl Runtime {
         register_intrinsic_method(self, pdt_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PDT.equals: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.equals: this not object".into(),
+                    ))
+                }
             };
             let this_u = pdt_read_all(rt, id)?;
             let other = args.first().cloned().unwrap_or(Value::Undefined);
@@ -12211,9 +13688,12 @@ impl Runtime {
             self.obj_mut(pmd_proto).dict_mut().insert(
                 "day".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -12222,7 +13702,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get monthCode", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError("PMD.monthCode: this not object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "PMD.monthCode: this not object".into(),
+                        ))
+                    }
                 };
                 let m = match rt.object_get(id, "__pmd_month") {
                     Value::Number(n) => n as i64,
@@ -12236,9 +13720,12 @@ impl Runtime {
             self.obj_mut(pmd_proto).dict_mut().insert(
                 "monthCode".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -12247,7 +13734,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get calendarId", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError("PMD.calendarId: this not object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "PMD.calendarId: this not object".into(),
+                        ))
+                    }
                 };
                 match rt.object_get(id, "__pmd_calendar") {
                     Value::Undefined => Err(RuntimeError::TypeError(
@@ -12260,26 +13751,42 @@ impl Runtime {
             self.obj_mut(pmd_proto).dict_mut().insert(
                 "calendarId".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         register_intrinsic_method(self, pmd_proto, "valueOf", 0, |_rt, _args| {
             Err(RuntimeError::TypeError(
-                "Temporal.PlainMonthDay valueOf cannot be used".into()
+                "Temporal.PlainMonthDay valueOf cannot be used".into(),
             ))
         });
         // toString: "MM-DD" for default calendar+refYear; full date when refYear differs.
         register_intrinsic_method(self, pmd_proto, "toString", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PMD.toString: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.toString: this not object".into(),
+                    ))
+                }
             };
-            let m = match rt.object_get(id, "__pmd_month") { Value::Number(n) => n as i64, _ => 0 };
-            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let m = match rt.object_get(id, "__pmd_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let d = match rt.object_get(id, "__pmd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let ry = match rt.object_get(id, "__pmd_refyear") {
+                Value::Number(n) => n as i64,
+                _ => 1972,
+            };
             // Default calendar + default refYear (1972) → "MM-DD".
             // Otherwise → "YYYY-MM-DD".
             let cal = match rt.object_get(id, "__pmd_calendar") {
@@ -12296,11 +13803,24 @@ impl Runtime {
         register_intrinsic_method(self, pmd_proto, "toJSON", 0, |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PMD.toJSON: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.toJSON: this not object".into(),
+                    ))
+                }
             };
-            let m = match rt.object_get(id, "__pmd_month") { Value::Number(n) => n as i64, _ => 0 };
-            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let m = match rt.object_get(id, "__pmd_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let d = match rt.object_get(id, "__pmd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let ry = match rt.object_get(id, "__pmd_refyear") {
+                Value::Number(n) => n as i64,
+                _ => 1972,
+            };
             let cal = match rt.object_get(id, "__pmd_calendar") {
                 Value::String(s) => (*s).to_string(),
                 _ => "iso8601".to_string(),
@@ -12316,29 +13836,37 @@ impl Runtime {
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.PlainMonthDay".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let pmd_proto_for_ctor = pmd_proto;
         let pmd_ctor_obj = make_native_with_length("PlainMonthDay", 2, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay constructor cannot be called as a function".into()
+                    "Temporal.PlainMonthDay constructor cannot be called as a function".into(),
                 ));
             }
-            let month = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
-            let day = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let month =
+                crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let day =
+                crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
             let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
                 Value::Undefined => "iso8601".to_string(),
                 Value::String(s) => s.to_lowercase(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay: calendar must be a string or undefined".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay: calendar must be a string or undefined".into(),
+                    ))
+                }
             };
             if calendar != "iso8601" {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainMonthDay: only iso8601 calendar supported; got {:?}", calendar
+                    "Temporal.PlainMonthDay: only iso8601 calendar supported; got {:?}",
+                    calendar
                 )));
             }
             // referenceISOYear default 1972 (leap so Feb 29 valid).
@@ -12348,7 +13876,7 @@ impl Runtime {
                     let n = crate::abstract_ops::to_number(&v);
                     if !n.is_finite() || n != n.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.PlainMonthDay: referenceISOYear must be integer".into()
+                            "Temporal.PlainMonthDay: referenceISOYear must be integer".into(),
                         ));
                     }
                     n as i64
@@ -12357,7 +13885,8 @@ impl Runtime {
             for (n, name) in [(month, "month"), (day, "day")] {
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainMonthDay: {} must be integer", name
+                        "Temporal.PlainMonthDay: {} must be integer",
+                        name
                     )));
                 }
             }
@@ -12365,19 +13894,27 @@ impl Runtime {
             let d = day as i64;
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainMonthDay: month {} out of range", m
+                    "Temporal.PlainMonthDay: month {} out of range",
+                    m
                 )));
             }
             let leap = (ref_year % 4 == 0 && ref_year % 100 != 0) || (ref_year % 400 == 0);
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&d) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainMonthDay: day {} out of range for month {} in ref year {}", d, m, ref_year
+                    "Temporal.PlainMonthDay: day {} out of range for month {} in ref year {}",
+                    d, m, ref_year
                 )));
             }
             let mut o = Object::new_ordinary();
@@ -12399,11 +13936,15 @@ impl Runtime {
         fn parse_iso_pmd(s: &str) -> Option<(i64, i64, i64)> {
             let b = s.as_bytes();
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
@@ -12412,22 +13953,34 @@ impl Runtime {
             if b.len() == 5 && b.get(2) == Some(&b'-') {
                 let m = rd(b, 0, 2)?;
                 let d = rd(b, 3, 2)?;
-                if !(1..=12).contains(&m) { return None; }
+                if !(1..=12).contains(&m) {
+                    return None;
+                }
                 return Some((1972, m, d));
             }
             // Full form: YYYY-MM-DD with optional time tail.
-            if b.len() < 10 { return None; }
+            if b.len() < 10 {
+                return None;
+            }
             let year = rd(b, 0, 4)?;
-            if b.get(4) != Some(&b'-') { return None; }
+            if b.get(4) != Some(&b'-') {
+                return None;
+            }
             let month = rd(b, 5, 2)?;
-            if b.get(7) != Some(&b'-') { return None; }
+            if b.get(7) != Some(&b'-') {
+                return None;
+            }
             let day = rd(b, 8, 2)?;
-            if !(1..=12).contains(&month) { return None; }
+            if !(1..=12).contains(&month) {
+                return None;
+            }
             let mut i = 10;
             if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
                 i = b.len();
             }
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             Some((year, month, day))
         }
         let pmd_proto_for_static = pmd_proto;
@@ -12438,53 +13991,77 @@ impl Runtime {
             rt.set_engine_sentinel(id, "__pmd_month", Value::Number(m as f64));
             rt.set_engine_sentinel(id, "__pmd_day", Value::Number(d as f64));
             rt.set_engine_sentinel(id, "__pmd_refyear", Value::Number(ref_year as f64));
-            rt.set_engine_sentinel(id, "__pmd_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                id,
+                "__pmd_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Value::Object(id)
         }
         register_intrinsic_method(self, pmd_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             if let Value::String(s) = &item {
-                let (ry, m, d) = parse_iso_pmd(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainMonthDay.from(string): invalid ISO 8601: {:?}", s
-                )))?;
+                let (ry, m, d) = parse_iso_pmd(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainMonthDay.from(string): invalid ISO 8601: {:?}",
+                        s
+                    ))
+                })?;
                 return Ok(make_pmd(rt, pmd_proto_for_static, m, d, ry));
             }
             let id = match item {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay.from: argument must be PMD, object, or string".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.from: argument must be PMD, object, or string"
+                            .into(),
+                    ))
+                }
             };
             if let Value::Number(m) = rt.object_get(id, "__pmd_month") {
-                let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-                let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+                let d = match rt.object_get(id, "__pmd_day") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
+                let ry = match rt.object_get(id, "__pmd_refyear") {
+                    Value::Number(n) => n as i64,
+                    _ => 1972,
+                };
                 return Ok(make_pmd(rt, pmd_proto_for_static, m as i64, d, ry));
             }
             // Property bag: {monthCode | month, day, [year]?}.
             let m = if let Value::String(mc) = rt.object_get(id, "monthCode") {
                 // "MNN" → NN.
                 if mc.len() >= 3 && mc.as_bytes()[0] == b'M' {
-                    mc[1..].parse::<i64>().map_err(|_| RuntimeError::RangeError(
-                        format!("invalid monthCode {:?}", mc.as_str())
-                    ))?
+                    mc[1..].parse::<i64>().map_err(|_| {
+                        RuntimeError::RangeError(format!("invalid monthCode {:?}", mc.as_str()))
+                    })?
                 } else {
-                    return Err(RuntimeError::RangeError(format!("invalid monthCode {:?}", mc.as_str())));
+                    return Err(RuntimeError::RangeError(format!(
+                        "invalid monthCode {:?}",
+                        mc.as_str()
+                    )));
                 }
             } else if let Value::Number(n) = rt.object_get(id, "month") {
                 n as i64
             } else {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay.from: object must have month or monthCode".into()
+                    "Temporal.PlainMonthDay.from: object must have month or monthCode".into(),
                 ));
             };
             let d = match rt.object_get(id, "day") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay.from: object must have day".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainMonthDay.from: object must have day".into(),
+                    ))
+                }
             };
             if !(1..=12).contains(&m) {
-                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+                return Err(RuntimeError::RangeError(format!(
+                    "month {} out of range",
+                    m
+                )));
             }
             Ok(make_pmd(rt, pmd_proto_for_static, m, d, 1972))
         });
@@ -12492,31 +14069,54 @@ impl Runtime {
         register_intrinsic_method(self, pmd_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PMD.equals: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.equals: this not object".into(),
+                    ))
+                }
             };
             let tm = match rt.object_get(id, "__pmd_month") {
                 Value::Number(n) => n as i64,
                 _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay.prototype.equals: this is not a Temporal.PlainMonthDay".into()
+                    "Temporal.PlainMonthDay.prototype.equals: this is not a Temporal.PlainMonthDay"
+                        .into(),
                 )),
             };
-            let td = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-            let tr = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let td = match rt.object_get(id, "__pmd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let tr = match rt.object_get(id, "__pmd_refyear") {
+                Value::Number(n) => n as i64,
+                _ => 1972,
+            };
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let (or, om, od) = match other {
-                Value::String(s) => parse_iso_pmd(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "PMD.equals(string): invalid: {:?}", s
-                )))?,
+                Value::String(s) => parse_iso_pmd(&s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!("PMD.equals(string): invalid: {:?}", s))
+                })?,
                 Value::Object(o) => {
                     if let Value::Number(m) = rt.object_get(o, "__pmd_month") {
-                        let d = match rt.object_get(o, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-                        let r = match rt.object_get(o, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+                        let d = match rt.object_get(o, "__pmd_day") {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
+                        let r = match rt.object_get(o, "__pmd_refyear") {
+                            Value::Number(n) => n as i64,
+                            _ => 1972,
+                        };
                         (r, m as i64, d)
                     } else {
-                        return Err(RuntimeError::TypeError("PMD.equals: argument not PMD".into()));
+                        return Err(RuntimeError::TypeError(
+                            "PMD.equals: argument not PMD".into(),
+                        ));
                     }
                 }
-                _ => return Err(RuntimeError::TypeError("PMD.equals: argument must be PMD or string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.equals: argument must be PMD or string".into(),
+                    ))
+                }
             };
             Ok(Value::Boolean(tm == om && td == od && tr == or))
         });
@@ -12530,41 +14130,69 @@ impl Runtime {
             let mut m = match rt.object_get(id, "__pmd_month") {
                 Value::Number(n) => n as i64,
                 _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainMonthDay.prototype.with: this is not a Temporal.PlainMonthDay".into()
+                    "Temporal.PlainMonthDay.prototype.with: this is not a Temporal.PlainMonthDay"
+                        .into(),
                 )),
             };
-            let mut d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
-            let ry = match rt.object_get(id, "__pmd_refyear") { Value::Number(n) => n as i64, _ => 1972 };
+            let mut d = match rt.object_get(id, "__pmd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let ry = match rt.object_get(id, "__pmd_refyear") {
+                Value::Number(n) => n as i64,
+                _ => 1972,
+            };
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let arg_id = match arg {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PMD.with: argument must be object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.with: argument must be object".into(),
+                    ))
+                }
             };
-            for marker in &["__pmd_month", "__pd_year", "__pt_hour", "__pdt_year", "__pym_year", "__td_years", "__ti_ns"] {
+            for marker in &[
+                "__pmd_month",
+                "__pd_year",
+                "__pt_hour",
+                "__pdt_year",
+                "__pym_year",
+                "__td_years",
+                "__ti_ns",
+            ] {
                 if !matches!(rt.object_get(arg_id, marker), Value::Undefined) {
-                    return Err(RuntimeError::TypeError("PMD.with: argument cannot be Temporal instance".into()));
+                    return Err(RuntimeError::TypeError(
+                        "PMD.with: argument cannot be Temporal instance".into(),
+                    ));
                 }
             }
             let mut has_any = false;
             if let Value::Number(n) = rt.object_get(arg_id, "month") {
-                has_any = true; m = n as i64;
+                has_any = true;
+                m = n as i64;
             }
             if let Value::String(mc) = rt.object_get(arg_id, "monthCode") {
                 if mc.len() >= 3 && mc.as_bytes()[0] == b'M' {
                     has_any = true;
-                    m = mc[1..].parse::<i64>().map_err(|_| RuntimeError::RangeError(
-                        format!("invalid monthCode {:?}", mc.as_str())
-                    ))?;
+                    m = mc[1..].parse::<i64>().map_err(|_| {
+                        RuntimeError::RangeError(format!("invalid monthCode {:?}", mc.as_str()))
+                    })?;
                 }
             }
             if let Value::Number(n) = rt.object_get(arg_id, "day") {
-                has_any = true; d = n as i64;
+                has_any = true;
+                d = n as i64;
             }
             if !has_any {
-                return Err(RuntimeError::TypeError("PMD.with: argument must have month/monthCode/day".into()));
+                return Err(RuntimeError::TypeError(
+                    "PMD.with: argument must have month/monthCode/day".into(),
+                ));
             }
             if !(1..=12).contains(&m) {
-                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+                return Err(RuntimeError::RangeError(format!(
+                    "month {} out of range",
+                    m
+                )));
             }
             Ok(make_pmd(rt, pmd_proto_for_with, m, d, ry))
         });
@@ -12584,9 +14212,12 @@ impl Runtime {
                 move |rt, _args| {
                     let id = match rt.current_this() {
                         Value::Object(o) => o,
-                        _ => return Err(RuntimeError::TypeError(format!(
-                            "Temporal.PlainYearMonth.prototype.{}: this not object", unit_name
-                        ))),
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "Temporal.PlainYearMonth.prototype.{}: this not object",
+                                unit_name
+                            )))
+                        }
                     };
                     match rt.object_get(id, &k) {
                         Value::Undefined => Err(RuntimeError::TypeError(format!(
@@ -12601,9 +14232,12 @@ impl Runtime {
             self.obj_mut(pym_proto).dict_mut().insert(
                 unit_name.into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -12615,30 +14249,49 @@ impl Runtime {
                 self.obj_mut(pym_proto).dict_mut().insert(
                     $name.into(),
                     PropertyDescriptor {
-                        value: Value::Undefined, writable: false,
-                        enumerable: false, configurable: true,
-                        getter: Some(Value::Object(gid)), setter: None,
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: Some(Value::Object(gid)),
+                        setter: None,
                     },
                 );
             }};
         }
-        fn pym_read_ym(rt: &mut Runtime, id: ObjectRef, name: &str) -> Result<(i64, i64), RuntimeError> {
+        fn pym_read_ym(
+            rt: &mut Runtime,
+            id: ObjectRef,
+            name: &str,
+        ) -> Result<(i64, i64), RuntimeError> {
             let y = match rt.object_get(id, "__pym_year") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "Temporal.PlainYearMonth.prototype.{}: this is not a Temporal.PlainYearMonth", name
-                ))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                    "Temporal.PlainYearMonth.prototype.{}: this is not a Temporal.PlainYearMonth",
+                    name
+                )))
+                }
             };
-            let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            let m = match rt.object_get(id, "__pym_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             Ok((y, m))
         }
         pym_getter!("monthCode", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.monthCode".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.monthCode".into())),
+            };
             let (_, m) = pym_read_ym(rt, id, "monthCode")?;
             Ok(Value::String(Rc::new(format!("M{:02}", m))))
         });
         pym_getter!("calendarId", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.calendarId".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.calendarId".into())),
+            };
             match rt.object_get(id, "__pym_calendar") {
                 Value::Undefined => Err(RuntimeError::TypeError(
                     "Temporal.PlainYearMonth.prototype.calendarId: this is not a Temporal.PlainYearMonth".into()
@@ -12647,37 +14300,57 @@ impl Runtime {
             }
         });
         pym_getter!("daysInMonth", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.daysInMonth".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.daysInMonth".into())),
+            };
             let (y, m) = pym_read_ym(rt, id, "daysInMonth")?;
             Ok(Value::Number(pda_days_in_month(y, m) as f64))
         });
         pym_getter!("daysInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.daysInYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.daysInYear".into())),
+            };
             let (y, _) = pym_read_ym(rt, id, "daysInYear")?;
             Ok(Value::Number(if pda_is_leap(y) { 366.0 } else { 365.0 }))
         });
         pym_getter!("monthsInYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.monthsInYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.monthsInYear".into())),
+            };
             let _ = pym_read_ym(rt, id, "monthsInYear")?;
             Ok(Value::Number(12.0))
         });
         pym_getter!("inLeapYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.inLeapYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.inLeapYear".into())),
+            };
             let (y, _) = pym_read_ym(rt, id, "inLeapYear")?;
             Ok(Value::Boolean(pda_is_leap(y)))
         });
         pym_getter!("era", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.era".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.era".into())),
+            };
             let _ = pym_read_ym(rt, id, "era")?;
             Ok(Value::Undefined)
         });
         pym_getter!("eraYear", |rt, _| {
-            let id = match rt.current_this() { Value::Object(o) => o, _ => return Err(RuntimeError::TypeError("PYM.eraYear".into())) };
+            let id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Err(RuntimeError::TypeError("PYM.eraYear".into())),
+            };
             let _ = pym_read_ym(rt, id, "eraYear")?;
             Ok(Value::Undefined)
         });
         register_intrinsic_method(self, pym_proto, "valueOf", 0, |_rt, _args| {
-            Err(RuntimeError::TypeError("Temporal.PlainYearMonth valueOf cannot be used".into()))
+            Err(RuntimeError::TypeError(
+                "Temporal.PlainYearMonth valueOf cannot be used".into(),
+            ))
         });
         // toString: 'YYYY-MM' for default refDay+calendar; else 'YYYY-MM-DD'.
         register_intrinsic_method(self, pym_proto, "toString", 0, |rt, _args| {
@@ -12686,14 +14359,21 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("PYM.toString".into())),
             };
             let (y, m) = pym_read_ym(rt, id, "toString")?;
-            let rd = match rt.object_get(id, "__pym_refday") { Value::Number(n) => n as i64, _ => 1 };
+            let rd = match rt.object_get(id, "__pym_refday") {
+                Value::Number(n) => n as i64,
+                _ => 1,
+            };
             let cal = match rt.object_get(id, "__pym_calendar") {
                 Value::String(s) => (*s).to_string(),
                 _ => "iso8601".to_string(),
             };
             let year_str = if (0..=9999).contains(&y) {
                 format!("{:04}", y)
-            } else if y < 0 { format!("-{:06}", -y) } else { format!("+{:06}", y) };
+            } else if y < 0 {
+                format!("-{:06}", -y)
+            } else {
+                format!("+{:06}", y)
+            };
             let s = if rd == 1 && cal == "iso8601" {
                 format!("{}-{:02}", year_str, m)
             } else {
@@ -12707,14 +14387,21 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("PYM.toJSON".into())),
             };
             let (y, m) = pym_read_ym(rt, id, "toJSON")?;
-            let rd = match rt.object_get(id, "__pym_refday") { Value::Number(n) => n as i64, _ => 1 };
+            let rd = match rt.object_get(id, "__pym_refday") {
+                Value::Number(n) => n as i64,
+                _ => 1,
+            };
             let cal = match rt.object_get(id, "__pym_calendar") {
                 Value::String(s) => (*s).to_string(),
                 _ => "iso8601".to_string(),
             };
             let year_str = if (0..=9999).contains(&y) {
                 format!("{:04}", y)
-            } else if y < 0 { format!("-{:06}", -y) } else { format!("+{:06}", y) };
+            } else if y < 0 {
+                format!("-{:06}", -y)
+            } else {
+                format!("+{:06}", y)
+            };
             let s = if rd == 1 && cal == "iso8601" {
                 format!("{}-{:02}", year_str, m)
             } else {
@@ -12726,29 +14413,37 @@ impl Runtime {
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.PlainYearMonth".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let pym_proto_for_ctor = pym_proto;
         let pym_ctor_obj = make_native_with_length("PlainYearMonth", 2, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.PlainYearMonth constructor cannot be called as a function".into()
+                    "Temporal.PlainYearMonth constructor cannot be called as a function".into(),
                 ));
             }
-            let year = crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
-            let month = crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
+            let year =
+                crate::abstract_ops::to_number(&args.get(0).cloned().unwrap_or(Value::Undefined));
+            let month =
+                crate::abstract_ops::to_number(&args.get(1).cloned().unwrap_or(Value::Undefined));
             let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
                 Value::Undefined => "iso8601".to_string(),
                 Value::String(s) => s.to_lowercase(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainYearMonth: calendar must be a string or undefined".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainYearMonth: calendar must be a string or undefined".into(),
+                    ))
+                }
             };
             if calendar != "iso8601" {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth: only iso8601 calendar supported; got {:?}", calendar
+                    "Temporal.PlainYearMonth: only iso8601 calendar supported; got {:?}",
+                    calendar
                 )));
             }
             let ref_day = match args.get(3).cloned().unwrap_or(Value::Undefined) {
@@ -12757,7 +14452,7 @@ impl Runtime {
                     let n = crate::abstract_ops::to_number(&v);
                     if !n.is_finite() || n != n.trunc() {
                         return Err(RuntimeError::RangeError(
-                            "Temporal.PlainYearMonth: referenceISODay must be integer".into()
+                            "Temporal.PlainYearMonth: referenceISODay must be integer".into(),
                         ));
                     }
                     n as i64
@@ -12766,7 +14461,8 @@ impl Runtime {
             for (n, name) in [(year, "year"), (month, "month")] {
                 if !n.is_finite() || n != n.trunc() {
                     return Err(RuntimeError::RangeError(format!(
-                        "Temporal.PlainYearMonth: {} must be integer", name
+                        "Temporal.PlainYearMonth: {} must be integer",
+                        name
                     )));
                 }
             }
@@ -12774,24 +14470,33 @@ impl Runtime {
             let m = month as i64;
             if !(1..=12).contains(&m) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth: month {} out of range", m
+                    "Temporal.PlainYearMonth: month {} out of range",
+                    m
                 )));
             }
             let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
             let max_day = match m {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
                 4 | 6 | 9 | 11 => 30,
-                2 => if leap { 29 } else { 28 },
+                2 => {
+                    if leap {
+                        29
+                    } else {
+                        28
+                    }
+                }
                 _ => unreachable!(),
             };
             if !(1..=max_day).contains(&ref_day) {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth: referenceISODay {} out of range for {}-{:02}", ref_day, y, m
+                    "Temporal.PlainYearMonth: referenceISODay {} out of range for {}-{:02}",
+                    ref_day, y, m
                 )));
             }
             if y.abs() > 999_999 {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth: year {} out of range", y
+                    "Temporal.PlainYearMonth: year {} out of range",
+                    y
                 )));
             }
             let mut o = Object::new_ordinary();
@@ -12812,32 +14517,46 @@ impl Runtime {
         // Parses "YYYY-MM" or "YYYY-MM-DD" with optional time/offset tail (ignored).
         fn parse_iso_pym(s: &str) -> Option<(i64, i64)> {
             let b = s.as_bytes();
-            if b.len() < 7 { return None; }
+            if b.len() < 7 {
+                return None;
+            }
             fn rd(b: &[u8], i: usize, n: usize) -> Option<i64> {
-                if i + n > b.len() { return None; }
+                if i + n > b.len() {
+                    return None;
+                }
                 let mut v = 0i64;
                 for k in 0..n {
                     let c = b[i + k];
-                    if !c.is_ascii_digit() { return None; }
+                    if !c.is_ascii_digit() {
+                        return None;
+                    }
                     v = v * 10 + (c - b'0') as i64;
                 }
                 Some(v)
             }
             let year = rd(b, 0, 4)?;
-            if b.get(4) != Some(&b'-') { return None; }
+            if b.get(4) != Some(&b'-') {
+                return None;
+            }
             let month = rd(b, 5, 2)?;
-            if !(1..=12).contains(&month) { return None; }
+            if !(1..=12).contains(&month) {
+                return None;
+            }
             // Optional -DD tail.
             let mut i = 7;
             if b.get(i) == Some(&b'-') {
-                if rd(b, i + 1, 2).is_none() { return None; }
+                if rd(b, i + 1, 2).is_none() {
+                    return None;
+                }
                 i += 3;
             }
             // Optional time/offset/annotation tail.
             if matches!(b.get(i), Some(b'T') | Some(b't') | Some(b' ')) {
                 i = b.len(); // accept everything as tail to ignore
             }
-            if i != b.len() { return None; }
+            if i != b.len() {
+                return None;
+            }
             Some((year, month))
         }
         let pym_proto_for_static = pym_proto;
@@ -12848,69 +14567,107 @@ impl Runtime {
             rt.set_engine_sentinel(id, "__pym_year", Value::Number(y as f64));
             rt.set_engine_sentinel(id, "__pym_month", Value::Number(m as f64));
             rt.set_engine_sentinel(id, "__pym_refday", Value::Number(1.0));
-            rt.set_engine_sentinel(id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                id,
+                "__pym_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Value::Object(id)
         }
         register_intrinsic_method(self, pym_ctor, "from", 1, move |rt, args| {
             let item = args.first().cloned().unwrap_or(Value::Undefined);
             if let Value::String(s) = &item {
-                let (y, m) = parse_iso_pym(s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth.from(string): invalid ISO 8601: {:?}", s
-                )))?;
+                let (y, m) = parse_iso_pym(s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainYearMonth.from(string): invalid ISO 8601: {:?}",
+                        s
+                    ))
+                })?;
                 return Ok(make_pym(rt, pym_proto_for_static, y, m));
             }
             let id = match item {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainYearMonth.from: argument must be PYM, object, or string".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainYearMonth.from: argument must be PYM, object, or string"
+                            .into(),
+                    ))
+                }
             };
             if let Value::Number(y) = rt.object_get(id, "__pym_year") {
-                let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+                let m = match rt.object_get(id, "__pym_month") {
+                    Value::Number(n) => n as i64,
+                    _ => 0,
+                };
                 return Ok(make_pym(rt, pym_proto_for_static, y as i64, m));
             }
             // Property bag.
             let y = match rt.object_get(id, "year") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainYearMonth.from: object must have year".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainYearMonth.from: object must have year".into(),
+                    ))
+                }
             };
             let m = match rt.object_get(id, "month") {
                 Value::Number(n) => n as i64,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.PlainYearMonth.from: object must have month".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.PlainYearMonth.from: object must have month".into(),
+                    ))
+                }
             };
             if !(1..=12).contains(&m) {
-                return Err(RuntimeError::RangeError(format!("month {} out of range", m)));
+                return Err(RuntimeError::RangeError(format!(
+                    "month {} out of range",
+                    m
+                )));
             }
             Ok(make_pym(rt, pym_proto_for_static, y, m))
         });
         register_intrinsic_method(self, pym_ctor, "compare", 2, move |rt, args| {
             fn extract(rt: &mut Runtime, v: Value) -> Result<(i64, i64), RuntimeError> {
                 if let Value::String(s) = &v {
-                    return parse_iso_pym(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                        "Temporal.PlainYearMonth.compare(string): invalid ISO 8601: {:?}", s
-                    )));
+                    return parse_iso_pym(&s).ok_or_else(|| {
+                        RuntimeError::RangeError(format!(
+                            "Temporal.PlainYearMonth.compare(string): invalid ISO 8601: {:?}",
+                            s
+                        ))
+                    });
                 }
                 if let Value::Object(id) = v {
                     if let Value::Number(y) = rt.object_get(id, "__pym_year") {
-                        let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+                        let m = match rt.object_get(id, "__pym_month") {
+                            Value::Number(n) => n as i64,
+                            _ => 0,
+                        };
                         return Ok((y as i64, m));
                     }
                 }
-                Err(RuntimeError::TypeError("PYM.compare: argument must be PYM or string".into()))
+                Err(RuntimeError::TypeError(
+                    "PYM.compare: argument must be PYM or string".into(),
+                ))
             }
             let a = extract(rt, args.first().cloned().unwrap_or(Value::Undefined))?;
             let b = extract(rt, args.get(1).cloned().unwrap_or(Value::Undefined))?;
-            Ok(Value::Number(if a < b { -1.0 } else if a > b { 1.0 } else { 0.0 }))
+            Ok(Value::Number(if a < b {
+                -1.0
+            } else if a > b {
+                1.0
+            } else {
+                0.0
+            }))
         });
         // PYME-EXT 1: equals(other) — tuple compare on (year, month).
         register_intrinsic_method(self, pym_proto, "equals", 1, |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PYM.equals: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PYM.equals: this not object".into(),
+                    ))
+                }
             };
             let ty = match rt.object_get(id, "__pym_year") {
                 Value::Number(n) => n as i64,
@@ -12918,28 +14675,52 @@ impl Runtime {
                     "Temporal.PlainYearMonth.prototype.equals: this is not a Temporal.PlainYearMonth".into()
                 )),
             };
-            let tm = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            let tm = match rt.object_get(id, "__pym_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             let other = args.first().cloned().unwrap_or(Value::Undefined);
             let (oy, om) = match other {
-                Value::String(s) => parse_iso_pym(&s).ok_or_else(|| RuntimeError::RangeError(format!(
-                    "Temporal.PlainYearMonth.prototype.equals: invalid: {:?}", s
-                )))?,
+                Value::String(s) => parse_iso_pym(&s).ok_or_else(|| {
+                    RuntimeError::RangeError(format!(
+                        "Temporal.PlainYearMonth.prototype.equals: invalid: {:?}",
+                        s
+                    ))
+                })?,
                 Value::Object(o) => {
                     if let Value::Number(y) = rt.object_get(o, "__pym_year") {
-                        (y as i64, match rt.object_get(o, "__pym_month") { Value::Number(n) => n as i64, _ => 0 })
+                        (
+                            y as i64,
+                            match rt.object_get(o, "__pym_month") {
+                                Value::Number(n) => n as i64,
+                                _ => 0,
+                            },
+                        )
                     } else {
                         let y = match rt.object_get(o, "year") {
                             Value::Number(n) => n as i64,
-                            _ => return Err(RuntimeError::TypeError("PYM.equals: object must have year".into())),
+                            _ => {
+                                return Err(RuntimeError::TypeError(
+                                    "PYM.equals: object must have year".into(),
+                                ))
+                            }
                         };
                         let m = match rt.object_get(o, "month") {
                             Value::Number(n) => n as i64,
-                            _ => return Err(RuntimeError::TypeError("PYM.equals: object must have month".into())),
+                            _ => {
+                                return Err(RuntimeError::TypeError(
+                                    "PYM.equals: object must have month".into(),
+                                ))
+                            }
                         };
                         (y, m)
                     }
                 }
-                _ => return Err(RuntimeError::TypeError("PYM.equals: argument must be PYM, object, or string".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PYM.equals: argument must be PYM, object, or string".into(),
+                    ))
+                }
             };
             Ok(Value::Boolean(ty == oy && tm == om))
         });
@@ -12955,7 +14736,11 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "toPlainDateTime", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PD.toPlainDateTime: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PD.toPlainDateTime: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = pd_read_ymd(rt, id, "toPlainDateTime")?;
             let (h, mi, se, ms, us, ns) = match args.first().cloned().unwrap_or(Value::Undefined) {
@@ -12995,7 +14780,11 @@ impl Runtime {
         register_intrinsic_method(self, pd_proto, "toPlainMonthDay", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PD.toPlainMonthDay: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PD.toPlainMonthDay: this not object".into(),
+                    ))
+                }
             };
             let (_, m, d) = pd_read_ymd(rt, id, "toPlainMonthDay")?;
             let mut o = Object::new_ordinary();
@@ -13004,13 +14793,21 @@ impl Runtime {
             rt.set_engine_sentinel(new_id, "__pmd_month", Value::Number(m as f64));
             rt.set_engine_sentinel(new_id, "__pmd_day", Value::Number(d as f64));
             rt.set_engine_sentinel(new_id, "__pmd_refyear", Value::Number(1972.0));
-            rt.set_engine_sentinel(new_id, "__pmd_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                new_id,
+                "__pmd_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Ok(Value::Object(new_id))
         });
         register_intrinsic_method(self, pd_proto, "toPlainYearMonth", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PD.toPlainYearMonth: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PD.toPlainYearMonth: this not object".into(),
+                    ))
+                }
             };
             let (y, m, _) = pd_read_ymd(rt, id, "toPlainYearMonth")?;
             let mut o = Object::new_ordinary();
@@ -13019,7 +14816,11 @@ impl Runtime {
             rt.set_engine_sentinel(new_id, "__pym_year", Value::Number(y as f64));
             rt.set_engine_sentinel(new_id, "__pym_month", Value::Number(m as f64));
             rt.set_engine_sentinel(new_id, "__pym_refday", Value::Number(1.0));
-            rt.set_engine_sentinel(new_id, "__pym_calendar", Value::String(Rc::new("iso8601".into())));
+            rt.set_engine_sentinel(
+                new_id,
+                "__pym_calendar",
+                Value::String(Rc::new("iso8601".into())),
+            );
             Ok(Value::Object(new_id))
         });
         // ZDTCF-EXT 1 (zoned-date-time-ctor-fields): Temporal.ZonedDateTime.
@@ -13032,7 +14833,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get epochNanoseconds", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError("ZDT.epochNanoseconds: this not object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "ZDT.epochNanoseconds: this not object".into(),
+                        ))
+                    }
                 };
                 match rt.object_get(id, "__zdt_ns") {
                     Value::Undefined => Err(RuntimeError::TypeError(
@@ -13045,9 +14850,12 @@ impl Runtime {
             self.obj_mut(zdt_proto).dict_mut().insert(
                 "epochNanoseconds".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
@@ -13055,7 +14863,11 @@ impl Runtime {
             let getter_obj = make_native_non_ctor("get epochMilliseconds", 0, |rt, _args| {
                 let id = match rt.current_this() {
                     Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError("ZDT.epochMilliseconds: this not object".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "ZDT.epochMilliseconds: this not object".into(),
+                        ))
+                    }
                 };
                 let ns = match rt.object_get(id, "__zdt_ns") {
                     Value::BigInt(b) => b,
@@ -13069,86 +14881,113 @@ impl Runtime {
             self.obj_mut(zdt_proto).dict_mut().insert(
                 "epochMilliseconds".into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         for (name, sentinel) in [("timeZoneId", "__zdt_tz"), ("calendarId", "__zdt_calendar")] {
             let n_static: &'static str = name;
             let s_key = sentinel.to_string();
-            let getter_obj = make_native_non_ctor(&format!("get {}", n_static), 0, move |rt, _args| {
-                let id = match rt.current_this() {
-                    Value::Object(o) => o,
-                    _ => return Err(RuntimeError::TypeError(format!("ZDT.{}: this not object", n_static))),
-                };
-                match rt.object_get(id, &s_key) {
+            let getter_obj = make_native_non_ctor(
+                &format!("get {}", n_static),
+                0,
+                move |rt, _args| {
+                    let id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => {
+                            return Err(RuntimeError::TypeError(format!(
+                                "ZDT.{}: this not object",
+                                n_static
+                            )))
+                        }
+                    };
+                    match rt.object_get(id, &s_key) {
                     Value::Undefined => Err(RuntimeError::TypeError(format!(
                         "Temporal.ZonedDateTime.prototype.{}: this is not a Temporal.ZonedDateTime", n_static
                     ))),
                     v => Ok(v),
                 }
-            });
+                },
+            );
             let getter_id = self.alloc_object(getter_obj);
             self.obj_mut(zdt_proto).dict_mut().insert(
                 n_static.into(),
                 PropertyDescriptor {
-                    value: Value::Undefined, writable: false,
-                    enumerable: false, configurable: true,
-                    getter: Some(Value::Object(getter_id)), setter: None,
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: Some(Value::Object(getter_id)),
+                    setter: None,
                 },
             );
         }
         register_intrinsic_method(self, zdt_proto, "valueOf", 0, |_rt, _args| {
-            Err(RuntimeError::TypeError("Temporal.ZonedDateTime valueOf cannot be used".into()))
+            Err(RuntimeError::TypeError(
+                "Temporal.ZonedDateTime valueOf cannot be used".into(),
+            ))
         });
         self.obj_mut(zdt_proto).dict_mut().insert(
             "@@toStringTag".into(),
             PropertyDescriptor {
                 value: Value::String(Rc::new("Temporal.ZonedDateTime".into())),
-                writable: false, enumerable: false, configurable: true,
-                getter: None, setter: None,
+                writable: false,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
             },
         );
         let zdt_proto_for_ctor = zdt_proto;
         let zdt_ctor_obj = make_native_with_length("ZonedDateTime", 2, move |rt, args| {
             if rt.current_new_target.is_none() {
                 return Err(RuntimeError::TypeError(
-                    "Temporal.ZonedDateTime constructor cannot be called as a function".into()
+                    "Temporal.ZonedDateTime constructor cannot be called as a function".into(),
                 ));
             }
             // arg 0: epochNanoseconds (BigInt). arg 1: timeZone string (required).
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let ns = match arg {
                 Value::BigInt(b) => b,
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.ZonedDateTime: epochNanoseconds must be a BigInt".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.ZonedDateTime: epochNanoseconds must be a BigInt".into(),
+                    ))
+                }
             };
             let f = ns.to_f64();
             if !f.is_finite() || f.abs() > 8.64e21 {
                 return Err(RuntimeError::RangeError(
-                    "Temporal.ZonedDateTime: epochNanoseconds out of range".into()
+                    "Temporal.ZonedDateTime: epochNanoseconds out of range".into(),
                 ));
             }
             let tz = match args.get(1).cloned().unwrap_or(Value::Undefined) {
                 Value::String(s) => (*s).to_string(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.ZonedDateTime: timeZone must be a string".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.ZonedDateTime: timeZone must be a string".into(),
+                    ))
+                }
             };
             // v1: accept any string (don't validate against IANA db; defer).
             let calendar = match args.get(2).cloned().unwrap_or(Value::Undefined) {
                 Value::Undefined => "iso8601".to_string(),
                 Value::String(s) => s.to_lowercase(),
-                _ => return Err(RuntimeError::TypeError(
-                    "Temporal.ZonedDateTime: calendar must be a string or undefined".into()
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Temporal.ZonedDateTime: calendar must be a string or undefined".into(),
+                    ))
+                }
             };
             if calendar != "iso8601" {
                 return Err(RuntimeError::RangeError(format!(
-                    "Temporal.ZonedDateTime: only iso8601 calendar supported; got {:?}", calendar
+                    "Temporal.ZonedDateTime: only iso8601 calendar supported; got {:?}",
+                    calendar
                 )));
             }
             let mut o = Object::new_ordinary();
@@ -13174,7 +15013,11 @@ impl Runtime {
         register_intrinsic_method(self, pdt_proto, "toPlainDate", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PDT.toPlainDate: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.toPlainDate: this not object".into(),
+                    ))
+                }
             };
             let (y, m, d) = match (rt.object_get(id, "__pdt_year"), rt.object_get(id, "__pdt_month"), rt.object_get(id, "__pdt_day")) {
                 (Value::Number(y), Value::Number(m), Value::Number(d)) => (y as i64, m as i64, d as i64),
@@ -13188,7 +15031,11 @@ impl Runtime {
         register_intrinsic_method(self, pdt_proto, "toPlainTime", 0, move |rt, _args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PDT.toPlainTime: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PDT.toPlainTime: this not object".into(),
+                    ))
+                }
             };
             let read = |rt: &mut Runtime, name: &str| -> i64 {
                 match rt.object_get(id, &format!("__pdt_{}", name)) {
@@ -13202,13 +15049,23 @@ impl Runtime {
                     "Temporal.PlainDateTime.prototype.toPlainTime: this is not a Temporal.PlainDateTime".into()
                 ));
             }
-            let h = read(rt, "hour"); let mi = read(rt, "minute"); let s = read(rt, "second");
-            let ms = read(rt, "millisecond"); let us = read(rt, "microsecond"); let ns = read(rt, "nanosecond");
+            let h = read(rt, "hour");
+            let mi = read(rt, "minute");
+            let s = read(rt, "second");
+            let ms = read(rt, "millisecond");
+            let us = read(rt, "microsecond");
+            let ns = read(rt, "nanosecond");
             let mut o = Object::new_ordinary();
             o.proto = Some(pt_for_conv);
             let new_id = rt.alloc_object(o);
-            for (k, v) in [("hour", h), ("minute", mi), ("second", s),
-                           ("millisecond", ms), ("microsecond", us), ("nanosecond", ns)] {
+            for (k, v) in [
+                ("hour", h),
+                ("minute", mi),
+                ("second", s),
+                ("millisecond", ms),
+                ("microsecond", us),
+                ("nanosecond", ns),
+            ] {
                 rt.set_engine_sentinel(new_id, &format!("__pt_{}", k), Value::Number(v as f64));
             }
             Ok(Value::Object(new_id))
@@ -13218,7 +15075,11 @@ impl Runtime {
         register_intrinsic_method(self, pmd_proto, "toPlainDate", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PMD.toPlainDate: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PMD.toPlainDate: this not object".into(),
+                    ))
+                }
             };
             let m = match rt.object_get(id, "__pmd_month") {
                 Value::Number(n) => n as i64,
@@ -13226,7 +15087,10 @@ impl Runtime {
                     "Temporal.PlainMonthDay.prototype.toPlainDate: this is not a Temporal.PlainMonthDay".into()
                 )),
             };
-            let d = match rt.object_get(id, "__pmd_day") { Value::Number(n) => n as i64, _ => 0 };
+            let d = match rt.object_get(id, "__pmd_day") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let year = match arg {
                 Value::Object(o) => match rt.object_get(o, "year") {
@@ -13246,7 +15110,11 @@ impl Runtime {
         register_intrinsic_method(self, pym_proto, "toPlainDate", 1, move |rt, args| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("PYM.toPlainDate: this not object".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "PYM.toPlainDate: this not object".into(),
+                    ))
+                }
             };
             let y = match rt.object_get(id, "__pym_year") {
                 Value::Number(n) => n as i64,
@@ -13254,7 +15122,10 @@ impl Runtime {
                     "Temporal.PlainYearMonth.prototype.toPlainDate: this is not a Temporal.PlainYearMonth".into()
                 )),
             };
-            let m = match rt.object_get(id, "__pym_month") { Value::Number(n) => n as i64, _ => 0 };
+            let m = match rt.object_get(id, "__pym_month") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
             let arg = args.first().cloned().unwrap_or(Value::Undefined);
             let day = match arg {
                 Value::Object(o) => match rt.object_get(o, "day") {
@@ -15314,7 +17185,11 @@ impl Runtime {
         let read_at = |rt: &mut Runtime, args: &[Value]| -> Result<Value, RuntimeError> {
             let ta = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Atomics: typedArray required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics: typedArray required".into(),
+                    ))
+                }
             };
             let idx = match args.get(1) {
                 Some(Value::Number(n)) => *n as usize,
@@ -15329,11 +17204,19 @@ impl Runtime {
         register_intrinsic_method(self, atomics_id, "store", 3, |rt, args| {
             let ta = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Atomics.store: typedArray required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.store: typedArray required".into(),
+                    ))
+                }
             };
             let idx = match args.get(1) {
                 Some(Value::Number(n)) => *n as usize,
-                _ => return Err(RuntimeError::TypeError("Atomics.store: index required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.store: index required".into(),
+                    ))
+                }
             };
             let v = args.get(2).cloned().unwrap_or(Value::Undefined);
             rt.object_set(ta, idx.to_string(), v.clone());
@@ -15343,7 +17226,11 @@ impl Runtime {
             move |rt: &mut Runtime, args: &[Value]| -> Result<Value, RuntimeError> {
                 let ta = match args.first() {
                     Some(Value::Object(id)) => *id,
-                    _ => return Err(RuntimeError::TypeError("Atomics: typedArray required".into())),
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Atomics: typedArray required".into(),
+                        ))
+                    }
                 };
                 let idx = match args.get(1) {
                     Some(Value::Number(n)) => *n as usize,
@@ -15363,23 +17250,43 @@ impl Runtime {
         };
         register_intrinsic_method(self, atomics_id, "add", 3, arith(|a, b| a + b));
         register_intrinsic_method(self, atomics_id, "sub", 3, arith(|a, b| a - b));
-        register_intrinsic_method(self, atomics_id, "and", 3, arith(|a, b| {
-            ((a as i64) & (b as i64)) as f64
-        }));
-        register_intrinsic_method(self, atomics_id, "or", 3, arith(|a, b| {
-            ((a as i64) | (b as i64)) as f64
-        }));
-        register_intrinsic_method(self, atomics_id, "xor", 3, arith(|a, b| {
-            ((a as i64) ^ (b as i64)) as f64
-        }));
+        register_intrinsic_method(
+            self,
+            atomics_id,
+            "and",
+            3,
+            arith(|a, b| ((a as i64) & (b as i64)) as f64),
+        );
+        register_intrinsic_method(
+            self,
+            atomics_id,
+            "or",
+            3,
+            arith(|a, b| ((a as i64) | (b as i64)) as f64),
+        );
+        register_intrinsic_method(
+            self,
+            atomics_id,
+            "xor",
+            3,
+            arith(|a, b| ((a as i64) ^ (b as i64)) as f64),
+        );
         register_intrinsic_method(self, atomics_id, "exchange", 3, |rt, args| {
             let ta = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Atomics.exchange: typedArray required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.exchange: typedArray required".into(),
+                    ))
+                }
             };
             let idx = match args.get(1) {
                 Some(Value::Number(n)) => *n as usize,
-                _ => return Err(RuntimeError::TypeError("Atomics.exchange: index required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.exchange: index required".into(),
+                    ))
+                }
             };
             let v = args.get(2).cloned().unwrap_or(Value::Undefined);
             let old = rt.object_get(ta, &idx.to_string());
@@ -15389,11 +17296,19 @@ impl Runtime {
         register_intrinsic_method(self, atomics_id, "compareExchange", 4, |rt, args| {
             let ta = match args.first() {
                 Some(Value::Object(id)) => *id,
-                _ => return Err(RuntimeError::TypeError("Atomics.compareExchange: typedArray required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.compareExchange: typedArray required".into(),
+                    ))
+                }
             };
             let idx = match args.get(1) {
                 Some(Value::Number(n)) => *n as usize,
-                _ => return Err(RuntimeError::TypeError("Atomics.compareExchange: index required".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Atomics.compareExchange: index required".into(),
+                    ))
+                }
             };
             let expected = args.get(2).cloned().unwrap_or(Value::Undefined);
             let replacement = args.get(3).cloned().unwrap_or(Value::Undefined);
@@ -16448,10 +18363,7 @@ impl Runtime {
             if let Value::Object(_) = parent_buf {
                 o.set_own("buffer".into(), parent_buf.clone());
                 o.set_own("byteOffset".into(), Value::Number(new_offset as f64));
-                o.set_own(
-                    "byteLength".into(),
-                    Value::Number((slice_len * bpe) as f64),
-                );
+                o.set_own("byteLength".into(), Value::Number((slice_len * bpe) as f64));
             }
             let new_id = rt.alloc_object(o);
             for i in 0..slice_len {
@@ -16769,10 +18681,16 @@ impl Runtime {
             // TAMM-EXT 8: ValidateTypedArray per §23.2.3.{14,16,17,…}.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("includes: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "includes: this must be a TypedArray".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError("includes: this is not a TypedArray".into()));
+                return Err(RuntimeError::TypeError(
+                    "includes: this is not a TypedArray".into(),
+                ));
             }
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
@@ -16814,17 +18732,25 @@ impl Runtime {
             // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.{11,12}.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("find: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "find: this must be a TypedArray".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError("find: this is not a TypedArray".into()));
+                return Err(RuntimeError::TypeError(
+                    "find: this is not a TypedArray".into(),
+                ));
             }
             let cb = args
                 .first()
                 .cloned()
                 .ok_or_else(|| RuntimeError::TypeError("find: callback required".into()))?;
             if !rt.is_callable(&cb) {
-                return Err(RuntimeError::TypeError("find: predicate is not callable".into()));
+                return Err(RuntimeError::TypeError(
+                    "find: predicate is not callable".into(),
+                ));
             }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17187,17 +19113,25 @@ impl Runtime {
             // ToIntegerOrInfinity per §23.2.3.6, which must throw on Symbol.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("copyWithin: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "copyWithin: this must be a TypedArray".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError("copyWithin: this is not a TypedArray".into()));
+                return Err(RuntimeError::TypeError(
+                    "copyWithin: this is not a TypedArray".into(),
+                ));
             }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as i64,
                 _ => 0,
             };
             let to_idx = |rt: &mut Runtime, v: Value, default: i64| -> Result<i64, RuntimeError> {
-                if matches!(v, Value::Undefined) { return Ok(default); }
+                if matches!(v, Value::Undefined) {
+                    return Ok(default);
+                }
                 let n = rt.coerce_to_number(&v)? as i64;
                 Ok(if n < 0 { (len + n).max(0) } else { n.min(len) })
             };
@@ -17220,7 +19154,9 @@ impl Runtime {
                 Value::Object(o) => o,
                 _ => return Ok(Value::Undefined),
             };
-            let cb = args.first().cloned()
+            let cb = args
+                .first()
+                .cloned()
                 .ok_or_else(|| RuntimeError::TypeError("findLast: callback required".into()))?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17228,8 +19164,11 @@ impl Runtime {
             };
             for i in (0..len).rev() {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)])?;
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v.clone(), Value::Number(i as f64), Value::Object(this_id)],
+                )?;
                 if crate::abstract_ops::to_boolean(&r) {
                     return Ok(v);
                 }
@@ -17240,15 +19179,24 @@ impl Runtime {
             // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.13.
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("findLastIndex: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "findLastIndex: this must be a TypedArray".into(),
+                    ))
+                }
             };
             if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError("findLastIndex: this is not a TypedArray".into()));
+                return Err(RuntimeError::TypeError(
+                    "findLastIndex: this is not a TypedArray".into(),
+                ));
             }
-            let cb = args.first().cloned()
-                .ok_or_else(|| RuntimeError::TypeError("findLastIndex: callback required".into()))?;
+            let cb = args.first().cloned().ok_or_else(|| {
+                RuntimeError::TypeError("findLastIndex: callback required".into())
+            })?;
             if !rt.is_callable(&cb) {
-                return Err(RuntimeError::TypeError("findLastIndex: predicate is not callable".into()));
+                return Err(RuntimeError::TypeError(
+                    "findLastIndex: predicate is not callable".into(),
+                ));
             }
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17256,8 +19204,11 @@ impl Runtime {
             };
             for i in (0..len).rev() {
                 let v = rt.object_get(this_id, &i.to_string());
-                let r = rt.call_function(cb.clone(), Value::Undefined,
-                    vec![v, Value::Number(i as f64), Value::Object(this_id)])?;
+                let r = rt.call_function(
+                    cb.clone(),
+                    Value::Undefined,
+                    vec![v, Value::Number(i as f64), Value::Object(this_id)],
+                )?;
                 if crate::abstract_ops::to_boolean(&r) {
                     return Ok(Value::Number(i as f64));
                 }
@@ -17267,7 +19218,11 @@ impl Runtime {
         register_method(self, ta_proto, "sort", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("sort: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "sort: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17285,8 +19240,11 @@ impl Runtime {
                 for i in 1..items.len() {
                     let mut j = i;
                     while j > 0 {
-                        let r = rt.call_function(cmp.clone(), Value::Undefined,
-                            vec![items[j - 1].clone(), items[j].clone()])?;
+                        let r = rt.call_function(
+                            cmp.clone(),
+                            Value::Undefined,
+                            vec![items[j - 1].clone(), items[j].clone()],
+                        )?;
                         let n = crate::abstract_ops::to_number(&r);
                         if n > 0.0 {
                             items.swap(j - 1, j);
@@ -17316,7 +19274,11 @@ impl Runtime {
         register_method(self, ta_proto, "with", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("with: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "with: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17352,7 +19314,11 @@ impl Runtime {
         register_method(self, ta_proto, "toReversed", |rt, _args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("toReversed: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "toReversed: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17374,7 +19340,11 @@ impl Runtime {
         register_method(self, ta_proto, "toSorted", |rt, args| {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError("toSorted: this must be a TypedArray".into())),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "toSorted: this must be a TypedArray".into(),
+                    ))
+                }
             };
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -17388,8 +19358,11 @@ impl Runtime {
                 for i in 1..items.len() {
                     let mut j = i;
                     while j > 0 {
-                        let r = rt.call_function(cmp.clone(), Value::Undefined,
-                            vec![items[j - 1].clone(), items[j].clone()])?;
+                        let r = rt.call_function(
+                            cmp.clone(),
+                            Value::Undefined,
+                            vec![items[j - 1].clone(), items[j].clone()],
+                        )?;
                         let n = crate::abstract_ops::to_number(&r);
                         if n > 0.0 {
                             items.swap(j - 1, j);
@@ -17462,12 +19435,39 @@ impl Runtime {
         // double-registration is the smallest-LOC fix; a future rung can
         // consolidate by moving everything to ta_proto_proto and pruning
         // ta_proto down to the per-instance overrides.
-        for name in &["at", "lastIndexOf", "copyWithin", "findLast", "findLastIndex",
-                      "sort", "with", "toReversed", "toSorted",
-                      "subarray", "set", "fill", "slice", "values", "keys",
-                      "entries", "reverse", "indexOf", "includes", "forEach",
-                      "join", "map", "filter", "reduce", "reduceRight", "toString",
-                      "find", "findIndex", "every", "some", "toLocaleString"] {
+        for name in &[
+            "at",
+            "lastIndexOf",
+            "copyWithin",
+            "findLast",
+            "findLastIndex",
+            "sort",
+            "with",
+            "toReversed",
+            "toSorted",
+            "subarray",
+            "set",
+            "fill",
+            "slice",
+            "values",
+            "keys",
+            "entries",
+            "reverse",
+            "indexOf",
+            "includes",
+            "forEach",
+            "join",
+            "map",
+            "filter",
+            "reduce",
+            "reduceRight",
+            "toString",
+            "find",
+            "findIndex",
+            "every",
+            "some",
+            "toLocaleString",
+        ] {
             let v = self.object_get(ta_proto, name);
             if !matches!(v, Value::Undefined) {
                 self.obj_mut(ta_proto_proto).dict_mut().insert(
@@ -17493,29 +19493,35 @@ impl Runtime {
         // maxByteLength / resizable / detached reads through the runtime's
         // ArrayBufferRecord registry; absent record means the receiver
         // doesn't have the [[ArrayBufferData]] internal slot.
-        let install_ab_accessor = |rt: &mut Runtime, proto: ObjectRef, name: &str, body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
-            let getter_name = format!("get {}", name);
-            let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
-            let getter_id = rt.alloc_object(getter);
-            rt.obj_mut(proto).dict_mut().insert(
-                crate::value::PropertyKey::String(name.to_string()),
-                crate::value::PropertyDescriptor {
-                    value: Value::Undefined,
-                    writable: false,
-                    enumerable: false,
-                    configurable: true,
-                    getter: Some(Value::Object(getter_id)),
-                    setter: None,
-                },
-            );
-        };
-        install_ab_accessor(self, array_buffer_proto, "byteLength", |rt| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "ArrayBuffer.prototype.byteLength getter: receiver must be an ArrayBuffer".into(),
-                )),
+        let install_ab_accessor =
+            |rt: &mut Runtime,
+             proto: ObjectRef,
+             name: &str,
+             body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
+                let getter_name = format!("get {}", name);
+                let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
+                let getter_id = rt.alloc_object(getter);
+                rt.obj_mut(proto).dict_mut().insert(
+                    crate::value::PropertyKey::String(name.to_string()),
+                    crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: Some(Value::Object(getter_id)),
+                        setter: None,
+                    },
+                );
             };
+        install_ab_accessor(self, array_buffer_proto, "byteLength", |rt| {
+            let this_id =
+                match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "ArrayBuffer.prototype.byteLength getter: receiver must be an ArrayBuffer"
+                            .into(),
+                    )),
+                };
             match rt.array_buffers.get(&this_id) {
                 Some(buf) => Ok(Value::Number(buf.byte_length as f64)),
                 None => Err(RuntimeError::TypeError(
@@ -17527,7 +19533,8 @@ impl Runtime {
             let this_id = match rt.current_this() {
                 Value::Object(o) => o,
                 _ => return Err(RuntimeError::TypeError(
-                    "ArrayBuffer.prototype.maxByteLength getter: receiver must be an ArrayBuffer".into(),
+                    "ArrayBuffer.prototype.maxByteLength getter: receiver must be an ArrayBuffer"
+                        .into(),
                 )),
             };
             match rt.array_buffers.get(&this_id) {
@@ -17538,12 +19545,14 @@ impl Runtime {
             }
         });
         install_ab_accessor(self, array_buffer_proto, "resizable", |rt| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "ArrayBuffer.prototype.resizable getter: receiver must be an ArrayBuffer".into(),
-                )),
-            };
+            let this_id =
+                match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "ArrayBuffer.prototype.resizable getter: receiver must be an ArrayBuffer"
+                            .into(),
+                    )),
+                };
             match rt.array_buffers.get(&this_id) {
                 Some(buf) => Ok(Value::Boolean(buf.max_byte_length > buf.byte_length)),
                 None => Err(RuntimeError::TypeError(
@@ -17552,12 +19561,14 @@ impl Runtime {
             }
         });
         install_ab_accessor(self, array_buffer_proto, "detached", |rt| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "ArrayBuffer.prototype.detached getter: receiver must be an ArrayBuffer".into(),
-                )),
-            };
+            let this_id =
+                match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "ArrayBuffer.prototype.detached getter: receiver must be an ArrayBuffer"
+                            .into(),
+                    )),
+                };
             if rt.array_buffers.contains_key(&this_id) {
                 Ok(Value::Boolean(false))
             } else {
@@ -17571,12 +19582,14 @@ impl Runtime {
         // so the getter always returns false; the RequireInternalSlot check
         // is what test262's badReceivers harness probes.
         install_ab_accessor(self, array_buffer_proto, "immutable", |rt| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "ArrayBuffer.prototype.immutable getter: receiver must be an ArrayBuffer".into(),
-                )),
-            };
+            let this_id =
+                match rt.current_this() {
+                    Value::Object(o) => o,
+                    _ => return Err(RuntimeError::TypeError(
+                        "ArrayBuffer.prototype.immutable getter: receiver must be an ArrayBuffer"
+                            .into(),
+                    )),
+                };
             if rt.array_buffers.contains_key(&this_id) {
                 Ok(Value::Boolean(false))
             } else {
@@ -17651,9 +19664,8 @@ impl Runtime {
         // TAMM-EXT 7: @@species returns `this` per spec sec 23.1.5.2 / 25.1.4.3
         // so subclasses + Function.prototype.call(thisVal) work correctly.
         let _ = ab_id;
-        let ab_species_getter = make_native_with_length("get [Symbol.species]", 0, |rt, _args| {
-            Ok(rt.current_this())
-        });
+        let ab_species_getter =
+            make_native_with_length("get [Symbol.species]", 0, |rt, _args| Ok(rt.current_this()));
         let ab_species_getter_id = self.alloc_object(ab_species_getter);
         self.obj_mut(ab_id).dict_mut().insert(
             crate::value::PropertyKey::String("@@species".to_string()),
@@ -17677,28 +19689,37 @@ impl Runtime {
         // accessor descriptors on the prototype so
         // Object.getOwnPropertyDescriptor reports them per §25.3.4.
         let dv_proto = self.alloc_object(Object::new_ordinary());
-        let install_dv_accessor = |rt: &mut Runtime, proto: ObjectRef, name: &str, body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
-            let getter_name = format!("get {}", name);
-            let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
-            let getter_id = rt.alloc_object(getter);
-            rt.obj_mut(proto).dict_mut().insert(
-                crate::value::PropertyKey::String(name.to_string()),
-                crate::value::PropertyDescriptor {
-                    value: Value::Undefined,
-                    writable: false,
-                    enumerable: false,
-                    configurable: true,
-                    getter: Some(Value::Object(getter_id)),
-                    setter: None,
-                },
-            );
-        };
-        let dv_receiver_check = |rt: &mut Runtime, fn_name: &str| -> Result<crate::value::ObjectRef, RuntimeError> {
+        let install_dv_accessor =
+            |rt: &mut Runtime,
+             proto: ObjectRef,
+             name: &str,
+             body: fn(&mut Runtime) -> Result<Value, RuntimeError>| {
+                let getter_name = format!("get {}", name);
+                let getter = make_native_with_length(&getter_name, 0, move |rt, _args| body(rt));
+                let getter_id = rt.alloc_object(getter);
+                rt.obj_mut(proto).dict_mut().insert(
+                    crate::value::PropertyKey::String(name.to_string()),
+                    crate::value::PropertyDescriptor {
+                        value: Value::Undefined,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                        getter: Some(Value::Object(getter_id)),
+                        setter: None,
+                    },
+                );
+            };
+        let dv_receiver_check = |rt: &mut Runtime,
+                                 fn_name: &str|
+         -> Result<crate::value::ObjectRef, RuntimeError> {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(format!(
-                    "DataView.prototype.{} getter: receiver must be a DataView", fn_name
-                ))),
+                _ => {
+                    return Err(RuntimeError::TypeError(format!(
+                        "DataView.prototype.{} getter: receiver must be a DataView",
+                        fn_name
+                    )))
+                }
             };
             match rt.object_get(id, "__kind") {
                 Value::String(s) if s.as_str() == "DataView" => Ok(id),
@@ -17712,9 +19733,11 @@ impl Runtime {
         install_dv_accessor(self, dv_proto, "byteLength", |rt| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "DataView.prototype.byteLength getter: receiver must be a DataView".into(),
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "DataView.prototype.byteLength getter: receiver must be a DataView".into(),
+                    ))
+                }
             };
             match rt.object_get(id, "__kind") {
                 Value::String(s) if s.as_str() == "DataView" => {}
@@ -17738,9 +19761,11 @@ impl Runtime {
         install_dv_accessor(self, dv_proto, "byteOffset", |rt| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "DataView.prototype.byteOffset getter: receiver must be a DataView".into(),
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "DataView.prototype.byteOffset getter: receiver must be a DataView".into(),
+                    ))
+                }
             };
             match rt.object_get(id, "__kind") {
                 Value::String(s) if s.as_str() == "DataView" => {}
@@ -17756,9 +19781,11 @@ impl Runtime {
         install_dv_accessor(self, dv_proto, "buffer", |rt| {
             let id = match rt.current_this() {
                 Value::Object(o) => o,
-                _ => return Err(RuntimeError::TypeError(
-                    "DataView.prototype.buffer getter: receiver must be a DataView".into(),
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "DataView.prototype.buffer getter: receiver must be a DataView".into(),
+                    ))
+                }
             };
             match rt.object_get(id, "__kind") {
                 Value::String(s) if s.as_str() == "DataView" => {}
@@ -17780,9 +19807,11 @@ impl Runtime {
         let dv_ctor = make_native("DataView", move |rt, args| {
             let buf_id = match args.first() {
                 Some(Value::Object(id)) if rt.array_buffers.contains_key(id) => *id,
-                _ => return Err(RuntimeError::TypeError(
-                    "DataView constructor: first argument must be an ArrayBuffer".into(),
-                )),
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "DataView constructor: first argument must be an ArrayBuffer".into(),
+                    ))
+                }
             };
             let byte_offset = match args.get(1) {
                 Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
@@ -17938,12 +19967,10 @@ impl Runtime {
                 } else {
                     match args.first() {
                         Some(Value::Number(n)) => *n,
-                        Some(Value::Object(arr)) => {
-                            match rt.object_get(*arr, "length") {
-                                Value::Number(n) => n,
-                                _ => 0.0,
-                            }
-                        }
+                        Some(Value::Object(arr)) => match rt.object_get(*arr, "length") {
+                            Value::Number(n) => n,
+                            _ => 0.0,
+                        },
                         _ => 0.0,
                     }
                 };
@@ -18069,11 +20096,8 @@ impl Runtime {
         register_intrinsic_method(self, ta_intrinsic_id, "of", 0, |rt, args| {
             let this = rt.current_this();
             let len = args.len();
-            let new_val = rt.call_function(
-                this,
-                Value::Undefined,
-                vec![Value::Number(len as f64)],
-            )?;
+            let new_val =
+                rt.call_function(this, Value::Undefined, vec![Value::Number(len as f64)])?;
             if let Value::Object(new_id) = &new_val {
                 for (i, v) in args.iter().enumerate() {
                     rt.object_set(*new_id, i.to_string(), v.clone());
@@ -18089,11 +20113,8 @@ impl Runtime {
                 Value::String(s) => s.chars().count(),
                 _ => 0,
             };
-            let new_val = rt.call_function(
-                this,
-                Value::Undefined,
-                vec![Value::Number(len as f64)],
-            )?;
+            let new_val =
+                rt.call_function(this, Value::Undefined, vec![Value::Number(len as f64)])?;
             if let Value::Object(new_id) = &new_val {
                 if let Value::Object(sid) = &src {
                     for i in 0..len {
@@ -18106,11 +20127,8 @@ impl Runtime {
         });
         // TAMM-EXT 7: TypedArray[Symbol.species] returns `this` per §23.2.2.4
         // so subclasses and Function.prototype.call(thisVal) probe pass.
-        let ta_species_getter = make_native_with_length(
-            "get [Symbol.species]",
-            0,
-            |rt, _args| Ok(rt.current_this()),
-        );
+        let ta_species_getter =
+            make_native_with_length("get [Symbol.species]", 0, |rt, _args| Ok(rt.current_this()));
         let ta_species_getter_id = self.alloc_object(ta_species_getter);
         self.obj_mut(ta_intrinsic_id).dict_mut().insert(
             crate::value::PropertyKey::String("@@species".to_string()),
@@ -18125,11 +20143,17 @@ impl Runtime {
         );
         // Wire each concrete TypedArray ctor's [[Prototype]] to %TypedArray%.
         for name in &[
-            "Uint8Array", "Uint8ClampedArray", "Int8Array",
-            "Uint16Array", "Int16Array",
-            "Uint32Array", "Int32Array",
-            "Float32Array", "Float64Array",
-            "BigInt64Array", "BigUint64Array",
+            "Uint8Array",
+            "Uint8ClampedArray",
+            "Int8Array",
+            "Uint16Array",
+            "Int16Array",
+            "Uint32Array",
+            "Int32Array",
+            "Float32Array",
+            "Float64Array",
+            "BigInt64Array",
+            "BigUint64Array",
         ] {
             if let Value::Object(ctor_id) = self.global_get(name) {
                 self.obj_mut(ctor_id).proto = Some(ta_intrinsic_id);
@@ -21022,9 +23046,9 @@ pub(crate) fn ymd_to_ms(year: i64, month: i64, day: i64) -> i64 {
     // year-borrow when input month < 2.
     let y = if month < 2 { year - 1 } else { year };
     let m = if month < 2 {
-        (month + 10) as i64  // Jan -> 10, Feb -> 11 (in prior year's frame)
+        (month + 10) as i64 // Jan -> 10, Feb -> 11 (in prior year's frame)
     } else {
-        (month - 2) as i64   // Mar -> 0, Apr -> 1, ..., Dec -> 9
+        (month - 2) as i64 // Mar -> 0, Apr -> 1, ..., Dec -> 9
     };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = y - era * 400;

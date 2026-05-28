@@ -372,6 +372,10 @@ struct ClassFrame {
     super_ctor_name: Option<String>,
     /// Synthetic outer-local name holding the parent prototype.
     super_proto_name: Option<String>,
+    /// Synthetic outer-local name holding an object-literal HomeObject.
+    /// Object-method `super` resolves through HomeObject.[[Prototype]]
+    /// at call time, so later Object.setPrototypeOf calls are visible.
+    super_home_name: Option<String>,
     /// True inside the constructor body (only place where bare `super(...)`
     /// is valid). False inside instance / static methods.
     in_constructor: bool,
@@ -1610,10 +1614,7 @@ impl Compiler {
                     std::collections::HashMap::new();
                 for s in body.iter() {
                     if let Stmt::Variable(v) = s {
-                        if !matches!(
-                            v.kind,
-                            VariableKind::Let | VariableKind::Const
-                        ) {
+                        if !matches!(v.kind, VariableKind::Let | VariableKind::Const) {
                             continue;
                         }
                         for d in &v.declarators {
@@ -1768,9 +1769,8 @@ impl Compiler {
                             if script_top {
                                 encode_op(&mut self.bytecode, Op::LoadLocal);
                                 encode_u16(&mut self.bytecode, slot);
-                                let name_idx = self
-                                    .constants
-                                    .intern(Constant::String(id.name.clone()));
+                                let name_idx =
+                                    self.constants.intern(Constant::String(id.name.clone()));
                                 encode_op(&mut self.bytecode, Op::StoreGlobal);
                                 encode_u16(&mut self.bytecode, name_idx);
                             }
@@ -1813,20 +1813,18 @@ impl Compiler {
                                 // references any of the pattern's own bound
                                 // names, those bindings are in TDZ during init
                                 // eval per §13.3.1.1. Throws ReferenceError.
-                                let tdz_hit = if matches!(
-                                    v.kind,
-                                    VariableKind::Let | VariableKind::Const
-                                ) {
-                                    pat.collect_names().iter().find_map(|id| {
-                                        if self.expr_refs_free(init, &id.name) {
-                                            Some(id.name.clone())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                } else {
-                                    None
-                                };
+                                let tdz_hit =
+                                    if matches!(v.kind, VariableKind::Let | VariableKind::Const) {
+                                        pat.collect_names().iter().find_map(|id| {
+                                            if self.expr_refs_free(init, &id.name) {
+                                                Some(id.name.clone())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    } else {
+                                        None
+                                    };
                                 if let Some(name) = tdz_hit {
                                     self.emit_throw_referenceerror(&format!(
                                         "Cannot access '{}' before initialization",
@@ -2410,56 +2408,58 @@ impl Compiler {
                     }
                 }
             }
-            Stmt::Break { label, .. } => {
-                match label {
-                    None => {
-                        if let Some(frame) = self.loop_stack.last() {
-                            let finalizers = frame.pending_finalizers.clone();
-                            if !self.in_finalizer_emission {
-                                self.in_finalizer_emission = true;
-                                for fin in finalizers.iter().rev() {
-                                    encode_op(&mut self.bytecode, Op::TryExit);
-                                    self.compile_stmt(fin)?;
-                                }
-                                self.in_finalizer_emission = false;
-                            }
-                            let patch_site = encode_op(&mut self.bytecode, Op::Jump);
-                            encode_i32(&mut self.bytecode, 0);
-                            self.loop_stack.last_mut().unwrap().break_patches.push(patch_site);
-                        } else {
-                            return Err(self.err(span, "break outside of loop"));
-                        }
-                    }
-                    Some(name) => {
-                        let needle = name.name.clone();
-                        if let Some(idx) = self
-                            .loop_stack
-                            .iter()
-                            .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
-                        {
-                            let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+            Stmt::Break { label, .. } => match label {
+                None => {
+                    if let Some(frame) = self.loop_stack.last() {
+                        let finalizers = frame.pending_finalizers.clone();
+                        if !self.in_finalizer_emission {
+                            self.in_finalizer_emission = true;
                             for fin in finalizers.iter().rev() {
                                 encode_op(&mut self.bytecode, Op::TryExit);
                                 self.compile_stmt(fin)?;
                             }
-                            let patch_site = encode_op(&mut self.bytecode, Op::Jump);
-                            encode_i32(&mut self.bytecode, 0);
-                            self.loop_stack[idx].break_patches.push(patch_site);
-                        } else if let Some(idx) =
-                            self.label_stack.iter().rposition(|f| f.label == needle)
-                        {
-                            let patch_site = encode_op(&mut self.bytecode, Op::Jump);
-                            encode_i32(&mut self.bytecode, 0);
-                            self.label_stack[idx].break_patches.push(patch_site);
-                        } else {
-                            return Err(self.err(
-                                span,
-                                &format!("break label '{}' not found in enclosing scopes", needle),
-                            ));
+                            self.in_finalizer_emission = false;
                         }
+                        let patch_site = encode_op(&mut self.bytecode, Op::Jump);
+                        encode_i32(&mut self.bytecode, 0);
+                        self.loop_stack
+                            .last_mut()
+                            .unwrap()
+                            .break_patches
+                            .push(patch_site);
+                    } else {
+                        return Err(self.err(span, "break outside of loop"));
                     }
                 }
-            }
+                Some(name) => {
+                    let needle = name.name.clone();
+                    if let Some(idx) = self
+                        .loop_stack
+                        .iter()
+                        .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
+                    {
+                        let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                        for fin in finalizers.iter().rev() {
+                            encode_op(&mut self.bytecode, Op::TryExit);
+                            self.compile_stmt(fin)?;
+                        }
+                        let patch_site = encode_op(&mut self.bytecode, Op::Jump);
+                        encode_i32(&mut self.bytecode, 0);
+                        self.loop_stack[idx].break_patches.push(patch_site);
+                    } else if let Some(idx) =
+                        self.label_stack.iter().rposition(|f| f.label == needle)
+                    {
+                        let patch_site = encode_op(&mut self.bytecode, Op::Jump);
+                        encode_i32(&mut self.bytecode, 0);
+                        self.label_stack[idx].break_patches.push(patch_site);
+                    } else {
+                        return Err(self.err(
+                            span,
+                            &format!("break label '{}' not found in enclosing scopes", needle),
+                        ));
+                    }
+                }
+            },
             Stmt::FunctionDecl {
                 name,
                 is_async,
@@ -2517,11 +2517,15 @@ impl Compiler {
                         lf.pending_finalizers.push(fin_clone.clone());
                     }
                 } else {
-                    for lf in self.loop_stack.iter_mut() { lf.try_depth += 1; }
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth += 1;
+                    }
                 }
                 self.compile_stmt(block)?;
                 if finalizer.is_none() {
-                    for lf in self.loop_stack.iter_mut() { lf.try_depth = lf.try_depth.saturating_sub(1); }
+                    for lf in self.loop_stack.iter_mut() {
+                        lf.try_depth = lf.try_depth.saturating_sub(1);
+                    }
                 }
                 encode_op(&mut self.bytecode, Op::TryExit);
                 let jump_to_end = self.emit_jump(Op::Jump);
@@ -2710,10 +2714,7 @@ impl Compiler {
                 for case in cases.iter() {
                     for s in &case.consequent {
                         if let Stmt::Variable(v) = s {
-                            if !matches!(
-                                v.kind,
-                                VariableKind::Let | VariableKind::Const
-                            ) {
+                            if !matches!(v.kind, VariableKind::Let | VariableKind::Const) {
                                 continue;
                             }
                             for d in &v.declarators {
@@ -4359,11 +4360,26 @@ impl Compiler {
             }
             Expr::Object { properties, .. } => {
                 encode_op(&mut self.bytecode, Op::NewObject);
+                let object_home_name = format!("<object${}.home>", self.locals.len());
+                let object_home_slot = self.alloc_temp(&object_home_name);
+                encode_op(&mut self.bytecode, Op::Dup);
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, object_home_slot);
                 for p in properties {
                     match p {
                         ObjectProperty::Property {
-                            key, value, kind, ..
+                            key,
+                            value,
+                            kind,
+                            span,
+                            ..
                         } => {
+                            let is_object_method_definition = matches!(
+                                value,
+                                Expr::Function {
+                                    span: fn_span, ..
+                                } if fn_span.start == span.start
+                            );
                             // Ω.5.P52.E1: getter/setter object-literal shorthand
                             // (`{get name(){...}, set name(v){...}}`) installs an
                             // accessor descriptor pair on the target via the
@@ -4430,7 +4446,15 @@ impl Compiler {
                                 }
                                 encode_op(&mut self.bytecode, Op::PushConst); // [t, helper, t, key, kind]
                                 encode_u16(&mut self.bytecode, kind_idx);
+                                self.class_stack.push(ClassFrame {
+                                    super_ctor_name: None,
+                                    super_proto_name: None,
+                                    super_home_name: Some(object_home_name.clone()),
+                                    in_constructor: false,
+                                    is_static: false,
+                                });
                                 self.compile_expr(value)?; // [t, helper, t, key, kind, fn]
+                                self.class_stack.pop();
                                 encode_op(&mut self.bytecode, Op::Call); // [t, result]
                                 encode_u8(&mut self.bytecode, 4);
                                 encode_op(&mut self.bytecode, Op::Pop); // [t]
@@ -4452,23 +4476,76 @@ impl Compiler {
                                         // Tier-Ω.5.P15.E1: NamedEvaluation
                                         // for method shorthand + anonymous
                                         // function-valued properties.
-                                        self.compile_expr_with_name_hint(value, Some(name))?;
-                                        let idx =
-                                            self.constants.intern(Constant::String(name.clone()));
-                                        encode_op(&mut self.bytecode, Op::InitProp);
-                                        encode_u16(&mut self.bytecode, idx);
+                                        if is_object_method_definition {
+                                            let helper = self.constants.intern(Constant::String(
+                                                "__install_method_obj__".into(),
+                                            ));
+                                            encode_op(&mut self.bytecode, Op::Dup);
+                                            encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                            encode_u16(&mut self.bytecode, helper);
+                                            encode_op(&mut self.bytecode, Op::Swap);
+                                            let idx = self
+                                                .constants
+                                                .intern(Constant::String(name.clone()));
+                                            encode_op(&mut self.bytecode, Op::PushConst);
+                                            encode_u16(&mut self.bytecode, idx);
+                                            self.class_stack.push(ClassFrame {
+                                                super_ctor_name: None,
+                                                super_proto_name: None,
+                                                super_home_name: Some(object_home_name.clone()),
+                                                in_constructor: false,
+                                                is_static: false,
+                                            });
+                                            self.compile_expr_with_name_hint(value, Some(name))?;
+                                            self.class_stack.pop();
+                                            encode_op(&mut self.bytecode, Op::Call);
+                                            encode_u8(&mut self.bytecode, 3);
+                                            encode_op(&mut self.bytecode, Op::Pop);
+                                        } else {
+                                            self.compile_expr_with_name_hint(value, Some(name))?;
+                                            let idx = self
+                                                .constants
+                                                .intern(Constant::String(name.clone()));
+                                            encode_op(&mut self.bytecode, Op::InitProp);
+                                            encode_u16(&mut self.bytecode, idx);
+                                        }
                                     }
                                 }
                                 ObjectKey::Number { value: num, .. } => {
-                                    self.compile_expr(value)?;
                                     let name = if num.fract() == 0.0 {
                                         format!("{}", *num as i64)
                                     } else {
                                         format!("{}", num)
                                     };
-                                    let idx = self.constants.intern(Constant::String(name));
-                                    encode_op(&mut self.bytecode, Op::InitProp);
-                                    encode_u16(&mut self.bytecode, idx);
+                                    if is_object_method_definition {
+                                        let helper = self.constants.intern(Constant::String(
+                                            "__install_method_obj__".into(),
+                                        ));
+                                        encode_op(&mut self.bytecode, Op::Dup);
+                                        encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                        encode_u16(&mut self.bytecode, helper);
+                                        encode_op(&mut self.bytecode, Op::Swap);
+                                        let idx = self.constants.intern(Constant::String(name));
+                                        encode_op(&mut self.bytecode, Op::PushConst);
+                                        encode_u16(&mut self.bytecode, idx);
+                                        self.class_stack.push(ClassFrame {
+                                            super_ctor_name: None,
+                                            super_proto_name: None,
+                                            super_home_name: Some(object_home_name.clone()),
+                                            in_constructor: false,
+                                            is_static: false,
+                                        });
+                                        self.compile_expr(value)?;
+                                        self.class_stack.pop();
+                                        encode_op(&mut self.bytecode, Op::Call);
+                                        encode_u8(&mut self.bytecode, 3);
+                                        encode_op(&mut self.bytecode, Op::Pop);
+                                    } else {
+                                        self.compile_expr(value)?;
+                                        let idx = self.constants.intern(Constant::String(name));
+                                        encode_op(&mut self.bytecode, Op::InitProp);
+                                        encode_u16(&mut self.bytecode, idx);
+                                    }
                                 }
                                 ObjectKey::Computed { expr: key_expr, .. } => {
                                     // Tier-Ω.5.o: computed object key `{[k]: v}`.
@@ -4479,8 +4556,33 @@ impl Compiler {
                                     // -> Pop -> [target].
                                     encode_op(&mut self.bytecode, Op::Dup);
                                     self.compile_expr(key_expr)?;
-                                    self.compile_expr(value)?;
-                                    encode_op(&mut self.bytecode, Op::SetIndex);
+                                    if is_object_method_definition {
+                                        let key_slot = self.alloc_temp("<object.method.key>");
+                                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                                        encode_u16(&mut self.bytecode, key_slot);
+                                        let helper = self.constants.intern(Constant::String(
+                                            "__install_method_obj__".into(),
+                                        ));
+                                        encode_op(&mut self.bytecode, Op::LoadGlobal);
+                                        encode_u16(&mut self.bytecode, helper);
+                                        encode_op(&mut self.bytecode, Op::Swap);
+                                        encode_op(&mut self.bytecode, Op::LoadLocal);
+                                        encode_u16(&mut self.bytecode, key_slot);
+                                        self.class_stack.push(ClassFrame {
+                                            super_ctor_name: None,
+                                            super_proto_name: None,
+                                            super_home_name: Some(object_home_name.clone()),
+                                            in_constructor: false,
+                                            is_static: false,
+                                        });
+                                        self.compile_expr(value)?;
+                                        self.class_stack.pop();
+                                        encode_op(&mut self.bytecode, Op::Call);
+                                        encode_u8(&mut self.bytecode, 3);
+                                    } else {
+                                        self.compile_expr(value)?;
+                                        encode_op(&mut self.bytecode, Op::SetIndex);
+                                    }
                                     encode_op(&mut self.bytecode, Op::Pop);
                                 }
                             }
@@ -4904,7 +5006,10 @@ impl Compiler {
             if let Some(def_expr) = default {
                 // IR-EXT 36 compile-time TDZ guard on param default.
                 let pos = *slot as usize;
-                let later = later_param_names.get(pos).map(|v| v.as_slice()).unwrap_or(&[]);
+                let later = later_param_names
+                    .get(pos)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
                 let tdz_hit = later.iter().find(|name| sub.expr_refs_free(def_expr, name));
                 if let Some(name) = tdz_hit {
                     sub.emit_throw_referenceerror(&format!(
@@ -5450,16 +5555,18 @@ impl Compiler {
             E::Identifier { name: n, .. } => n == name,
             E::Parenthesized { expr, .. } => self.expr_refs_free(expr, name),
             E::Member { object, .. } => self.expr_refs_free(object, name),
-            E::Call { callee, arguments, .. }
-            | E::New { callee, arguments, .. } => {
+            E::Call {
+                callee, arguments, ..
+            }
+            | E::New {
+                callee, arguments, ..
+            } => {
                 if self.expr_refs_free(callee, name) {
                     return true;
                 }
                 arguments.iter().any(|a| match a {
                     rusty_js_ast::Argument::Expr(e) => self.expr_refs_free(e, name),
-                    rusty_js_ast::Argument::Spread { expr, .. } => {
-                        self.expr_refs_free(expr, name)
-                    }
+                    rusty_js_ast::Argument::Spread { expr, .. } => self.expr_refs_free(expr, name),
                 })
             }
             E::Update { argument, .. } | E::Unary { argument, .. } => {
@@ -5468,7 +5575,12 @@ impl Compiler {
             E::Binary { left, right, .. } => {
                 self.expr_refs_free(left, name) || self.expr_refs_free(right, name)
             }
-            E::Conditional { test, consequent, alternate, .. } => {
+            E::Conditional {
+                test,
+                consequent,
+                alternate,
+                ..
+            } => {
                 self.expr_refs_free(test, name)
                     || self.expr_refs_free(consequent, name)
                     || self.expr_refs_free(alternate, name)
@@ -5481,9 +5593,7 @@ impl Compiler {
             }
             E::Array { elements, .. } => elements.iter().any(|el| match el {
                 rusty_js_ast::ArrayElement::Expr(e) => self.expr_refs_free(e, name),
-                rusty_js_ast::ArrayElement::Spread { expr, .. } => {
-                    self.expr_refs_free(expr, name)
-                }
+                rusty_js_ast::ArrayElement::Spread { expr, .. } => self.expr_refs_free(expr, name),
                 rusty_js_ast::ArrayElement::Elision { .. } => false,
             }),
             E::Object { properties, .. } => properties.iter().any(|p| match p {
@@ -6040,6 +6150,15 @@ impl Compiler {
         value: &Expr,
         binop: Op,
     ) -> Result<(), CompileError> {
+        if matches!(object, Expr::Super { .. }) {
+            if let Some(frame) = self.class_stack.last().cloned() {
+                if let Some(home_name) = frame.super_home_name {
+                    return self
+                        .compile_super_compound_member(span, &home_name, property, value, binop);
+                }
+            }
+        }
+
         let tmp_obj = self.alloc_temp("<compound.obj>");
         self.compile_expr(object)?;
         encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -6115,6 +6234,98 @@ impl Compiler {
             }
         }
         let _ = span;
+        Ok(())
+    }
+
+    fn compile_super_compound_member(
+        &mut self,
+        span: Span,
+        home_name: &str,
+        property: &MemberProperty,
+        value: &Expr,
+        binop: Op,
+    ) -> Result<(), CompileError> {
+        let tmp_base = self.alloc_temp("<super.compound.base>");
+        let base_helper = self
+            .constants
+            .intern(Constant::String("__super_base_home".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, base_helper);
+        self.emit_load_ident(home_name);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::StoreLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+
+        enum SuperKey {
+            Static(u16),
+            Computed(u16),
+        }
+        let key = match property {
+            MemberProperty::Identifier { name, .. } => {
+                SuperKey::Static(self.constants.intern(Constant::String(name.clone())))
+            }
+            MemberProperty::Computed { expr, .. } => {
+                let tmp_key = self.alloc_temp("<super.compound.key>");
+                self.compile_expr(expr)?;
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, tmp_key);
+                SuperKey::Computed(tmp_key)
+            }
+            MemberProperty::Private { .. } => {
+                return Err(self.err(span, "private super assignment not yet supported"));
+            }
+        };
+
+        let get_helper = self
+            .constants
+            .intern(Constant::String("__super_get_base".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, get_helper);
+        encode_op(&mut self.bytecode, Op::PushThis);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+        match key {
+            SuperKey::Static(idx) => {
+                encode_op(&mut self.bytecode, Op::PushConst);
+                encode_u16(&mut self.bytecode, idx);
+            }
+            SuperKey::Computed(slot) => {
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, slot);
+            }
+        }
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 3);
+
+        self.compile_expr(value)?;
+        encode_op(&mut self.bytecode, binop);
+        let tmp_new = self.alloc_temp("<super.compound.new>");
+        encode_op(&mut self.bytecode, Op::StoreLocal);
+        encode_u16(&mut self.bytecode, tmp_new);
+
+        let set_helper = self
+            .constants
+            .intern(Constant::String("__super_set".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, set_helper);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+        encode_op(&mut self.bytecode, Op::PushThis);
+        match key {
+            SuperKey::Static(idx) => {
+                encode_op(&mut self.bytecode, Op::PushConst);
+                encode_u16(&mut self.bytecode, idx);
+            }
+            SuperKey::Computed(slot) => {
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, slot);
+            }
+        }
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_new);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 4);
         Ok(())
     }
 
@@ -6350,6 +6561,16 @@ impl Compiler {
             Expr::Member {
                 object, property, ..
             } => {
+                if matches!(&**object, Expr::Super { .. }) {
+                    if let Some(frame) = self.class_stack.last().cloned() {
+                        if let Some(home_name) = frame.super_home_name {
+                            return self.compile_super_update_member(
+                                span, &home_name, property, op, prefix,
+                            );
+                        }
+                    }
+                }
+
                 let tmp_obj = self.alloc_temp("<update.obj>");
                 self.compile_expr(object)?;
                 encode_op(&mut self.bytecode, Op::StoreLocal);
@@ -6455,6 +6676,106 @@ impl Compiler {
                 ))
             }
         }
+        Ok(())
+    }
+
+    fn compile_super_update_member(
+        &mut self,
+        span: Span,
+        home_name: &str,
+        property: &MemberProperty,
+        op: Op,
+        prefix: bool,
+    ) -> Result<(), CompileError> {
+        let tmp_base = self.alloc_temp("<super.update.base>");
+        let base_helper = self
+            .constants
+            .intern(Constant::String("__super_base_home".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, base_helper);
+        self.emit_load_ident(home_name);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::StoreLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+
+        enum SuperKey {
+            Static(u16),
+            Computed(u16),
+        }
+        let key = match property {
+            MemberProperty::Identifier { name, .. } => {
+                SuperKey::Static(self.constants.intern(Constant::String(name.clone())))
+            }
+            MemberProperty::Computed { expr, .. } => {
+                let tmp_key = self.alloc_temp("<super.update.key>");
+                self.compile_expr(expr)?;
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, tmp_key);
+                SuperKey::Computed(tmp_key)
+            }
+            MemberProperty::Private { .. } => {
+                return Err(self.err(span, "private super update not yet supported"));
+            }
+        };
+
+        let get_helper = self
+            .constants
+            .intern(Constant::String("__super_get_base".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, get_helper);
+        encode_op(&mut self.bytecode, Op::PushThis);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+        match key {
+            SuperKey::Static(idx) => {
+                encode_op(&mut self.bytecode, Op::PushConst);
+                encode_u16(&mut self.bytecode, idx);
+            }
+            SuperKey::Computed(slot) => {
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, slot);
+            }
+        }
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 3);
+
+        let tmp_old = self.alloc_temp("<super.update.old>");
+        if !prefix {
+            encode_op(&mut self.bytecode, Op::Dup);
+            encode_op(&mut self.bytecode, Op::StoreLocal);
+            encode_u16(&mut self.bytecode, tmp_old);
+        }
+        encode_op(&mut self.bytecode, op);
+        let tmp_new = self.alloc_temp("<super.update.new>");
+        encode_op(&mut self.bytecode, Op::StoreLocal);
+        encode_u16(&mut self.bytecode, tmp_new);
+
+        let set_helper = self
+            .constants
+            .intern(Constant::String("__super_set".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, set_helper);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_base);
+        encode_op(&mut self.bytecode, Op::PushThis);
+        match key {
+            SuperKey::Static(idx) => {
+                encode_op(&mut self.bytecode, Op::PushConst);
+                encode_u16(&mut self.bytecode, idx);
+            }
+            SuperKey::Computed(slot) => {
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, slot);
+            }
+        }
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, tmp_new);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 4);
+        encode_op(&mut self.bytecode, Op::Pop);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, if prefix { tmp_new } else { tmp_old });
         Ok(())
     }
 
@@ -6826,6 +7147,7 @@ impl Compiler {
         self.class_stack.push(ClassFrame {
             super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
             super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+            super_home_name: None,
             in_constructor: true,
             is_static: false,
         });
@@ -7008,6 +7330,7 @@ impl Compiler {
                         self.class_stack.push(ClassFrame {
                             super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
                             super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+                            super_home_name: None,
                             in_constructor: false,
                             is_static: *is_static,
                         });
@@ -7153,6 +7476,7 @@ impl Compiler {
                                                     .map(|_| super_ctor_name.clone()),
                                                 super_proto_name: super_ctor_slot
                                                     .map(|_| super_proto_name.clone()),
+                                                super_home_name: None,
                                                 in_constructor: false,
                                                 is_static: true,
                                             });
@@ -7203,6 +7527,7 @@ impl Compiler {
                                                 .map(|_| super_ctor_name.clone()),
                                             super_proto_name: super_ctor_slot
                                                 .map(|_| super_proto_name.clone()),
+                                            super_home_name: None,
                                             in_constructor: false,
                                             is_static: true,
                                         });
@@ -7272,6 +7597,7 @@ impl Compiler {
                         self.class_stack.push(ClassFrame {
                             super_ctor_name: super_ctor_slot.map(|_| super_ctor_name.clone()),
                             super_proto_name: super_ctor_slot.map(|_| super_proto_name.clone()),
+                            super_home_name: None,
                             in_constructor: false,
                             is_static: true,
                         });
@@ -7412,6 +7738,35 @@ impl Compiler {
             .last()
             .cloned()
             .ok_or_else(|| self.err(span, "super reference outside of a class"))?;
+        if let Some(home_name) = frame.super_home_name.clone() {
+            let helper = self
+                .constants
+                .intern(Constant::String("__super_get_home".into()));
+            encode_op(&mut self.bytecode, Op::LoadGlobal);
+            encode_u16(&mut self.bytecode, helper);
+            encode_op(&mut self.bytecode, Op::PushThis);
+            self.emit_load_ident(&home_name);
+            match property {
+                MemberProperty::Identifier { name, .. } => {
+                    let idx = self.constants.intern(Constant::String(name.clone()));
+                    encode_op(&mut self.bytecode, Op::PushConst);
+                    encode_u16(&mut self.bytecode, idx);
+                }
+                MemberProperty::Computed { expr, .. } => {
+                    self.compile_expr(expr)?;
+                }
+                MemberProperty::Private { name, .. } => {
+                    let idx = self
+                        .constants
+                        .intern(Constant::String(format!("#{}", name)));
+                    encode_op(&mut self.bytecode, Op::PushConst);
+                    encode_u16(&mut self.bytecode, idx);
+                }
+            }
+            encode_op(&mut self.bytecode, Op::Call);
+            encode_u8(&mut self.bytecode, 3);
+            return Ok(());
+        }
         let target_name = if frame.is_static {
             frame.super_ctor_name.clone()
         } else {

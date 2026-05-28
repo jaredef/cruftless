@@ -236,6 +236,10 @@ pub struct Runtime {
     /// active for this stringify call"; Some(list) means the list is
     /// the whitelist, in the given order.
     pub json_property_list_stack: Vec<Option<Vec<String>>>,
+    /// ECMA-262 §25.5.2.5/6 circular-reference stack for the active
+    /// JSON.stringify call. Object ids are pushed while serializing a
+    /// compound value and popped before returning.
+    pub json_stringify_stack: Vec<rusty_js_gc::ObjectId>,
     // ─── Intrinsic prototypes (Tier-Ω.5.a) ───
     //
     // Stashed ObjectIds for the canonical prototype objects. Each
@@ -625,6 +629,7 @@ impl Runtime {
             current_new_target: None,
             json_replacer_stack: Vec::new(),
             json_property_list_stack: Vec::new(),
+            json_stringify_stack: Vec::new(),
             object_prototype: None,
             array_prototype: None,
             function_prototype: None,
@@ -1387,7 +1392,7 @@ impl Runtime {
                     ],
                 );
             }
-            return self.read_property(tgt, key);
+            return self.spec_get(&Value::Object(tgt), key);
         }
         self.read_property(id, key)
     }
@@ -4608,25 +4613,22 @@ impl Runtime {
                 self.json_replacer_stack.push(r.clone());
                 pushed_replacer = true;
             } else if let Value::Object(rid) = r {
-                if matches!(
-                    self.obj(*rid).internal_kind,
-                    crate::value::InternalKind::Array
-                ) {
+                if self.json_internalize_is_array(*rid)? {
                     let len = self.try_array_length(*rid)?;
                     let mut list: Vec<String> = Vec::with_capacity(len);
                     for i in 0..len {
-                        let item = self.read_property(*rid, &i.to_string())?;
+                        let item = self.spec_get(r, &i.to_string())?;
                         let coerced: Option<String> = match &item {
                             Value::String(s) => Some((**s).clone()),
                             Value::Number(n) => Some(crate::abstract_ops::number_to_string(*n)),
                             Value::Object(_) => {
-                                // §25.5.2 step 4.b.iii.3 — String/Number wrappers
-                                // unwrap via ToString; other objects skip.
+                                // §25.5.2 step 4.b.iii.3: String/Number
+                                // wrapper objects contribute ? ToString(v),
+                                // not their raw [[StringData]]/[[NumberData]].
                                 let prim = self.json_unwrap_wrapper_via(&item)?;
                                 match prim {
-                                    Value::String(s) => Some((*s).clone()),
-                                    Value::Number(n) => {
-                                        Some(crate::abstract_ops::number_to_string(n))
+                                    Value::String(_) | Value::Number(_) => {
+                                        Some(self.to_string_strict(&item)?)
                                     }
                                     _ => None,
                                 }
@@ -4650,10 +4652,12 @@ impl Runtime {
             self.json_property_list_stack.push(None);
             pushed_property_list = true;
         }
+        let wrapper = self.alloc_object(crate::value::Object::new_ordinary());
+        self.create_data_property_or_throw(&Value::Object(wrapper), "", v)?;
         let result = crate::generated::json_serialize_property(
             self,
             Value::Undefined,
-            &[v, Value::String(std::rc::Rc::new(String::new()))],
+            &[Value::Object(wrapper), Value::String(std::rc::Rc::new(String::new()))],
         );
         if pushed_replacer {
             self.json_replacer_stack.pop();
@@ -4664,13 +4668,12 @@ impl Runtime {
         result
     }
 
-    /// ECMA-262 §25.5.2.4 step 2.b — apply the active replacer function to
-    /// (key, value) and return its result. If no replacer is active (or it
-    /// isn't callable), returns the value unchanged. Replacer receives
-    /// `undefined` as `this` for simplicity; the spec passes the holder,
-    /// but most usage patterns ignore `this`.
+    /// ECMA-262 §25.5.2.4 step 3 — apply the active replacer function to
+    /// (key, value) with the holder as `this`, and return its result.
+    /// If no replacer is active, returns the value unchanged.
     pub fn json_apply_replacer_via(
         &mut self,
+        holder: &Value,
         value: &Value,
         key: &Value,
     ) -> Result<Value, RuntimeError> {
@@ -4678,7 +4681,7 @@ impl Runtime {
             Some(r) => r.clone(),
             None => return Ok(value.clone()),
         };
-        self.call_function(replacer, Value::Undefined, vec![key.clone(), value.clone()])
+        self.call_function(replacer, holder.clone(), vec![key.clone(), value.clone()])
     }
 
     /// IR-EXT 68: §25.5.2.4 step 2 — invoke value.toJSON(key) when value
@@ -4739,69 +4742,76 @@ impl Runtime {
                 "Cannot perform operation on a revoked Proxy".into(),
             ));
         }
-        let is_array = matches!(
-            self.obj(id).internal_kind,
-            crate::value::InternalKind::Array
-        );
-        if is_array {
-            let len = self.try_array_length(id)?;
-            let mut parts: Vec<String> = Vec::with_capacity(len);
-            for i in 0..len {
-                let child = self.object_get(id, &i.to_string());
-                let key_v = Value::String(std::rc::Rc::new(i.to_string()));
-                let serialized = crate::generated::json_serialize_property(
-                    self,
-                    Value::Undefined,
-                    &[child, key_v],
-                )?;
-                let part = match serialized {
-                    Value::String(s) => (*s).clone(),
-                    _ => "null".to_string(),
-                };
-                parts.push(part);
-            }
-            Ok(Value::String(std::rc::Rc::new(format!(
-                "[{}]",
-                parts.join(",")
-            ))))
-        } else {
-            // ECMA-262 §10.1.11 OrdinaryOwnPropertyKeys: integer-indexed
-            // keys first in numeric order, then string keys in insertion
-            // order. Without this, JSON.stringify({0:'a',10:'x',2:'b'})
-            // produced {"0":"a","10":"x","2":"b"} instead of the
-            // spec-correct {"0":"a","2":"b","10":"x"}. Surfaced by the
-            // diff-prod json-roundtrip fixture's canonicalizer.
-            // §25.5.2.5 step 4: if a PropertyList is active for this
-            // stringify frame, that list IS the key set (filter + order).
-            // Otherwise compute OrdinaryOwnPropertyKeys-style ordering.
-            let keys: Vec<String> = if let Some(Some(list)) = self.json_property_list_stack.last() {
-                list.clone()
-            } else {
-                // Lift: route through canonical helper.
-                self.ordinary_own_enumerable_string_keys(id)
-            };
-            let mut parts: Vec<String> = Vec::new();
-            for k in keys {
-                let child = self.object_get(id, &k);
-                let key_v = Value::String(std::rc::Rc::new(k.clone()));
-                let serialized = crate::generated::json_serialize_property(
-                    self,
-                    Value::Undefined,
-                    &[child, key_v],
-                )?;
-                if let Value::String(s) = serialized {
-                    parts.push(format!(
-                        "{}:{}",
-                        crate::intrinsics::json_quote_string_pub(&k),
-                        *s
-                    ));
-                }
-            }
-            Ok(Value::String(std::rc::Rc::new(format!(
-                "{{{}}}",
-                parts.join(",")
-            ))))
+        if self.json_stringify_stack.contains(&id) {
+            return Err(RuntimeError::TypeError(
+                "Converting circular structure to JSON".into(),
+            ));
         }
+        self.json_stringify_stack.push(id);
+        let is_array = self.json_internalize_is_array(id)?;
+        let result = (|rt: &mut Runtime| -> Result<Value, RuntimeError> {
+            if is_array {
+                let len = rt.try_array_length(id)?;
+                let mut parts: Vec<String> = Vec::with_capacity(len);
+                for i in 0..len {
+                    let key = i.to_string();
+                    let key_v = Value::String(std::rc::Rc::new(key));
+                    let serialized = crate::generated::json_serialize_property(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(id), key_v],
+                    )?;
+                    let part = match serialized {
+                        Value::String(s) => (*s).clone(),
+                        _ => "null".to_string(),
+                    };
+                    parts.push(part);
+                }
+                Ok(Value::String(std::rc::Rc::new(format!(
+                    "[{}]",
+                    parts.join(",")
+                ))))
+            } else {
+                // ECMA-262 §10.1.11 OrdinaryOwnPropertyKeys: integer-indexed
+                // keys first in numeric order, then string keys in insertion
+                // order. Without this, JSON.stringify({0:'a',10:'x',2:'b'})
+                // produced {"0":"a","10":"x","2":"b"} instead of the
+                // spec-correct {"0":"a","2":"b","10":"x"}. Surfaced by the
+                // diff-prod json-roundtrip fixture's canonicalizer.
+                // §25.5.2.5 step 4: if a PropertyList is active for this
+                // stringify frame, that list IS the key set (filter + order).
+                // Otherwise compute OrdinaryOwnPropertyKeys-style ordering.
+                let keys: Vec<String> = if let Some(Some(list)) = rt.json_property_list_stack.last()
+                {
+                    list.clone()
+                } else {
+                    // Lift: route through canonical helper.
+                    rt.json_internalize_enumerable_keys(id)?
+                };
+                let mut parts: Vec<String> = Vec::new();
+                for k in keys {
+                    let key_v = Value::String(std::rc::Rc::new(k.clone()));
+                    let serialized = crate::generated::json_serialize_property(
+                        rt,
+                        Value::Undefined,
+                        &[Value::Object(id), key_v],
+                    )?;
+                    if let Value::String(s) = serialized {
+                        parts.push(format!(
+                            "{}:{}",
+                            crate::intrinsics::json_quote_string_pub(&k),
+                            *s
+                        ));
+                    }
+                }
+                Ok(Value::String(std::rc::Rc::new(format!(
+                    "{{{}}}",
+                    parts.join(",")
+                ))))
+            }
+        })(self);
+        self.json_stringify_stack.pop();
+        result
     }
 
     /// IR-EXT 68: §25.5.2.2 QuoteJSONString.
@@ -4964,24 +4974,19 @@ impl Runtime {
                         &Value::String(std::rc::Rc::new(key.clone())),
                     )?;
                 } else {
-                    let _ = self.create_data_property(
-                        &Value::Object(value_id),
-                        &key,
-                        new_element,
-                    )?;
+                    let _ =
+                        self.create_data_property(&Value::Object(value_id), &key, new_element)?;
                 }
             }
             value = Value::Object(value_id);
         }
-        let source = source_spans
-            .get(&path)
-            .and_then(|(source, original)| {
-                if crate::abstract_ops::is_strictly_equal(&value, original) {
-                    Some(source.clone())
-                } else {
-                    None
-                }
-            });
+        let source = source_spans.get(&path).and_then(|(source, original)| {
+            if crate::abstract_ops::is_strictly_equal(&value, original) {
+                Some(source.clone())
+            } else {
+                None
+            }
+        });
         let context = self.json_reviver_context(source)?;
         self.call_function(
             reviver,
@@ -5261,26 +5266,51 @@ impl Runtime {
             if matches!(trap, Value::Object(_)) {
                 let trap_result =
                     self.call_function(trap, Value::Object(handler), vec![Value::Object(target)])?;
-                let result_id = match trap_result {
-                    Value::Object(id) => id,
-                    _ => {
-                        return Err(RuntimeError::TypeError(
-                            "Proxy 'ownKeys' trap must return an object".into(),
-                        ))
-                    }
-                };
-                let len = self.try_array_length(result_id)?;
                 let mut keys = Vec::new();
-                for i in 0..len {
-                    if let Value::String(key) = self.read_property(result_id, &i.to_string())? {
-                        if self.has_property(target, key.as_str()) {
+                for key in self.apply_proxy_own_keys_invariants(&trap_result, target)? {
+                    if let Value::String(key) = key {
+                        let key_v = Value::String(key.clone());
+                        let desc = {
+                            let trap = self.object_get(handler, "getOwnPropertyDescriptor");
+                            if !matches!(trap, Value::Undefined) {
+                                if !self.is_callable(&trap) {
+                                    return Err(RuntimeError::TypeError(
+                                        "Proxy 'getOwnPropertyDescriptor' trap is not callable"
+                                            .into(),
+                                    ));
+                                }
+                                let trap_result = self.call_function(
+                                    trap,
+                                    Value::Object(handler),
+                                    vec![Value::Object(target), key_v.clone()],
+                                )?;
+                                self.apply_proxy_get_own_property_descriptor_invariant(
+                                    target,
+                                    key.as_str(),
+                                    &trap_result,
+                                )?;
+                                trap_result
+                            } else {
+                                self.object_get_own_property_descriptor_via(
+                                    &Value::Object(target),
+                                    &key_v,
+                                )?
+                            }
+                        };
+                        let desc_id = match desc {
+                            Value::Object(id) => id,
+                            _ => continue,
+                        };
+                        if crate::abstract_ops::to_boolean(
+                            &self.read_property(desc_id, "enumerable")?,
+                        ) {
                             keys.push(key.as_str().to_string());
                         }
                     }
                 }
                 return Ok(keys);
             }
-            return Ok(self.ordinary_own_enumerable_string_keys(target));
+            return self.json_internalize_enumerable_keys(target);
         }
         Ok(self.ordinary_own_enumerable_string_keys(value_id))
     }
@@ -5296,10 +5326,7 @@ impl Runtime {
             return Ok(true);
         }
         if let Some((target, _)) = self.proxy_target_handler_checked(value_id)? {
-            return Ok(matches!(
-                self.obj(target).internal_kind,
-                crate::value::InternalKind::Array
-            ));
+            return self.json_internalize_is_array(target);
         }
         Ok(false)
     }
@@ -9319,15 +9346,19 @@ impl Runtime {
     /// TypeError before invoking a non-callable callback.
     pub fn is_callable(&self, v: &Value) -> bool {
         if let Value::Object(id) = v {
-            return matches!(
-                self.obj(*id).internal_kind,
-                crate::value::InternalKind::Function(_)
-                    | crate::value::InternalKind::Closure(_)
-                    | crate::value::InternalKind::BoundFunction(_)
-                    | crate::value::InternalKind::Proxy(_)
-            );
+            return self.is_callable_object(*id);
         }
         false
+    }
+
+    fn is_callable_object(&self, id: ObjectRef) -> bool {
+        match &self.obj(id).internal_kind {
+            crate::value::InternalKind::Function(_)
+            | crate::value::InternalKind::Closure(_)
+            | crate::value::InternalKind::BoundFunction(_) => true,
+            crate::value::InternalKind::Proxy(p) if !p.revoked => self.is_callable_object(p.target),
+            _ => false,
+        }
     }
 
     /// Ω.5.P62.E1: unwrap a primitive-wrapper object's [[__primitive__]]
@@ -9750,8 +9781,13 @@ impl Runtime {
             "__yield_push__",
             "__yield_delegate__",
             "__install_method__",
+            "__install_method_obj__",
             "__install_accessor__",
             "__install_accessor_obj__",
+            "__super_get_home",
+            "__super_base_home",
+            "__super_get_base",
+            "__super_set",
             "__cruftless_tolerate",
             "__post_eval_trace",
         ]
@@ -10149,7 +10185,7 @@ impl Runtime {
             if let Some(getter) = self.find_getter_pk(target, key) {
                 return self.call_function(getter, Value::Object(target), Vec::new());
             }
-            return Ok(self.object_get_pk(target, key));
+            return self.spec_get_pk(target, key);
         }
         if let Some(getter) = self.find_getter_pk(id, key) {
             return self.call_function(getter, Value::Object(id), Vec::new());
@@ -10285,7 +10321,10 @@ impl Runtime {
         if let Some(h) = self.engine_helpers.get(name).cloned() {
             return Ok(h);
         }
-        Err(RuntimeError::ReferenceError(format!("{} is not defined", name)))
+        Err(RuntimeError::ReferenceError(format!(
+            "{} is not defined",
+            name
+        )))
     }
 
     fn store_with_name(
@@ -10545,8 +10584,10 @@ impl Runtime {
         if key == "resizable" {
             if self.array_buffers.contains_key(&id) {
                 let buf = self.array_buffers.get(&id).unwrap();
-                return Value::Boolean(buf.max_byte_length > buf.byte_length
-                    || self.obj(id).has_own_str("__cruft_was_resizable"));
+                return Value::Boolean(
+                    buf.max_byte_length > buf.byte_length
+                        || self.obj(id).has_own_str("__cruft_was_resizable"),
+                );
             }
         }
         if key == "detached" {
@@ -11469,10 +11510,7 @@ impl Runtime {
                         .get(slot)
                         .map(|cell| cell.borrow().clone())
                         .unwrap_or(Value::Undefined);
-                    let upname = frame
-                        .upvalue_names
-                        .get(slot)
-                        .map(|d| d.name.clone());
+                    let upname = frame.upvalue_names.get(slot).map(|d| d.name.clone());
                     if let Some(ref name) = upname {
                         frame.last_property_lookup = Some(format!("^{}", name));
                     }
@@ -13246,13 +13284,12 @@ impl Runtime {
                     let callee = frame.pop()?;
                     // Integration: GBSU unified surface.
                     let global_eval = self.global_get("eval");
-                    let result = if !matches!(global_eval, Value::Undefined)
-                        && global_eval == callee
-                    {
-                        self.direct_eval_from_frame(frame, args)?
-                    } else {
-                        self.call_function(callee, Value::Undefined, args)?
-                    };
+                    let result =
+                        if !matches!(global_eval, Value::Undefined) && global_eval == callee {
+                            self.direct_eval_from_frame(frame, args)?
+                        } else {
+                            self.call_function(callee, Value::Undefined, args)?
+                        };
                     frame.push(result);
                 }
                 Op::CallMethod => {
@@ -13694,16 +13731,13 @@ impl Runtime {
                     // Falls back to this_value (then this_cell) for
                     // non-derived-ctor frames where derived_initial_this
                     // is None.
-                    let t = frame
-                        .derived_initial_this
-                        .clone()
-                        .unwrap_or_else(|| {
-                            if let Some(cell) = &frame.this_cell {
-                                cell.borrow().clone()
-                            } else {
-                                frame.this_value.clone()
-                            }
-                        });
+                    let t = frame.derived_initial_this.clone().unwrap_or_else(|| {
+                        if let Some(cell) = &frame.this_cell {
+                            cell.borrow().clone()
+                        } else {
+                            frame.this_value.clone()
+                        }
+                    });
                     frame.push(t);
                 }
                 Op::SetThisTDZ => {
@@ -14119,9 +14153,9 @@ impl Runtime {
         }
         if !caller.eval_var_env_is_global
             && self
-            .global_object
-            .map(|gt| self.obj(gt).extensible)
-            .unwrap_or(true)
+                .global_object
+                .map(|gt| self.obj(gt).extensible)
+                .unwrap_or(true)
         {
             for name in &eval_var_decls.vars {
                 if self.global_has_own_property(name) {
@@ -14139,10 +14173,8 @@ impl Runtime {
                 if self.global_has_own_property(&function.name) {
                     continue;
                 }
-                let value = self.make_eval_function_declaration(
-                    &function.name,
-                    function.return_value.clone(),
-                );
+                let value = self
+                    .make_eval_function_declaration(&function.name, function.return_value.clone());
                 if let Some(entry) = overlay
                     .iter_mut()
                     .rev()
@@ -14212,8 +14244,24 @@ impl Runtime {
 
     fn make_eval_function_declaration(&mut self, name: &str, return_value: Value) -> Value {
         let value = return_value.clone();
-        let obj = crate::intrinsics::make_native_with_length(name, 0, move |_, _| Ok(value.clone()));
-        Value::Object(self.alloc_object(obj))
+        let obj =
+            crate::intrinsics::make_native_with_length(name, 0, move |_, _| Ok(value.clone()));
+        let id = self.alloc_object(obj);
+        let mut proto_obj = crate::value::Object::new_ordinary();
+        proto_obj.set_own_internal("constructor".into(), Value::Object(id));
+        let proto_id = self.alloc_object(proto_obj);
+        self.obj_mut(id).dict_mut().insert(
+            "prototype".into(),
+            crate::value::PropertyDescriptor {
+                value: Value::Object(proto_id),
+                writable: true,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+            },
+        );
+        Value::Object(id)
     }
 
     fn materialize_eval_global_declarations(&mut self, decls: &EvalVarScopedDeclarations) {
@@ -14275,7 +14323,9 @@ impl Runtime {
 
     fn eval_overlay_binding_name(name: &str) -> Option<String> {
         let logical = if let Some(rest) = name.strip_prefix("<scoped@") {
-            rest.split_once('>').map(|(_, suffix)| suffix).unwrap_or(name)
+            rest.split_once('>')
+                .map(|(_, suffix)| suffix)
+                .unwrap_or(name)
         } else {
             name
         };
@@ -15457,18 +15507,14 @@ fn es_trim(s: &str) -> String {
 }
 
 fn caller_has_arguments_conflict_binding(frame: &Frame<'_>) -> bool {
-    frame
-        .locals_names
-        .iter()
-        .enumerate()
-        .any(|(slot, desc)| {
-            Runtime::direct_eval_binding_name(&desc.name) == "arguments"
-                && if frame.is_arrow {
-                    slot < frame.param_count
-                } else {
-                    desc.depth == 0
-                }
-        })
+    frame.locals_names.iter().enumerate().any(|(slot, desc)| {
+        Runtime::direct_eval_binding_name(&desc.name) == "arguments"
+            && if frame.is_arrow {
+                slot < frame.param_count
+            } else {
+                desc.depth == 0
+            }
+    })
 }
 
 fn caller_has_lexical_binding(frame: &Frame<'_>, name: &str) -> bool {
@@ -15582,7 +15628,9 @@ fn eval_var_scoped_declarations_fallback(source: &str) -> EvalVarScopedDeclarati
         if keyword_at(source, i, "function") {
             if let Some((name, next)) = read_identifier_after_keyword(source, i + 8) {
                 let return_value = fallback_function_return_value(&source[next..]);
-                decls.functions.push(EvalFunctionDeclaration { name, return_value });
+                decls
+                    .functions
+                    .push(EvalFunctionDeclaration { name, return_value });
                 i = next;
                 continue;
             }
