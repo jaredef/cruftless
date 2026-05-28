@@ -22,6 +22,8 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 - [`apparatus/locales/manifest.json`](apparatus/locales/manifest.json) — enumerated locale instances.
 - [`apparatus/locales/CANDIDATES.md`](apparatus/locales/CANDIDATES.md) — consult before founding any new locale.
 - [`apparatus/arcs/`](apparatus/arcs/) — registry of multi-locale arcs (operational units above locale).
+- [`apparatus/docs/deferrals-ledger.md`](apparatus/docs/deferrals-ledger.md) — append-only registry of candidate locales surfaced-but-not-founded; each entry carries gating predicate + un-defer condition. A substrate rung that surfaces a candidate locale at Phase 5 (chapter-close-inspect) but does not found it owes the apparatus a ledger entry, not merely a trajectory cross-locale note.
+- [`apparatus/docs/deletions-ledger.md`](apparatus/docs/deletions-ledger.md) — append-only registry of constraint-induced substrate deletions, paired with the deferrals-ledger as the symmetric "tracked-but-not-an-addition" records.
 
 ## Project identity
 
