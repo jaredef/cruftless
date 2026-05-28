@@ -905,14 +905,22 @@ impl Compiler {
         }
         self.pre_allocated_slots
             .extend(fn_pre_slots.iter().map(|(k, v)| (k.clone(), *v)));
-        // IR-EXT 29 (deferred per rule 13): module/script top-level TDZ
-        // for let/const was attempted here but regressed -2 fixtures in
-        // the broader let/const cluster (generator destructure rest with
-        // getter; eval-mode let/const). The script-mode globalThis-mirror
-        // path + destructure-rest write site need init-vs-assign audits
-        // similar to EXT 25's emit-site enumeration before the
-        // module-top TDZ-init can land safely. See IR.28 note in
-        // trajectory rung-29.
+        // IR-EXT 34 (re-attempt of EXT 29 with EXT 31-33 substrate now in
+        // place): module/script top-level TDZ for let/const. Mirrors the
+        // function-body Phase H1.5 emit + block-scope EXT 31 emit. Seed
+        // each pre-allocated let/const slot with TDZ sentinel.
+        for (_name, slot) in self.pre_allocated_slots.clone().iter() {
+            let kind = self
+                .locals
+                .get(*slot as usize)
+                .map(|d| d.kind)
+                .unwrap_or(VariableKind::Var);
+            if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                encode_op(&mut self.bytecode, Op::PushTDZ);
+                encode_op(&mut self.bytecode, Op::InitLocal);
+                encode_u16(&mut self.bytecode, *slot);
+            }
+        }
         for item in &m.body {
             // Pull the inner FunctionDecl out (whether direct or
             // wrapped under `export function f(){}`).
