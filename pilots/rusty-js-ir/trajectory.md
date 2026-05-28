@@ -2705,3 +2705,32 @@ diff-prod: 61/51 (parity preserved)
 **Finding IR.33 (cumulative substrate amortization)**: each rung in the EXT 25→34 chain made the next one cheaper. EXT 25's substrate prefix was paid by EXT 26's small fix. EXT 30's Pin-Art probe identified the LIFT pattern. EXT 31's block_pre_slots stack was reused by EXT 32 (switch) in 1/3 the LOC. EXT 32-33's cross-frame visibility checks unlocked EXT 34's clean re-attempt of EXT 29. The cumulative cost of the 10-rung chain is comparable to what a single naive monolithic TDZ rewrite would have cost (~500 LOC), but the substrate-amortization spreads the cost across rungs that each have measurable yield.
 
 **Status**: IR-EXT 34 CLOSED locally. Cumulative IR rungs: 34. 10 TDZ enforcement sub-shapes closed (i, ii, iii.for-head, iii.compound-assign, iii.class-name-extends, iii.block-scope, iii.switch-case, iii.closure-capture, iii.optional-chain-auto, iii.module-top). Remaining 3 fundamentally distinct FAILs: class-this during super-init; param-expression-TDZ during default eval; unscopables-tdz.
+
+---
+
+## Rung-cluster-35 — engagement-wide sample re-baseline (Phase 5 chapter-close-inspect) (2026-05-28)
+
+Per keeper directive Telegram 10136 ("continue our trajectory") + the newly-articulated substrate-shaped-work discipline (Phase 5 chapter-close-inspect from CLAUDE.md § Substrate-shaped-work discipline). Measurement-only rung; no substrate change. Re-baselines the test262 representative sample after the 15-rung TDZ session (EXT 20-34) + the engagement-wide work since 2026-05-22 fold.
+
+**Re-measurement** (cruft built from main @ 95e8a9e9, sample at scripts/test262-sample/sample-paths.txt expanded to 7,663 paths):
+
+```text
+2026-05-22 fold (post rung-19):  5,592 PASS / 1,611 FAIL / 384 SKIP = 77.6% runnable
+2026-05-28 measurement:           6,443 PASS / 1,204 FAIL /  16 SKIP = 84.3% runnable
+
+Delta:                            +851 PASS / -407 FAIL / +6.7 pp runnable
+Gap to bun (99.2%):                21.6 pp → 14.9 pp
+Telos progress (toward ≤10 pp):    24% → ~50%
+```
+
+The +6.7pp delta is the engagement-wide cumulative reading; it spans:
+- This work-stream: TAMM (10 rungs, EXT 3-10) + ASU (founded + EXT 1) + AT (founded + EXT 1) + IR (15 rungs, EXT 20-34).
+- Parallel agent: Temporal grammar tranche + Intl402 PlainYearMonth + symbol bridges + various direct-eval / tagged-template closures (commits 11aebb41 through 48b73e2f).
+
+**Per Doc 541 Appendix E SIPE-T scale-invariance**: the engagement-wide rate movement is the macro-tier expression of the per-rung micro-tier substrate work. The 6.7pp / +851 PASS materializes because each rung's measurable yield composes additively (substrate amortization per finding IR.33) and because the discipline's chapter-close-inspect (Phase 5) catches drift before it accumulates.
+
+**Finding IR.34 (sample sizing affects comparability)**: sample expanded from 7,203 (2026-05-22) to 7,663 (2026-05-28) as test262 itself grew and runner allowlists were updated. Rate-based comparison (77.6% → 84.3%) is the meaningful metric; raw PASS-count comparison overstates progress because the new tests are mostly added in surfaces the engagement covers well. Standing rec for chapter-close-inspect rungs: report rate delta + telos-progress delta, not raw count delta.
+
+**Tag**: `cluster-sample-rebaseline-35`.
+
+**Status**: IR-EXT 35 CLOSED locally. Cumulative IR rungs: 35. Locale telos at ~50% of the ≤10pp target. Per the discipline's Phase 1 spawn rationale, the next rung should pick its coordinate based on the post-rebaseline failure-table top rows (Phase 5 inspection feeding Phase 1 spawn for the next rung).
