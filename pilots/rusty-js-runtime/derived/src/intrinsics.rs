@@ -15014,17 +15014,80 @@ impl Runtime {
             crate::abstract_ops::to_bigint(rt, &v)
         });
         let bi_id = self.alloc_object(bi_obj);
-        // EXT 78: BigInt.asIntN / asUintN dispatch ToBigInt on their second
-        // argument per §21.2.2.1 / §21.2.2.2 step 2. v1's clamp/mask
-        // shape is a passthrough (deferred), but the coercion + error
-        // propagation now match spec.
+        // BAW-EXT 1: BigInt.asIntN / asUintN spec-faithful per §21.2.2.1 /
+        // §21.2.2.2. Step ordering ToIndex(bits) THEN ToBigInt(bigint) is
+        // observable via valueOf side effects (order-of-steps.js). The
+        // clamp/mask arithmetic uses spec modulo (positive remainder).
+        fn bigint_to_index(
+            rt: &mut crate::interp::Runtime,
+            v: &Value,
+        ) -> Result<u64, RuntimeError> {
+            if matches!(v, Value::Undefined) {
+                return Ok(0);
+            }
+            let prim = rt.to_primitive(v, "number")?;
+            let n = crate::abstract_ops::to_number(&prim);
+            let integer = if n.is_nan() || n == 0.0 {
+                0.0
+            } else if !n.is_finite() {
+                return Err(RuntimeError::RangeError(
+                    "Invalid index: cannot be Infinity".into(),
+                ));
+            } else {
+                n.trunc()
+            };
+            if integer < 0.0 || integer > (2f64.powi(53) - 1.0) {
+                return Err(RuntimeError::RangeError(
+                    "Invalid index: out of range".into(),
+                ));
+            }
+            Ok(integer as u64)
+        }
+        fn bigint_clamp(
+            rt: &mut crate::interp::Runtime,
+            args: &[Value],
+            signed: bool,
+        ) -> Result<Value, RuntimeError> {
+            use crate::bigint::JsBigInt;
+            let bits_v = args.get(0).cloned().unwrap_or(Value::Undefined);
+            let bigint_v = args.get(1).cloned().unwrap_or(Value::Undefined);
+            let bits = bigint_to_index(rt, &bits_v)?;
+            let bi_val = crate::abstract_ops::to_bigint(rt, &bigint_v)?;
+            let bi = match &bi_val {
+                Value::BigInt(b) => b.clone(),
+                _ => unreachable!(),
+            };
+            if bits == 0 {
+                return Ok(Value::BigInt(Rc::new(JsBigInt::zero())));
+            }
+            let bits_bi = JsBigInt::from_u64(bits);
+            let modulus = JsBigInt::one().shl(&bits_bi).ok_or_else(|| {
+                RuntimeError::RangeError("BigInt shift exponent out of range".into())
+            })?;
+            let (_, rem) = bi.divmod(&modulus).ok_or_else(|| {
+                RuntimeError::RangeError("BigInt modulo by zero".into())
+            })?;
+            let m = if rem.is_negative() { rem.add(&modulus) } else { rem };
+            if signed {
+                let half = JsBigInt::one()
+                    .shl(&JsBigInt::from_u64(bits - 1))
+                    .ok_or_else(|| {
+                        RuntimeError::RangeError("BigInt shift exponent out of range".into())
+                    })?;
+                if m.cmp(&half) != std::cmp::Ordering::Less {
+                    Ok(Value::BigInt(Rc::new(m.sub(&modulus))))
+                } else {
+                    Ok(Value::BigInt(Rc::new(m)))
+                }
+            } else {
+                Ok(Value::BigInt(Rc::new(m)))
+            }
+        }
         register_intrinsic_method(self, bi_id, "asIntN", 2, |rt, args| {
-            let v = args.get(1).cloned().unwrap_or(Value::Undefined);
-            crate::abstract_ops::to_bigint(rt, &v)
+            bigint_clamp(rt, args, true)
         });
         register_intrinsic_method(self, bi_id, "asUintN", 2, |rt, args| {
-            let v = args.get(1).cloned().unwrap_or(Value::Undefined);
-            crate::abstract_ops::to_bigint(rt, &v)
+            bigint_clamp(rt, args, false)
         });
         // Tier-Ω.5.oooooo: BigInt.prototype with valueOf + toString. unbox-
         // primitive / is-bigint reach for `BigInt.prototype.valueOf`.

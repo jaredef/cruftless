@@ -105,3 +105,43 @@ TAWR cluster POST-EXT 2: PASS=49 FAIL=51 / 100 (49.0%)
 **Finding TAWR.2 (Reflect-wrapper translation trap)**: when a substrate move adds a "return false instead of throw" path inside a function whose wrapper translates `Ok(_) → Boolean(true)`, the substrate's false-return is silently swallowed unless the wrapper distinguishes `Ok(Value::Boolean(false))` explicitly. Pattern recurs across any IR-generated function whose user-facing wrapper coerces all-ok-to-true. Standing rec: when a function's spec-defined return type is Boolean (Reflect.X family), its IR-generated implementation should preserve the Boolean rather than relying on the wrapper's translation; the wrapper's role is to convert exception → false for ergonomic-throw semantics ONLY.
 
 **Status**: TAWR-EXT 2 CLOSED locally. Arc-tier accumulation: second rung in `2026-05-28-array-exotic-substrate`.
+
+## TAWR-EXT 3 — LANDED (2026-05-28) — BigInt.asIntN / asUintN spec-faithful clamp + ToIndex ordering
+
+Per keeper directive Telegram 10174 ("Continue"). Third rung; cross-locale lattice meet with bigint-arithmetic substrate (the substrate locus is BigInt namespace, not the TA path, but the cluster benefit is observable in TAWR exemplars and BigInt64/Uint64 typed-array shape lattice-meets here).
+
+**Phase 1 (Spawn)**:
+- **M** = `BigInt.asIntN(bits, bigint)` / `BigInt.asUintN(bits, bigint)` per §21.2.2.1 / §21.2.2.2.
+- **T** = ordered side effects: `bits` ToIndex coercion fires before `bigint` ToBigInt coercion. Result is the signed/unsigned clamp of `bigint mod 2^bits`.
+- **I** = inline `bigint_to_index` helper (ToPrimitive("number") → ToNumber → ToIntegerOrInfinity → range-check [0, 2^53-1]) + `bigint_clamp` arithmetic via `JsBigInt::shl(bits)` modulus + `divmod` remainder + sign-adjust to positive modulo + signed-half-modulus comparison.
+- **R** = lattice with `bigint-arithmetic-wrongness` candidate locale + DAG ↑ ToPrimitive + DAG ↓ JsBigInt::{shl, divmod, sub, add, cmp}.
+- **Observability** = ordinary (test262 sameValue + valueOf side-effect order).
+- **Mouth-gating prerequisite**: JsBigInt::divmod returning sign-of-dividend remainder + ToPrimitive("number") routing through user @@toPrimitive / valueOf.
+
+**Phase 2 (Baseline-inspect)**: post-EXT 2 baseline TAWR=49/100; BigInt sub-cluster 6 fails all PASS-able by replacing the v1 passthrough. Pre-existing impl was `to_bigint(arg[1])` — skipped ToIndex entirely (no `bits.valueOf` call → order-of-steps observed wrong order), and skipped clamp arithmetic (passthrough → asUintN(8,-2n) returned -2n not 254n).
+
+**Phase 3**: no duplication signal — single emit site for each method.
+
+**Phase 4**: single-round, no negative. Direct probes after build: asIntN(8,200n) → -56n ✅; asUintN(8,-2n) → 254n ✅; asUintN(0,5n) → 0n ✅; order-of-steps `i` → 2 ✅.
+
+**Substrate** (~70 LOC in `pilots/rusty-js-runtime/derived/src/intrinsics.rs` BigInt-namespace registration):
+- New `bigint_to_index(rt, &Value) -> Result<u64, RuntimeError>` inline-helper implementing §7.1.22 ToIndex via existing `Runtime::to_primitive` + `abstract_ops::to_number`; throws RangeError on out-of-range or Infinity.
+- New `bigint_clamp(rt, args, signed: bool)` shared body: ToIndex(bits) FIRST, then ToBigInt(bigint); compute `2^bits` modulus, divmod, sign-correct to positive modulo, signed-half-modulus branch for asIntN.
+- `register_intrinsic_method` for asIntN/asUintN now dispatches through `bigint_clamp` with `signed=true`/`false`.
+
+**Yield**:
+```text
+TAWR cluster PRE-EXT 3:  PASS=49 FAIL=51 / 100 (49.0%)
+TAWR cluster POST-EXT 3: PASS=55 FAIL=45 / 100 (55.0%)
+```
+**+6 PASS** this rung. BigInt sub-cluster 6 → 0 (clean close).
+
+**Gates**: build clean; diff-prod 61/51 (parity preserved); TAMM unchanged 82/100; sanity intact.
+
+**Tag**: `cluster-bigint-asintn-asuintn-spec-faithful-3`.
+
+**Finding TAWR.3 (passthrough-as-stub trap)**: when a v1 substrate registers a method as `pass-through of one argument` because the arithmetic was deferred, the deferment is silently observable as a wrong-result failure for any test that exercises the spec arithmetic — and silently observable as a wrong-order failure for any test that exercises spec side-effect ordering (because the passthrough only calls one of the coercions). Standing rec: when registering a v1 stub, prefer "throw NotImplemented" over "passthrough" so the stub surfaces in failure tables rather than being absorbed as a wrong-result; AND when implementing a method whose spec has ordered coercions, the ordering is itself a substrate concern not just an arithmetic one.
+
+**Cross-locale note**: per orphan-disposition Pattern III.2 (lattice-meet repetition), this rung is a candidate for spawning a `bigint-arithmetic-wrongness` locale on the next BigInt-namespace move; the substrate locus repeats across `asIntN`/`asUintN`/`BigInt(arg)` constructor / `BigInt.prototype.toLocaleString` etc. Defer until duplication count reaches the spawn threshold.
+
+**Status**: TAWR-EXT 3 CLOSED locally. Arc-tier accumulation: third rung in `2026-05-28-array-exotic-substrate` arc (enrolled by lattice-meet via BigInt64Array shape, even though the substrate locus is the BigInt namespace).
