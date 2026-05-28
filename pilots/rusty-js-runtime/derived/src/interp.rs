@@ -13124,10 +13124,6 @@ impl Runtime {
                     } else {
                         frame.this_value.clone()
                     };
-                    // IR-EXT 38 TDZ check on `this`: derived-class
-                    // constructors entered via Op::SetThisTDZ seed
-                    // this_value with the sentinel; reads before super()
-                    // throw ReferenceError per §15.4.5.4.
                     if let Value::Symbol(ref s) = t {
                         if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
                             return Err(RuntimeError::ReferenceError(
@@ -13155,9 +13151,6 @@ impl Runtime {
                     frame.push(v);
                 }
                 Op::SetThis => {
-                    // Tier-Ω.5.nnnnn: rebind this when super(...) returns
-                    // an Object. Pops the top of stack; if Object, replaces
-                    // this_value; otherwise leaves this_value unchanged.
                     let v = frame.pop()?;
                     if matches!(&v, Value::Object(_)) {
                         if let Some(cell) = &frame.this_cell {
@@ -13754,10 +13747,6 @@ impl Runtime {
                     c.call_count.set(count);
                     let proto_key = std::rc::Rc::as_ptr(&c.proto) as usize;
                     let actual_this = if c.is_arrow {
-                        // Prefer the cell-backed binding if present (it
-                        // tracks post-super rebinding); fall back to the
-                        // snapshot for arrows created in non-derived
-                        // contexts.
                         if let Some(cell) = &c.bound_this_cell {
                             cell.borrow().clone()
                         } else {
@@ -14178,7 +14167,7 @@ impl Runtime {
             pc: 0,
             try_stack: Vec::new(),
             with_env_stack: Vec::new(),
-            this_value: this,
+            this_value: this.clone(),
             this_cell: None,
             derived_initial_this: None,
             upvalues,

@@ -2902,3 +2902,43 @@ diff-prod: 62/50 (parity preserved through revert)
 **Finding IR.39 (substrate-prep can have validation-level partial yield)**: even without landing the emit, this rung VALIDATED the spec-shared `this` chain (parent ctor sees fresh this; post-super console.log works; `new C()` returns proper instance). The substrate is correct; only the arrow-cell timing edge case blocks landing. A future rung that traces the arrow path closes the residual without needing to redesign the substrate.
 
 **Status**: IR-EXT 39 CLOSED locally (substrate prefix extended; emit gated off; second rule-13 round in the class-this trajectory). Cumulative IR rungs: 39. Class-this TDZ surface now has 2 rounds of accumulated substrate prefix awaiting an arrow-cell timing closure.
+
+---
+
+## Rung-cluster-40 — class-this TDZ closure via next_compile_is_derived_ctor flag (third rule-13 round; closure landed) (2026-05-28)
+
+Per keeper directive Telegram 10146 ("Continue"). Third and final rule-13 round on the class-this trajectory: traces the arrow-cell timing residual EXT 39 identified, finds the root cause in class_stack inheritance via sub-compiler.clone(), and lands the closure.
+
+**Root-cause trace via probe-instrumentation**:
+- Added eprintln! probes at MakeArrow, SetThis, PushThis, frame-construct, arrow-dispatch.
+- ctd5.js trace showed: at MakeArrow time, frame.this_value = Object (post-super); cell allocated holds Object. Arrow-dispatch passes Object as actual_this. Frame construction sets this_value = Object. BUT inner PushThis observed this_value = TDZ sentinel.
+- Diagnosis: the arrow's bytecode itself contained Op::SetThisTDZ at its body prologue. The class_stack frame pushed by compile_class (for the outer ctor) was inherited by the arrow's sub-compiler via `class_stack: self.class_stack.clone()`. The arrow's compile_function_proto saw `class_stack.last().in_constructor=true && super_ctor_name=Some` → emitted SetThisTDZ at the arrow's own body entry. When the arrow executed, SetThisTDZ overwrote its frame.this_value from Object to sentinel.
+
+**Substrate** (~30 LOC):
+- New Compiler field `next_compile_is_derived_ctor: bool`.
+- compile_class sets it true before calling compile_function_proto_with_name_hint for the ctor (only when `super_class.is_some()`).
+- compile_function_proto_with_name_hint reads + clears the flag at entry (before forking the sub-compiler). The flag-read happens on the PARENT compiler; nested function/arrow compiles inside the sub's body will see the cleared flag.
+- SetThisTDZ emit gated on the local `derived_ctor_emit_needed` (consumed from flag), NOT on class_stack inspection.
+
+**Yield**:
+```text
+TDZ-named cluster: PRE 8/13 → POST 9/13 (+1; constructor-this-tdz-during-initializers closed)
+diff-prod: 62/50 (parity preserved)
+```
+**+1 PASS** this rung.
+
+**Direct probes** (post-rung):
+- `class C extends B { constructor() { var p = () => this; try { p(); } catch(e) {} super(); console.log("after super:", typeof p()); } }` → "threw: ReferenceError" (pre-super) + "after super: object" (post-super) ✅
+- All EXT 21-39 probes intact.
+- Sanity (let/const/class/Promise/switch/for-of/closure/extends) all PASS.
+- diff-prod 62/50 parity preserved (no regression in class-inheritance / error-types / node-events / node-stream that EXT 38 originally broke).
+
+**Gates**: build clean.
+
+**Tag**: `cluster-class-this-tdz-closure-40`.
+
+**Finding IR.40 (three-round rule-13 trajectory; cumulative substrate compounds at the right time)**: EXT 38 → 39 → 40 demonstrates rule-13's prospective application across three rounds with cumulative substrate amortization. EXT 38 built Op::SetThisTDZ + Op::PushThis TDZ check (revert, kept). EXT 39 added Frame.derived_initial_this + Op::PushThisRaw (revert, kept). EXT 40 added next_compile_is_derived_ctor flag (~30 LOC) + re-enabled all prior substrate prefixes. Total chain LOC: ~190 across three rungs. Closure landed in the third round at low marginal cost because the first two rounds' substrate prefixes were already in place. Per finding IR.33, cumulative substrate amortization compounded as predicted.
+
+**Finding IR.41 (class_stack inheritance is a Phase-3 implicit-constraint trap)**: compile_function_proto_with_name_hint clones the parent's class_stack into the sub-compiler. This inheritance is correct for resolving super-call references in nested methods (the parent class's super_ctor_name must be findable) but WRONG for ctor-body-only emits (SetThisTDZ should fire only at the outermost ctor body, not at nested arrows). Implicit constraint surfaced: "class_stack semantics differ between resolution-tier consumers (super-call) and emit-tier consumers (SetThisTDZ)." The fix pattern: use a per-compile flag on the Compiler (read+cleared at compile_function_proto entry) for emit-tier signals; reserve class_stack for resolution-tier signals. Standing rec for future Compiler fields that signal emit-tier behavior at compile boundaries.
+
+**Status**: IR-EXT 40 CLOSED locally. Cumulative IR rungs: 40. **12 of 13 TDZ enforcement sub-shapes closed** (i, ii, iii.for-head, iii.compound-assign, iii.class-name-extends, iii.block-scope, iii.switch-case, iii.closure-capture, iii.optional-chain, iii.module-top, iii.param-expression, iii.class-this). Only iii.unscopables remains (needs Symbol.unscopables + with substrate, structurally distinct from existing patterns). The class-this trajectory closes the resolution pipeline keeper named — the deeper substrate work (next_compile_is_derived_ctor + derived_initial_this stash + PushThisRaw + symmetric Load/Store TDZ checks) is fully wired and validates the spec-shared `this` chain across base/derived ctors + arrows.

@@ -335,6 +335,14 @@ pub struct Compiler {
     /// allocated + TDZ-seeded at block-entry, the decl line's InitLocal
     /// overwrites the sentinel.
     block_pre_slots: Vec<std::collections::HashMap<String, u16>>,
+    /// IR-EXT 40: set by compile_class right before invoking
+    /// compile_function_proto for a derived-class constructor body so
+    /// the proto emits SetThisTDZ at body entry. Read + cleared at the
+    /// start of compile_function_proto_with_name_hint so nested function
+    /// or arrow compilations inside the ctor body don't inherit the
+    /// flag. Avoids the class_stack-clone false-positive that
+    /// IR-EXT 38/39 attempts hit.
+    next_compile_is_derived_ctor: bool,
     /// WBMS-EXT 2: dynamic identifier mode for statement bodies executing
     /// inside one or more `with` object environments.
     with_depth: u32,
@@ -537,6 +545,7 @@ impl Compiler {
             source_url: String::new(),
             block_depth: 0,
             block_pre_slots: Vec::new(),
+            next_compile_is_derived_ctor: false,
             with_depth: 0,
             construct_tags: Vec::new(),
             strict: false,
@@ -4474,6 +4483,12 @@ impl Compiler {
         params: &[Parameter],
         body: &[Stmt],
     ) -> Result<FunctionProto, CompileError> {
+        // IR-EXT 40: consume the parent compiler's next_compile_is_
+        // derived_ctor flag before forking the sub. Nested function/
+        // arrow compiles inside the sub's body will see the cleared
+        // flag and skip the SetThisTDZ emit.
+        let derived_ctor_emit_needed = self.next_compile_is_derived_ctor;
+        self.next_compile_is_derived_ctor = false;
         // Build the sub-compiler's enclosing chain from self's enclosing
         // plus self's own locals/upvalues snapshot. The snapshot is
         // immutable from the sub's perspective EXCEPT the sub may
@@ -4517,6 +4532,7 @@ impl Compiler {
             // is its own top level for scope tracking.
             block_depth: 0,
             block_pre_slots: Vec::new(),
+            next_compile_is_derived_ctor: false,
             with_depth: 0,
             // Ω.5.P53.E2: each function has its own tag list.
             construct_tags: Vec::new(),
@@ -4663,20 +4679,16 @@ impl Compiler {
                 sub.emit_destructure(pat, *slot)?;
             }
         }
-        // IR-EXT 39 (substrate retained, emit deferred per rule 13 round
-        // 2): SetThisTDZ + PushThisRaw + derived_initial_this stash now
-        // correctly thread the spec-shared fresh `this` through super-call.
-        // Basic `new C() extends B` works (post-super reads + parent
-        // ctor's this is correct). However arrows created post-super
-        // still observe sentinel via bound_this/bound_this_cell — a
-        // subtle interaction between MakeArrow's cell-allocation timing
-        // and SetThis's cell-write timing not yet diagnosed. Deferred
-        // pending deeper investigation; SetThisTDZ emit gated off.
-        let _is_derived_ctor = sub
-            .class_stack
-            .last()
-            .map(|f| f.in_constructor && f.super_ctor_name.is_some())
-            .unwrap_or(false);
+        // IR-EXT 40: emit SetThisTDZ only when the parent compiler
+        // explicitly set next_compile_is_derived_ctor (i.e., compile_class
+        // is invoking us for the ctor body). The flag is consumed here
+        // so nested function/arrow compiles never observe it via the
+        // class_stack inheritance path (which would mis-fire — class_stack
+        // entries persist through nested sub-compilers).
+        let is_derived_ctor = derived_ctor_emit_needed;
+        if is_derived_ctor {
+            encode_op(&mut sub.bytecode, Op::SetThisTDZ);
+        }
         let param_prologue_end = sub.bytecode.len();
         // Tier-Ω.5.zzz: allocate the `arguments` slot. Populated by
         // call_function at invocation with an Array of the actual
@@ -6566,6 +6578,12 @@ impl Compiler {
             .as_ref()
             .map(|n| n.name.clone())
             .or_else(|| display_name_hint.map(|s| s.to_string()));
+        // IR-EXT 40: signal to compile_function_proto that this body is
+        // a derived-class ctor that should emit SetThisTDZ at entry.
+        // Only set for derived ctors (super_class is Some).
+        if super_class.is_some() {
+            self.next_compile_is_derived_ctor = true;
+        }
         let ctor_proto = self.compile_function_proto_with_name_hint(
             None,
             class_display_name.as_deref(),
@@ -7083,20 +7101,15 @@ impl Compiler {
             encode_op(&mut self.bytecode, Op::LoadGlobal);
             encode_u16(&mut self.bytecode, apply_name);
             self.emit_load_ident(&super_ctor_name);
-            // IR-EXT 39: PushThis restored (was PushThisRaw during the
-            // EXT 38→39 attempt). SetThisTDZ emit is gated off pending
-            // arrow-cell timing fix; until then super-call uses the
-            // standard PushThis path which the EXT 38 PushThis TDZ check
-            // doesn't trip because this_value isn't seeded with the
-            // sentinel.
-            encode_op(&mut self.bytecode, Op::PushThis);
+            // IR-EXT 40: PushThisRaw re-enabled with the SetThisTDZ emit.
+            encode_op(&mut self.bytecode, Op::PushThisRaw);
             self.emit_args_array(arguments)?;
             encode_op(&mut self.bytecode, Op::PropagateNewTarget);
             encode_op(&mut self.bytecode, Op::Call);
             encode_u8(&mut self.bytecode, 3);
         } else {
-            // IR-EXT 39: PushThis restored (see spread branch comment).
-            encode_op(&mut self.bytecode, Op::PushThis);
+            // IR-EXT 40: PushThisRaw re-enabled.
+            encode_op(&mut self.bytecode, Op::PushThisRaw);
             // Method = parent constructor.
             self.emit_load_ident(&super_ctor_name);
             for a in arguments {
