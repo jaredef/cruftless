@@ -4688,6 +4688,25 @@ impl Compiler {
                 pre_slots.insert(n.clone(), slot);
             }
         }
+        // IR-EXT 23 (TDZ candidate A): at function-body entry, for every
+        // pre-allocated let/const slot, emit PushTDZ + StoreLocal so any
+        // LoadLocal that fires before the binding's declaration line
+        // throws ReferenceError per §13.3.1.1. Var slots stay defaulted
+        // to Undefined (var hoists with undefined init); function-decl
+        // slots get overwritten by Phase H2's MakeClosure StoreLocal
+        // immediately below, so the TDZ init is harmless for them.
+        for (_n, slot) in pre_slots.iter() {
+            let kind = sub
+                .locals
+                .get(*slot as usize)
+                .map(|d| d.kind)
+                .unwrap_or(VariableKind::Var);
+            if matches!(kind, VariableKind::Let | VariableKind::Const) {
+                encode_op(&mut sub.bytecode, Op::PushTDZ);
+                encode_op(&mut sub.bytecode, Op::StoreLocal);
+                encode_u16(&mut sub.bytecode, *slot);
+            }
+        }
         // Phase H2: emit closure-bind for each FunctionDecl into its
         // pre-allocated slot.
         for s in body {

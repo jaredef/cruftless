@@ -186,6 +186,13 @@ pub struct Runtime {
     /// Array.prototype.map's callback dispatch, and the like see a real
     /// receiver. Saved/restored across nested calls.
     pub current_this: Value,
+    /// IR-EXT 23 TDZ sentinel: a uniquely-allocated Rc<String> wrapped in a
+    /// Symbol-shaped Value. Stored on the Runtime so any LoadLocal/StoreLocal
+    /// handler can detect it via `Rc::ptr_eq` on the inner Rc and throw the
+    /// TDZ ReferenceError. The Symbol shape was chosen so the sentinel
+    /// doesn't collide with any user-allocated Value variant and doesn't
+    /// require a new Value enum variant (would touch every match site).
+    pub tdz_sentinel: std::rc::Rc<String>,
     /// EXT 90 / Doc 730 §XIV: opt-in deviation set per the dual-pipeline
     /// formalization. Each name is a typed primitive at the deviation-tier
     /// alphabet — recognizing one ecosystem-bug-tolerated pattern that
@@ -561,6 +568,7 @@ impl Runtime {
             job_queue: crate::job_queue::JobQueue::new(),
             pending_unhandled: HashSet::new(),
             current_this: Value::Undefined,
+            tdz_sentinel: std::rc::Rc::new("__cruft_tdz__".to_string()),
             tolerated_deviations: HashSet::new(),
             pending_new_target: None,
             current_new_target: None,
@@ -10655,6 +10663,7 @@ impl Runtime {
                 // ─── Stack ops ───
                 Op::PushNull => frame.push(Value::Null),
                 Op::PushUndef => frame.push(Value::Undefined),
+                Op::PushTDZ => frame.push(Value::Symbol(std::rc::Rc::clone(&self.tdz_sentinel))),
                 Op::PushTrue => frame.push(Value::Boolean(true)),
                 Op::PushFalse => frame.push(Value::Boolean(false)),
                 Op::PushI32 => {
@@ -10688,28 +10697,24 @@ impl Runtime {
                     let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
                     frame.pc += 2;
                     let v = frame.read_local(slot);
-                    // Tier-Ω.5.jj.diag: tag local-binding-name into the
-                    // diagnostic stash so Op::Call's error includes which
-                    // local was loaded. Compiler's local descriptor carries
-                    // the source name; reuse it for error enrichment.
-                    if slot < frame.bytecode.len() {
-                        // frame.constants and frame.bytecode are slices; we
-                        // need access to locals. The local name lives in
-                        // CompiledModule.locals or FunctionProto.locals,
-                        // both kept on the frame as &[LocalDescriptor] via
-                        // the proto/module reference. Skip if unavailable.
-                    }
-                    // The frame.locals field is Vec<Value>, not descriptors.
-                    // CompiledModule and FunctionProto carry the descriptors.
-                    // Frame doesn't currently carry them; use the bytecode's
-                    // owning structure via the constants pool name if needed
-                    // — for now, just tag with the slot number.
                     let lname = frame
                         .locals_names
                         .get(slot)
                         .map(|d| d.name.clone())
                         .unwrap_or_else(|| format!("<local${}>", slot));
-                    frame.last_property_lookup = Some(lname);
+                    frame.last_property_lookup = Some(lname.clone());
+                    // IR-EXT 23 TDZ check: if the slot still holds the TDZ
+                    // sentinel (scope-entry init that hasn't been overwritten
+                    // by the binding's declaration line), throw
+                    // ReferenceError per §13.3.1.1.
+                    if let Value::Symbol(ref s) = v {
+                        if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
+                            return Err(RuntimeError::ReferenceError(format!(
+                                "Cannot access '{}' before initialization",
+                                lname
+                            )));
+                        }
+                    }
                     frame.push(v);
                 }
                 Op::StoreLocal => {

@@ -2284,3 +2284,43 @@ Per keeper directive Telegram 10099 ("Continue as coherent") following IR-EXT 21
 **Finding IR.21 (coherent micro-rung pattern)**: when a substrate move generalizes a single-shape fix (here: identifier-target self-init guard) to its sibling-shapes (here: destructure-target self-init guard) using already-built helpers, the rung is sub-noise on standard exemplars but closes the substrate's *internal coherence* — a future reviewer reads the fix and sees uniform TDZ-at-init-eval discipline across both binding-pattern shapes. The cost of NOT doing this rung is hidden complexity debt: the identifier-target case throws while the destructure-target case silently passes, which is a substrate inconsistency that would surface as a confusing bug at the first test262 fixture that probes destructure-self-init.
 
 **Status**: IR-EXT 22 CLOSED locally. The identifier + destructure self-init shapes are now uniformly handled at the TDZ-at-init-eval enforcement point (i) per finding IR.20. Points (ii) function-body TDZ + (iii) for-head TDZ remain candidate A territory.
+
+---
+
+## Rung-cluster-23 — function-body TDZ enforcement (candidate A) (2026-05-27)
+
+Per keeper directive Telegram 10101 ("A"). Closes IR.20 point (ii): function-body let/const access-before-decl now throws ReferenceError per §13.3.1.1 instead of silently returning the slot's default-undefined value.
+
+**Substrate** (~50 LOC across three crates):
+
+1. **Runtime sentinel** (`pilots/rusty-js-runtime/derived/src/interp.rs`): new `Runtime.tdz_sentinel: Rc<String>` allocated once at `Runtime::new`. Wrapped in `Value::Symbol` for the on-stack representation. Symbol shape avoids a new `Value` enum variant (which would touch every match site across the runtime crate). Rc identity (`Rc::ptr_eq`) discriminates from user-allocated Symbols.
+
+2. **New opcode** `Op::PushTDZ = 0x0a` (`pilots/rusty-js-bytecode/derived/src/op.rs`): pushes the sentinel onto the operand stack. Operand-size table updated; decoder updated. Picked from the 143 free op bytes per `op.rs` byte-allocation survey.
+
+3. **Runtime LoadLocal handler**: after reading the slot, checks `Value::Symbol` against `Runtime.tdz_sentinel` via `Rc::ptr_eq`. If matched, throws `RuntimeError::ReferenceError("Cannot access '<name>' before initialization")`. The local-binding name is read from the existing `frame.locals_names` diagnostic stash.
+
+4. **Compiler scope-entry emit** (`compile_function_proto_with_name_hint` at Phase H1.5, between pre-allocation and Phase H2 closure-bind): for every pre-allocated slot whose `LocalDescriptor.kind` is `Let` or `Const`, emit `PushTDZ + StoreLocal(slot)`. Var slots stay defaulted to Undefined (var hoists with undefined init per spec); function-decl slots get overwritten by Phase H2's `MakeClosure + StoreLocal` immediately below, so the TDZ pre-init is harmless for them.
+
+**Direct probes** (post-rung, all newly-throwing):
+- `function f() { return x; let x = 1; }` → ReferenceError "Cannot access 'x' before initialization" ✅ (was: returns undefined)
+- `function f4() { return c; const c = 1; }` → ReferenceError ✅ (was: returns undefined)
+- `function f2() { { return x; } let x = 1; }` → ReferenceError ✅ (was: returns undefined)
+- `let y = y` → ReferenceError ✅ (compile-time guard from EXT 21 still fires; runtime guard would also catch)
+- nested if-block (f3 case) → ReferenceError ✅ (was already throwing via "not defined" — message now says "before initialization" instead, which is more spec-correct)
+
+**Yield**:
+```text
+Broader let/const cluster (120 paths): PRE 105/120 → POST 106/120 (+1)
+TDZ-named cluster (13 paths): PRE 0/13 → POST 0/13 (unchanged — those probe class TDZ + for-head TDZ which need block-entry scope-init, not function-entry init)
+```
+**+1 PASS** measured on the 120-path probe. The substrate is in place and correct (the direct probes all pass); the test262 sample yield is smaller than estimated because most TDZ-style tests in the sample probe class-field TDZ and for-head TDZ shapes that need block-scope-entry init (rung-24 territory).
+
+**Gates**: build clean; diff-prod 60/52 (parity); sanity-suite (let/const + class + Promise) all PASS.
+
+**Tag**: `cluster-tdz-function-body-23`.
+
+**Finding IR.22 (TDZ-as-Symbol-sentinel pattern)**: when an engine needs a runtime sentinel that must (i) flow through existing Value-typed slots, (ii) not collide with any user-allocated value, (iii) avoid touching every match-on-Value site, the pattern is: allocate a unique `Rc<String>` at Runtime::new; wrap in `Value::Symbol`; discriminate via `Rc::ptr_eq` at the load site. The sentinel inherits Value's polymorphism without requiring an enum variant. The same shape will work for the `Uninitialized` slot semantics needed elsewhere (e.g., generator suspended-state).
+
+**Open**: IR.20 point (iii) for-head TDZ + cross-iteration freshness — needs block-scope-entry init plus per-iter ResetLocalCell ordering. Also: TDZ on `StoreLocal` (assigning to a TDZ slot via `x = 1; let x;` shape) currently silently succeeds — adding the check on StoreLocal would close this but requires distinguishing init-stores from assign-stores (the decl-line `StoreLocal` must NOT check; only later assignments check).
+
+**Status**: IR-EXT 23 CLOSED locally. Cumulative IR rungs: 23 (rungs 1-19 from prior session + rungs 20-23 this session). TDZ enforcement points (i) and (ii) from finding IR.20 both closed.

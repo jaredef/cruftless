@@ -12,6 +12,12 @@ pub enum Op {
     PushUndef = 0x02,
     PushTrue = 0x03,
     PushFalse = 0x04,
+    /// PUSH_TDZ — push the runtime's TDZ sentinel value onto the operand
+    /// stack. Used at scope entry by the compiler to mark let/const slots
+    /// as Temporally-Dead per §13.3.1.1; LoadLocal detects the sentinel
+    /// via Rc::ptr_eq on Runtime::tdz_sentinel and throws ReferenceError.
+    /// IR-EXT 23.
+    PushTDZ = 0x0a,
     /// PUSH_I32 <i32>
     PushI32 = 0x05,
     /// PUSH_CONST <u16>
@@ -336,7 +342,7 @@ impl Op {
     pub fn operand_size(self) -> usize {
         use Op::*;
         match self {
-            PushNull | PushUndef | PushTrue | PushFalse | Pop | Dup | Swap | Add | Sub | Mul
+            PushNull | PushUndef | PushTrue | PushFalse | PushTDZ | Pop | Dup | Swap | Add | Sub | Mul
             | Div | Mod | Pow | Neg | Pos | Inc | Dec | Lt | Gt | Le | Ge | Eq | Ne | StrictEq
             | StrictNe | In | Instanceof | BitAnd | BitOr | BitXor | BitNot | Shl | Shr | UShr
             | Not | Return | ReturnUndef | GetIndex | SetIndex | SetPrototype | NewObject
@@ -400,6 +406,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x02 => PushUndef,
         0x03 => PushTrue,
         0x04 => PushFalse,
+        0x0a => PushTDZ,
         0x05 => PushI32,
         0x06 => PushConst,
         0x07 => Pop,
