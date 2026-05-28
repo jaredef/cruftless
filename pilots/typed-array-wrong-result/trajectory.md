@@ -231,3 +231,37 @@ TAWR cluster POST-EXT 5: PASS=63 FAIL=37 / 100 (63.0%)
 **Phase 6 (deferral emission)**: surfaces `resizable-buffer-detection-per-access` as a candidate locale — the residual DataView `custom-proto-access-resizes-buffer-*` failures (3 cells: invalid-by-length, invalid-by-offset, valid-by-offset) all share the shape "per-access OOB check when the underlying buffer is resizable and was resized between construction and access". Currently DV stores `fixed_length` at construction; the resizable-buffer path needs a per-access recompute. Below spawn threshold for a dedicated locale (3 of one shape); emitted as Ledger Entry 009.
 
 **Status**: TAWR-EXT 5 CLOSED locally. Arc-tier accumulation: fifth rung in `2026-05-28-array-exotic-substrate` arc. Cumulative TAWR across arc: 36 → 47 → 49 → 55 → 61 → 63 (+27 total over five rungs).
+
+## TAWR-EXT 6 — NEGATIVE (Rule 13 revert) (2026-05-28) — ConvertNumberToTypedArrayElement integer-cast attempt
+
+Per keeper directive Telegram 10183 ("would we know better if phase 5 is closing if you did another round?"). Sixth rung — explicitly invoked as a Phase-5 inflection probe.
+
+**Phase 1 (Spawn)**:
+- **M** = `intTA[i] = -0` or `intTA[i] = 1.5` etc.
+- **T** = stored value normalized per element kind: -0 → 0 for integer kinds; out-of-range Numbers wrapped; non-integer Numbers truncated.
+- **I** = the `value` argument's coercion path inside `Runtime::typed_array_set_index`.
+- **R** = lattice with bigint-arithmetic-wrongness candidate (Entry 001) — BigInt TAs would need ToBigInt; lattice-meet via the same `typed_array_set_index` helper.
+- **Observability** = ordinary.
+
+**Phase 2 (Baseline-inspect)**: post-EXT 5 TAWR=63. Two cheap-looking residuals: `from/new-instance-from-zero.js` (`-0 => 0`) and `from/mapfn-this-with-thisarg.js`. Direct probe: `Int32Array.from([-0])[0]` returned -0 (Object.is(-0)=true) — confirming raw-storage path.
+
+**Phase 4 (single-round attempt)**: added per-kind integer-cast at `typed_array_set_index` reading `__ta_kind` from the obj's internal slot. Cast: `(n as i32) as f64` for Int32, etc. Built clean; TAWR moved 63 → 64 (+1); **TAMM regressed 82 → 81**.
+
+**Phase 4-negative diagnosis**: my coercion broke a TAMM exemplar (net -1). Sub-shape: the integer-cast is too eager for the helper's contract — `typed_array_set_index` is called both from element-set hot path AND from `[[DefineOwnProperty]]` (object_define_property_via, line ~2968) where the spec semantics differ. A test that stores a Number via `Reflect.defineProperty` and reads back via `[i]` may expect a different cell of behavior than a test that stores via `[i] = v`. Pre-coercion, raw storage was wrong for both but symmetric; post-coercion, asymmetric.
+
+**Phase 4 (Rule 13 revert)**: helper reverted to pre-EXT-6 state. Float32 cast also attempted (per the deeper-NaN-canonicalization concern from `Set/conversion-operation-consistent-nan`); also reverted as part of the unified revert. TAMM restored 82, TAWR restored 63, diff-prod 61/51 preserved.
+
+**Phase 5 (chapter-close-inspect, ARC TIER)**: This rung answers the keeper's Phase-5 inflection question empirically. Three signals taken together:
+1. **Yield-curve flattening**: arc yields 36→47 (+11), +2, +6, +6, +2, **(−1)** — the per-rung yield is monotonically decreasing in magnitude (or net-negative) across the last three rungs.
+2. **Rule-13 trip on first deeper rung**: the next coherent substrate move past PCM-EXT 1/2 (constructor + new.target proto) requires crossing into ConvertNumberToTypedArrayElement (Number coercion) + canonical-NaN preservation + ToBigInt error-propagation. This is `ta-element-coercion-spec-faithful` substrate — a *different locale*, not a residual of array-exotic-substrate.
+3. **Residual-shape coherence**: remaining ~37 fails compress to {resizable-buffer-detection (3 DV + ~10 TA), ta-element-coercion (~10 TAC), mapfn-this-binding (1), BigInt-key-not-writable (2)}. None of these are array-exotic-substrate residuals; all are substrate-locus deeper or lateral.
+
+**Conclusion**: `2026-05-28-array-exotic-substrate` arc reaches Phase-5 inflection at TAWR-EXT 5. EXT 6 is the negative-result rung that confirms the inflection per Rule 13 + Doc 744 §V.3 yield-curve heuristic.
+
+**Phase 6 (deferral emission)**: surfaces `ta-element-coercion-spec-faithful` as a new candidate locale (Entry 010 in deferrals-ledger). Lattice-meets with Entry 001 (bigint-arithmetic-wrongness) on the BigInt-TA branch; emit shared substrate when both un-defer.
+
+**Tag**: `phase-5-inflection-confirmed-via-negative-rung-6`.
+
+**Finding TAWR.6 (yield-curve negative as Phase-5 confirmation)**: Doc 744 §V.3's "≤3-rung close prediction" has a corollary: when an attempted rung within an arc returns negative AND the substrate move's diagnosis routes to a different locale, this is the canonical Phase-5 inflection signal. A negative rung that diagnoses to "deeper substrate within this locale" calls Rule-13 deeper-layer closure; a negative rung that diagnoses to "different locale's substrate" calls arc-close + deferral-emission. Standing rec: when sequencing closing rungs in an arc, deliberately probe a low-priority residual as the Phase-5 inflection test — if it yields ≥3 cleanly, the arc has more structure; if it goes negative AND routes laterally, the arc is closed.
+
+**Status**: TAWR-EXT 6 REVERTED locally (Rule 13). Arc `2026-05-28-array-exotic-substrate` PHASE-5 CLOSED. Cumulative TAWR across arc (final): 36 → 47 → 49 → 55 → 61 → 63. **+27 over five productive rungs + 1 negative inflection probe**. Gates intact at every productive rung.

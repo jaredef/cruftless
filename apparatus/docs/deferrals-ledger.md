@@ -123,3 +123,13 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: arc `2026-05-28-array-exotic-substrate` reaches Phase 5 chapter-close-inspect; OR a fourth resizable-buffer cell surfaces (TypedArray-side resizable-buffer OOB cluster — there are ~10 TypedArray exemplars in the "resizable-buffer-length-tracking" family that probably share this substrate's mouth).
 - **Un-defer condition**: arc closure OR TypedArray-side resizable-buffer surface count reaches the threshold to promote this candidate to the founding rung of the new locale.
 - **Status**: DEFERRED.
+
+### Entry 010 — `ta-element-coercion-spec-faithful` (2026-05-28)
+
+- **Candidate name**: `ta-element-coercion-spec-faithful` (proposed locale at `pilots/ta-element-coercion-spec-faithful/`).
+- **Originating rung**: `typed-array-wrong-result/trajectory.md` TAWR-EXT 6 (negative-result Rule-13 revert; Phase 5 + Phase 6 emission).
+- **Class**: probe-pending — the substrate move spans three sub-substrates that need joint design before founding: (a) ConvertNumberToTypedArrayElement per §10.4.5.16 for integer kinds (-0 normalization, range wrap, fractional truncation); (b) toFloat32 with canonical-NaN preservation for Float32Array (a naive `n as f32 as f64` cast breaks `Set/conversion-operation-consistent-nan`); (c) ToBigInt with error-propagation through `object_set_pk` for BigInt64/BigUint64 TAs (requires converting `object_set_pk` signature to Result, or threading error via a different path).
+- **Gating predicate**: probe rung needed to choose the architecture for (c) — either (i) lift `object_set_pk` to `Result<(), RuntimeError>` (wide downstream impact; many callers) or (ii) route TA element-set through a dedicated Result-returning path before reaching `object_set_pk` (smaller blast radius but introduces a separate dispatcher). The cell-set in the TAWR exemplar pool is ~10 cells (TAC `from/new-instance-from-zero`, `internals/Set/BigInt/string-tobigint`, `internals/DefineOwnProperty/BigInt/key-is-numericindex-desc-not-writable`, etc.); above spawn threshold but the architecture decision is the gate.
+- **Un-defer condition**: a probe-rung in this engagement lands a minimal `Result`-threading scaffold (either (i) or (ii) above) that closes one BigInt-TA cell without regressing TAMM. Once the scaffold exists, the remaining ~9 cells become a multi-rung close within this candidate's founded locale.
+- **Lattice-meet**: Entry 001 (`bigint-arithmetic-wrongness`) — the ToBigInt branch is shared substrate. When both un-defer, they may either share the locale or pair-enroll as siblings under a "bigint-coercion-substrate" arc per orphan-disposition Pattern III.2.
+- **Status**: DEFERRED.
