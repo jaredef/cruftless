@@ -10562,6 +10562,8 @@ impl Runtime {
             private_home: None,
             import_meta: None,
             new_target: None,
+            is_arrow: false,
+            param_count: proto.params as usize,
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
@@ -13525,6 +13527,26 @@ impl Runtime {
             None => return Ok(Value::Undefined),
         };
 
+        let eval_var_names = eval_var_scoped_declaration_names(&source);
+        if eval_var_names.iter().any(|name| name == "arguments")
+            && caller_has_arguments_conflict_binding(caller)
+        {
+            return Err(RuntimeError::SyntaxError(
+                "direct eval declaration conflicts with arguments binding".into(),
+            ));
+        }
+        if !caller.is_arrow && !caller.strict && !eval_source_is_strict(&source) {
+            if let Some(name) = eval_var_names
+                .iter()
+                .find(|name| caller_has_lexical_binding(caller, name))
+            {
+                return Err(RuntimeError::SyntaxError(format!(
+                    "direct eval var declaration conflicts with lexical binding '{}'",
+                    name
+                )));
+            }
+        }
+
         let mut overlay: Vec<(String, Value)> = Vec::new();
         for (slot, desc) in caller.upvalue_names.iter().enumerate() {
             if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
@@ -13586,6 +13608,15 @@ impl Runtime {
         } else {
             None
         }
+    }
+
+    fn direct_eval_binding_name(name: &str) -> String {
+        if let Some(rest) = name.strip_prefix("<scoped@") {
+            if let Some((_, original)) = rest.split_once('>') {
+                return original.to_string();
+            }
+        }
+        name.to_string()
     }
 
     pub fn call_function(
@@ -13729,11 +13760,13 @@ impl Runtime {
         // Standard dispatcher path follows.
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
+        let mut frame_is_arrow = false;
         let (proto_opt, native_opt, effective_this, effective_args, private_home) = {
             let o = self.obj(id);
             let private_home = o.private_home;
             match &o.internal_kind {
                 crate::value::InternalKind::Closure(c) => {
+                    frame_is_arrow = c.is_arrow;
                     // Ω.5.P04.E2.jit-runtime-dispatch + jit-deopt-disable:
                     // bump the call counter; if hot AND args are integer-
                     // Numbers AND params in {1,2} AND not previously
@@ -14177,6 +14210,8 @@ impl Runtime {
             private_home,
             import_meta: None,
             new_target: nt_for_this_call.clone(),
+            is_arrow: frame_is_arrow,
+            param_count: proto.params as usize,
             strict: proto.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
@@ -14202,6 +14237,9 @@ impl Runtime {
                 .pop()
                 .expect("gen_yields_stack underflow");
             let _ = gen_yields_id;
+            if let Err(RuntimeError::SyntaxError(msg)) = body_result.as_ref() {
+                return Err(RuntimeError::SyntaxError(msg.clone()));
+            }
             let mut terminal_return = false;
             let pending_error = match body_result {
                 Ok(v) => {
@@ -14714,6 +14752,161 @@ fn es_trim(s: &str) -> String {
     s.trim_matches(is_es_whitespace_or_lineterm).to_string()
 }
 
+fn caller_has_arguments_conflict_binding(frame: &Frame<'_>) -> bool {
+    frame
+        .locals_names
+        .iter()
+        .enumerate()
+        .any(|(slot, desc)| {
+            Runtime::direct_eval_binding_name(&desc.name) == "arguments"
+                && if frame.is_arrow {
+                    slot < frame.param_count
+                } else {
+                    desc.depth == 0
+                }
+        })
+}
+
+fn caller_has_lexical_binding(frame: &Frame<'_>, name: &str) -> bool {
+    frame.locals_names.iter().any(|desc| {
+        Runtime::direct_eval_binding_name(&desc.name) == name
+            && matches!(
+                desc.kind,
+                rusty_js_ast::VariableKind::Let | rusty_js_ast::VariableKind::Const
+            )
+    })
+}
+
+fn eval_source_is_strict(source: &str) -> bool {
+    let Ok(module) = rusty_js_parser::parse_module(source) else {
+        return false;
+    };
+    for item in &module.body {
+        let rusty_js_ast::ModuleItem::Statement(stmt) = item else {
+            return false;
+        };
+        match stmt {
+            rusty_js_ast::Stmt::Expression { expr, .. } => match expr {
+                rusty_js_ast::Expr::StringLiteral { value, .. } if value == "use strict" => {
+                    return true;
+                }
+                rusty_js_ast::Expr::StringLiteral { .. } => continue,
+                _ => return false,
+            },
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn eval_var_scoped_declaration_names(source: &str) -> Vec<String> {
+    let Ok(module) = rusty_js_parser::parse_module(source) else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for item in &module.body {
+        match item {
+            rusty_js_ast::ModuleItem::Statement(stmt) => {
+                collect_stmt_var_scoped_names(stmt, &mut names);
+            }
+            rusty_js_ast::ModuleItem::Export(export) => match export {
+                rusty_js_ast::ExportDeclaration::Declaration {
+                    decl_stmt: Some(stmt),
+                    ..
+                } => collect_stmt_var_scoped_names(stmt, &mut names),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    names
+}
+
+fn collect_stmt_var_scoped_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<String>) {
+    use rusty_js_ast::{ForBinding, ForInit, Stmt, VariableKind};
+
+    match stmt {
+        Stmt::Variable(var) if var.kind == VariableKind::Var => {
+            for decl in &var.declarators {
+                collect_binding_pattern_names(&decl.target, out);
+            }
+        }
+        Stmt::FunctionDecl { name, .. } => {
+            if let Some(binding) = name {
+                out.push(binding.name.clone());
+            }
+        }
+        Stmt::Block { body, .. } => {
+            for stmt in body {
+                collect_stmt_var_scoped_names(stmt, out);
+            }
+        }
+        Stmt::If {
+            consequent,
+            alternate,
+            ..
+        } => {
+            collect_stmt_var_scoped_names(consequent, out);
+            if let Some(alternate) = alternate {
+                collect_stmt_var_scoped_names(alternate, out);
+            }
+        }
+        Stmt::For { init, body, .. } => {
+            if let Some(ForInit::Variable(var)) = init {
+                if var.kind == VariableKind::Var {
+                    for decl in &var.declarators {
+                        collect_binding_pattern_names(&decl.target, out);
+                    }
+                }
+            }
+            collect_stmt_var_scoped_names(body, out);
+        }
+        Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
+            if let ForBinding::Decl {
+                kind: VariableKind::Var,
+                target,
+                ..
+            } = left
+            {
+                collect_binding_pattern_names(target, out);
+            }
+            collect_stmt_var_scoped_names(body, out);
+        }
+        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+            collect_stmt_var_scoped_names(body, out);
+        }
+        Stmt::Switch { cases, .. } => {
+            for case in cases {
+                for stmt in &case.consequent {
+                    collect_stmt_var_scoped_names(stmt, out);
+                }
+            }
+        }
+        Stmt::Try {
+            block,
+            handler,
+            finalizer,
+            ..
+        } => {
+            collect_stmt_var_scoped_names(block, out);
+            if let Some(catch) = handler {
+                collect_stmt_var_scoped_names(&catch.body, out);
+            }
+            if let Some(finalizer) = finalizer {
+                collect_stmt_var_scoped_names(finalizer, out);
+            }
+        }
+        Stmt::Labelled { body, .. } => collect_stmt_var_scoped_names(body, out),
+        _ => {}
+    }
+}
+
+fn collect_binding_pattern_names(pattern: &rusty_js_ast::BindingPattern, out: &mut Vec<String>) {
+    for binding in pattern.collect_names() {
+        out.push(binding.name.clone());
+    }
+}
+
 pub fn property_key(v: &Value) -> crate::value::PropertyKey {
     match v {
         Value::Symbol(rc) => crate::value::PropertyKey::Symbol(rc.clone()),
@@ -14813,6 +15006,8 @@ pub struct Frame<'a> {
     /// callers, function-call frames) leave this None; Op::PushImportMeta
     /// pushes Undefined in that case.
     pub import_meta: Option<crate::value::ObjectRef>,
+    pub is_arrow: bool,
+    pub param_count: usize,
     /// Ω.5.P04.E2.strict-write-enforcement: strict-mode flag for this
     /// frame. Module frames inherit from CompiledModule.strict; function
     /// frames inherit from FunctionProto.strict. Read by Op::SetProp,
@@ -15079,6 +15274,8 @@ impl<'a> Frame<'a> {
             private_home: None,
             import_meta: None,
             new_target: None,
+            is_arrow: false,
+            param_count: 0,
             strict: m.strict,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),

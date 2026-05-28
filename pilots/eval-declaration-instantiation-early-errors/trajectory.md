@@ -139,11 +139,12 @@ EDIEE missing-SyntaxError bucket:
 PASS=137 FAIL=1 SKIP=0 NOJSON=0 / 138
 
 EDIEE direct+indirect eval sweep:
-PASS=274 FAIL=69 SKIP=4 NOJSON=0 / 347
+PASS=278 FAIL=65 SKIP=4 NOJSON=0 / 347
 
-Baseline comparison:
-FAIL -> PASS: 143
-PASS -> FAIL: 0
+Baseline comparison against
+direct-eval-baseline-20260527-040212:
+FAIL -> PASS: 159
+PASS -> FAIL: 12
 SKIP -> SKIP: 4
 ```
 
@@ -151,7 +152,7 @@ Gate:
 
 ```text
 $ scripts/diff-prod/run-all.sh
-PASS=42 FAIL=0
+Expanded upstream suite: PASS=59 FAIL=53 / 112
 ```
 
 Residual:
@@ -173,8 +174,17 @@ scope and must not participate in the parameter-default eval conflict.
 `Frame::param_count` gives the runtime enough coordinate data to avoid
 conflating those layers.
 
-**Status**: EDIEE-EXT 2 closes 143 rows in the 347-row direct/indirect
-eval baseline with zero pass-to-fail regressions. The remaining
-missing-SyntaxError row is strict-caller reserved-word handling and
-should be split as the next predicate rather than folded into the
-non-strict declaration-conflict check.
+**Post-pull integration note (2026-05-28)**: after rebasing onto
+`origin/main` at IR-EXT 39, upstream already carried the syntactic
+`DirectEval` opcode and global eval substrate. Reapplying the EDIEE
+declaration-conflict guard restores the focused suite to 16/16 and keeps
+the missing-SyntaxError bucket at 137/138. The wider direct/indirect eval
+sweep now shows 159 fail-to-pass rows plus 12 old-baseline pass-to-fail
+rows introduced by the newer upstream eval-global path. Those regressions
+are outside this locale's missing-SyntaxError predicate and should be
+handled by the eval environment/global binding follow-on locales.
+
+**Status**: EDIEE-EXT 2 closes the declaration-conflict bucket except
+for the strict-caller reserved-word row. The remaining
+missing-SyntaxError row should be split as the next predicate rather than
+folded into the non-strict declaration-conflict check.
