@@ -2196,3 +2196,34 @@ Next session candidates (per seed §I.4 deferred list):
 2. Full ValidateAndApplyPropertyDescriptor lift — folds rung-10 + rung-16 + rung-17 into one Result<bool, Err> helper
 3. TypedArraySpeciesCreate paralleling rung-15
 4. TC39 stage-3 proposal sweep (different work category: implementing un-shipped APIs)
+
+---
+
+## Rung-cluster-20 — IR locale re-entry survey (2026-05-27, post-pivot)
+
+Per keeper directive Telegram 10095 ("Pivot to IR") after TAMM (ten rungs) + ASU + AT locale completions on the test262-conformance breadth tier. The IR locale fold (2026-05-22 rung-19) recorded 77.6% sample-pass / 21.6 pp gap / 24% telos progress; many engagement-wide landings since (parallel agent's Temporal grammar + this work-stream's TAMM/ASU/AT) likely shift the baseline.
+
+**Re-entry probes (2026-05-27, cruft built from main @ f6b9c1f4)**:
+
+- TDZ-named test262 paths (13 explicit `*tdz*` / `*dead-zone*` files): **0 PASS / 13 FAIL** (100% fail).
+- Broader let/const cluster (120 paths under `language/statements/{let,const}` + tdz-keyword): **102 PASS / 18 FAIL** (85% pass).
+- Direct probes confirm TDZ unenforced in three shapes:
+  - `function f() { return x; let x = 1; }` returns undefined (no throw).
+  - `function f2() { { return x; } let x = 1; }` returns undefined (no throw).
+  - `let y = y;` self-init succeeds (no throw).
+  - But the nested-if-block + same-block-let case DOES throw — partial TDZ machinery exists, scoped narrowly.
+
+**IR-EXT 20 disposition**: this is a survey-only rung. No substrate landed; the survey scopes the open candidates so the next-rung choice can be made with measured yield numbers in hand rather than the seed §I.4 estimates from 2026-05-22.
+
+**Candidate rungs (ranked by yield-per-LOC + risk-shape)**:
+
+| # | Candidate | Estimated yield | Substrate scope | Risk |
+|---|---|---:|---|---|
+| A | TDZ enforcement (function-body let/const) | ~13-30 tests | New Value sentinel + Op::LoadLocalCheckTDZ + compiler hoist-as-TDZ at block entry; ~200 LOC across runtime + bytecode + interp | Medium — touches every let/const code path |
+| B | TypedArraySpeciesCreate for slice/subarray/map/filter | ~8-15 tests | Compose with TAMM-EXT 4 + 7 species substrate; route slice/map/filter through SpeciesConstructor; ~60 LOC | Low — contained to TA prototype methods |
+| C | Full ValidateAndApplyPropertyDescriptor lift | ~0-5 direct | Structural lift returning Result<bool, Err>; folds rung-10 + rung-16 + rung-17; ~150 LOC | Medium — many call sites |
+| D | TDZ-named subset only (`let y = y` + similar narrow shapes) | ~5-8 tests | Detect self-init in initializer-evaluation phase; ~30 LOC | Low |
+
+**Tag**: `cluster-pivot-resurvey-20`. Defers substrate to rung-21 pending keeper selection.
+
+**Status**: IR-EXT 20 CLOSED locally (survey-only rung; no substrate). Awaiting keeper rung-21 selection from candidates A-D.
