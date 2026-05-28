@@ -10971,11 +10971,26 @@ impl Runtime {
                     frame.pc += 2;
                     let v = frame.pop()?;
                     if let Some(cell) = frame.upvalues.get(slot) {
+                        // IR-EXT 33 (TDZ-on-assign cross-frame): symmetric
+                        // with Op::StoreLocal's TDZ check from EXT 26.
+                        // Assignment via closure to a still-TDZ upvalue cell
+                        // throws ReferenceError per §13.3.1.1 step 26.b.
+                        let prev = cell.borrow().clone();
+                        if let Value::Symbol(ref s) = prev {
+                            if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
+                                let nm = frame
+                                    .upvalue_names
+                                    .get(slot)
+                                    .map(|d| d.name.clone())
+                                    .unwrap_or_else(|| format!("<upvalue${}>", slot));
+                                return Err(RuntimeError::ReferenceError(format!(
+                                    "Cannot access '{}' before initialization",
+                                    nm
+                                )));
+                            }
+                        }
                         *cell.borrow_mut() = v;
                     } else {
-                        // Out-of-range StoreUpvalue: shouldn't happen for
-                        // well-formed bytecode. Extend with a fresh cell so
-                        // a later LoadUpvalue at the same slot reads it back.
                         while frame.upvalues.len() <= slot {
                             frame.upvalues.push(new_upvalue_cell(Value::Undefined));
                         }

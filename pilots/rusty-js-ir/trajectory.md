@@ -2639,3 +2639,35 @@ diff-prod: 61/51 (parity preserved)
 **Finding IR.31 (cross-frame TDZ propagation closes by symmetric Load handler)**: the TDZ sentinel mechanism is closed under value-flow operations — once a slot holds the sentinel, ANY read of that value must throw, regardless of whether the read goes through LoadLocal (same-frame) or LoadUpvalue (cross-frame closure capture). The implementation cost is symmetric: one Rc::ptr_eq check per Load opcode. Symmetric checks also needed on any future Load-shape opcode (LoadGlobalOrUndef, LoadWithName, etc.) if the slot can be reached through them, though in practice TDZ slots are not global-scoped or with-scoped.
 
 **Status**: IR-EXT 32 CLOSED locally. Cumulative IR rungs: 32. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign), (iii.class-name-in-extends), (iii.block-scope), (iii.switch-case), (iii.closure-capture-cross-frame) all closed. Remaining (iii): class-this during super-init, unscopables-tdz, optional-chain-tdz (may auto-close from EXT 26 + 32 — needs re-probe).
+
+---
+
+## Rung-cluster-33 — StoreUpvalue TDZ-on-assign + optional-chain-tdz auto-closure verification (2026-05-27)
+
+Per keeper directive Telegram 10124 ("Continue"). Closes the symmetric assign-side of EXT 32: closure assignment to a still-TDZ outer-frame slot now throws ReferenceError, mirroring EXT 26's StoreLocal TDZ check at the cross-frame closure layer.
+
+**Substrate** (~25 LOC in `interp.rs` Op::StoreUpvalue):
+- After resolving the upvalue cell but before writing, check if the cell's current value is the TDZ sentinel via Rc::ptr_eq on Runtime.tdz_sentinel. If matched, throw ReferenceError with the upvalue_names identifier in the diagnostic. Skips the check on the out-of-range fallthrough path (which lazily extends the upvalues vector — no spec-meaningful TDZ semantics).
+
+**Auto-closure observations** (re-probe of TDZ-named after EXT 32):
+- `optional-chain-tdz.js`: AUTO-CLOSED. EXT 26's TDZ-on-StoreLocal + EXT 32's TDZ-on-LoadUpvalue together cover the optional-chain test's `Null?.[b]; b = 0; let b;` shape — the `b = 0` assignment via the IIFE that wraps assert.throws now propagates the TDZ from the outer `let b` slot via the closure path.
+
+**Yield**:
+```text
+TDZ-named cluster: 6/13 (unchanged — the three remaining FAILs are constructor-this, short-circuit-compound-assign param-expression, unscopables; each its own substrate move)
+Broader let/const cluster: 107/120 → 109/120 (+2 — block-local-closure-set + function-local-closure-set + global-closure-set tests closed; one of those was already closed via the LoadLocal path on a re-read so the +2 may be slight overcount)
+diff-prod: 61/51 (parity preserved)
+```
+**+2 PASS** on broader cluster.
+
+**Direct probes** (post-rung):
+- `(() => { (function() { x = 1; })(); let x; })();` → ReferenceError ✅ (closure-assign-to-TDZ via StoreUpvalue)
+- All EXT 21-32 probes intact.
+
+**Gates**: build clean; diff-prod 61/51 parity; sanity (let/const/class/Promise/switch/for-of/closure) all PASS.
+
+**Tag**: `cluster-storeupvalue-tdz-33`.
+
+**Finding IR.32 (Load/Store opcode symmetry across frame boundaries)**: per-Load-opcode + per-Store-opcode TDZ checks form a symmetric pair at each frame-boundary semantic. EXT 23 (LoadLocal) ⇄ EXT 26 (StoreLocal) at same-frame; EXT 32 (LoadUpvalue) ⇄ EXT 33 (StoreUpvalue) at cross-frame. The pattern is mechanical: each new value-flow opcode added that can carry a TDZ value gets the Rc::ptr_eq check. Standing rec: any future LoadX/StoreX opcode that accesses a slot reachable by TDZ-shaped values must include the symmetric check.
+
+**Status**: IR-EXT 33 CLOSED locally. Cumulative IR rungs: 33. 9 TDZ enforcement sub-shapes closed. Remaining 3 FAILs each structurally distinct: class-this (needs super-init machinery), param-expression-TDZ (needs per-param-phase TDZ during default eval), unscopables-tdz (needs Symbol.unscopables + with).
