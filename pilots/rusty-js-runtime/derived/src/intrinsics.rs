@@ -17670,7 +17670,8 @@ impl Runtime {
                 "__kind".into(),
                 Value::String(Rc::new("ArrayBuffer".into())),
             );
-            o.proto = Some(ab_proto_for_ctor);
+            // PCM-EXT 2: honor new.target.prototype per OrdinaryCreateFromConstructor.
+            o.proto = Some(rt.prototype_from_new_target_or(ab_proto_for_ctor));
             let id = rt.alloc_object(o);
             rt.array_buffers.insert(
                 id,
@@ -17843,7 +17844,8 @@ impl Runtime {
             };
             let mut o = Object::new_ordinary();
             o.set_own_internal("__kind".into(), Value::String(Rc::new("DataView".into())));
-            o.proto = Some(dv_proto_for_ctor);
+            // PCM-EXT 2: honor new.target.prototype per OrdinaryCreateFromConstructor.
+            o.proto = Some(rt.prototype_from_new_target_or(dv_proto_for_ctor));
             let id = rt.alloc_object(o);
             rt.typed_array_views.insert(
                 id,
@@ -17925,7 +17927,7 @@ impl Runtime {
                         let mut o = Object::new_ordinary();
                         o.set_own_internal("__kind".into(), Value::String(Rc::new(n.clone())));
                         o.set_own_internal("__ta_kind".into(), Value::String(Rc::new(n.clone())));
-                        o.proto = Some(proto_id);
+                        o.proto = Some(rt.prototype_from_new_target_or(proto_id));
                         let id = rt.alloc_object(o);
                         rt.typed_array_views.insert(
                             id,

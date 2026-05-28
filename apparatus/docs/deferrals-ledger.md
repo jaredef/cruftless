@@ -114,3 +114,12 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: any future rung surfaces a fourth built-in whose `prototype.constructor` reverse-edge is missing (the failure shape: `Object.getPrototypeOf(instance).constructor === Object` rather than the expected ctor).
 - **Un-defer condition**: fourth offender lands, OR keeper directs an apparatus-pilot sweep over the constructor-registration helpers in `intrinsics.rs` to enumerate every `set_own_frozen("prototype", proto)` site and verify a paired `set_own_internal("constructor", ctor)` exists.
 - **Status**: DEFERRED.
+
+### Entry 009 — `resizable-buffer-detection-per-access` (2026-05-28)
+
+- **Candidate name**: `resizable-buffer-detection-per-access` (proposed locale at `pilots/resizable-buffer-detection-per-access/`).
+- **Originating rung**: `typed-array-wrong-result/trajectory.md` TAWR-EXT 5, Phase 6 deferral emission.
+- **Class**: spawn-threshold (Doc 737 §II) — three cells observed (DataView `custom-proto-access-resizes-buffer-{invalid-by-length, invalid-by-offset, valid-by-offset}.js`). At the ≥3 candidate-locale threshold for promotion; deferred only because the resizable-buffer substrate work is non-trivial (per-access OOB recompute + ArrayBuffer.prototype.resize tracking) and the current arc is closing toward Phase 5 chapter-close.
+- **Gating predicate**: arc `2026-05-28-array-exotic-substrate` reaches Phase 5 chapter-close-inspect; OR a fourth resizable-buffer cell surfaces (TypedArray-side resizable-buffer OOB cluster — there are ~10 TypedArray exemplars in the "resizable-buffer-length-tracking" family that probably share this substrate's mouth).
+- **Un-defer condition**: arc closure OR TypedArray-side resizable-buffer surface count reaches the threshold to promote this candidate to the founding rung of the new locale.
+- **Status**: DEFERRED.

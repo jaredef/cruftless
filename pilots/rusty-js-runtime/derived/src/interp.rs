@@ -767,6 +767,35 @@ impl Runtime {
         )
     }
 
+    /// PCM-EXT 2: GetPrototypeFromConstructor per §10.1.14 / §10.1.13. When
+    /// invoked via `new` or `Reflect.construct`, `current_new_target` carries
+    /// the constructor whose `.prototype` should be honored. If NewTarget is
+    /// absent (plain function call) or its `prototype` slot is not an Object,
+    /// fall back to `default_proto`. Native constructors invoke this to make
+    /// `new.target.prototype` honored when a subclass or `Reflect.construct`
+    /// passes a custom NewTarget.
+    pub fn prototype_from_new_target_or(
+        &self,
+        default_proto: rusty_js_gc::ObjectId,
+    ) -> rusty_js_gc::ObjectId {
+        let nt = match &self.current_new_target {
+            Some(v) => v.clone(),
+            None => return default_proto,
+        };
+        let nt_id = match nt {
+            Value::Object(id) => id,
+            _ => return default_proto,
+        };
+        let proto_val = self
+            .obj(nt_id)
+            .get_own("prototype")
+            .map(|d| d.value.clone());
+        match proto_val {
+            Some(Value::Object(id)) => id,
+            _ => default_proto,
+        }
+    }
+
     /// Ω.5.P62.E21: op_add with Object→primitive dispatch per ECMA
     /// §13.15.4. If either operand is Object, ToPrimitive(default) on
     /// both; then if either resulting primitive is String, concatenate;

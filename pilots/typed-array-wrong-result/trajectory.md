@@ -186,3 +186,48 @@ TAWR cluster POST-EXT 4: PASS=61 FAIL=39 / 100 (61.0%)
 **Phase 6 (deferral emission)**: surfaces candidate `prototype-constructor-reverse-edge-audit` as an apparatus-pilot rather than a substrate locale (audit-tier work per orphan-disposition Pattern III.3). Emitted as Ledger Entry 008 in `apparatus/docs/deferrals-ledger.md` (see ledger).
 
 **Status**: TAWR-EXT 4 CLOSED locally. Arc-tier accumulation: fourth rung in `2026-05-28-array-exotic-substrate` arc. Cumulative TAWR across arc: 36 → 47 → 49 → 55 → 61 (+25 total over four rungs).
+
+## TAWR-EXT 5 — LANDED (2026-05-28) — GetPrototypeFromConstructor honoring new.target.prototype
+
+Per keeper directive Telegram 10181 ("continue"). Fifth rung; arc enrollment `2026-05-28-array-exotic-substrate`.
+
+**Phase 1 (Spawn)**:
+- **M** = `new SubclassOf(BuiltinCtor)(...)` or `Reflect.construct(BuiltinCtor, args, NewTarget)` where NewTarget !== BuiltinCtor; the resulting instance's `[[Prototype]]` must be NewTarget.prototype if it is an Object, else the BuiltinCtor's intrinsic-default prototype.
+- **T** = the resulting instance has `Object.getPrototypeOf(inst) === NewTarget.prototype` when NewTarget.prototype is an Object; else === intrinsicDefault.
+- **I** = the `o.proto = Some(...)` slot in each native constructor body.
+- **R** = lattice with PCM-EXT 1 (TAWR-EXT 4 ctor.prototype.constructor wiring); same `instance.[[Prototype]]` cell, different sub-shape (forward edge from new.target vs. reverse edge to ctor).
+- **Observability** = ordinary.
+- **Mouth-gating prerequisite**: `current_new_target` already wired in `interp.rs` Call/Construct dispatch (line ~14290 native-frame branch).
+
+**Phase 2 (Baseline-inspect)**: post-EXT 4 TAWR=61/100. Residual surface: DataView `custom-proto-if-object-is-used` + TypedArrayConstructors `ctors-bigint/buffer-arg/use-custom-proto-if-object` both fail with `Object.getPrototypeOf(instance).constructor === Object` instead of the subclass-expected ctor. Sub-shape of the prior PCM-EXT 1 work: now that proto.constructor walks correctly, the next failure surface is the proto itself being wrong when a subclass is in play.
+
+**Phase 3**: no duplication signal at this rung — the substrate move targets a small set of named native constructors (ArrayBuffer, DataView, TypedArray ×12 via shared `make_native_with_length` closure). The pattern is structurally shared via `Runtime::prototype_from_new_target_or` helper rather than re-implemented per ctor.
+
+**Phase 4**: single-round, no negative.
+
+**Substrate** (~30 LOC across two files):
+
+`pilots/rusty-js-runtime/derived/src/interp.rs`:
+- New `Runtime::prototype_from_new_target_or(default_proto) -> ObjectId` method implementing §10.1.14 GetPrototypeFromConstructor: read `current_new_target`; if Object with `"prototype"` own-slot whose value is an Object, return that ObjectId; else fall back to `default_proto`.
+
+`pilots/rusty-js-runtime/derived/src/intrinsics.rs` — three call-site updates:
+- DataView ctor: `o.proto = Some(rt.prototype_from_new_target_or(dv_proto_for_ctor))`.
+- ArrayBuffer ctor: same shape with `ab_proto_for_ctor`.
+- TypedArray per-kind ctor (`make_native_with_length` closure shared by all 12 typed-array kinds): both `o.proto = Some(proto_id)` sites updated to `rt.prototype_from_new_target_or(proto_id)`.
+
+**Yield**:
+```text
+TAWR cluster PRE-EXT 5:  PASS=61 FAIL=39 / 100 (61.0%)
+TAWR cluster POST-EXT 5: PASS=63 FAIL=37 / 100 (63.0%)
+```
+**+2 PASS** this rung. DataView `custom-proto-if-object-is-used` ✅; TAC `ctors-bigint/buffer-arg/use-custom-proto-if-object.js` ✅.
+
+**Gates**: build clean; diff-prod 61/51 (parity preserved); TAMM unchanged 82/100; sanity intact.
+
+**Tag**: `cluster-getprototype-from-constructor-newtarget-5`.
+
+**Finding TAWR.5 (NewTarget-honoring as shared substrate helper)**: when several native constructors share the same "default proto via fixed slot" idiom, the per-ctor edit to honor `new.target.prototype` would duplicate across every constructor. Promote the read to a shared `Runtime::prototype_from_new_target_or(default)` helper; each ctor becomes a single-line call-site update. Standing rec: when a substrate move would touch ≥3 closures with the same shape, promote the shared logic to a method on `Runtime` rather than inlining at each site (lattice-meet via helper-tier per Doc 744 §IV.2 relational-form).
+
+**Phase 6 (deferral emission)**: surfaces `resizable-buffer-detection-per-access` as a candidate locale — the residual DataView `custom-proto-access-resizes-buffer-*` failures (3 cells: invalid-by-length, invalid-by-offset, valid-by-offset) all share the shape "per-access OOB check when the underlying buffer is resizable and was resized between construction and access". Currently DV stores `fixed_length` at construction; the resizable-buffer path needs a per-access recompute. Below spawn threshold for a dedicated locale (3 of one shape); emitted as Ledger Entry 009.
+
+**Status**: TAWR-EXT 5 CLOSED locally. Arc-tier accumulation: fifth rung in `2026-05-28-array-exotic-substrate` arc. Cumulative TAWR across arc: 36 → 47 → 49 → 55 → 61 → 63 (+27 total over five rungs).
