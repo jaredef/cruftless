@@ -22,12 +22,13 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 **LOC estimate**: ~80-120 (Cranelift stub assembly + IcEntry handoff).
 **Risk**: composition with existing OSR boundary; the JIT-→interp re-entry on bail must handle the rewritten bytecode.
 
-### (c) `ihi-array-entries` — 🟢 RIPE
+### (c) `ihi-array-entries` — **SPAWNED** 2026-05-28 as [`pilots/ihi-array-entries/`](../../pilots/ihi-array-entries/seed.md)
 **Telos**: extend IHI_TABLE with Array.prototype intrinsic entries: push/pop/shift/unshift, forEach (with callback), indexOf, includes, slice, concat. Pattern mirrors existing String entries.
 **Anchor**: `json_parse_transform` is Array-method-heavy; pre-GPI median 1773 ms. Per-entry LOC budget per IHI's existing pattern: ~30-50 LOC each.
 **Deeper-layer design (rule 13 prospective)**: skip cache-tier substrate work; reuse the existing CallMethodIcCached + GetPropSkipForMethod bytecode-rewrite infrastructure. Each Array entry costs the same shape as a String entry.
 **Composition risk**: receiver_kind dispatch must distinguish Object-receivers-that-are-Arrays from generic Objects; the IhiReceiverKind::Array gate already exists per interp_ic_table.rs.
 **Predicted yield**: json_parse_transform 1773 → ≤1600 ms (-10%); cruft/node 14.78x → ≤13.3x.
+**Founding correction**: IAE-EXT 0 confirms the receiver-kind enum exists, but Array entries also need prototype-specific cache ownership because the current IHI override-safety cache populates through `string_prototype`.
 
 ### (d) `gpi-override-safety` — ⚪ HYPOTHETICAL
 **Telos**: harden Op::GetPropSkipForMethod against user-installed own-property override of an intrinsic key on the receiver type. First-cut GPI assumes frozen-prototype semantics; a user adding `String.prototype.toLowerCase = function() { ... }` after GPI rewrite would not invalidate the cache.
