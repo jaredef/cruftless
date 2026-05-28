@@ -2436,6 +2436,46 @@ impl Compiler {
                 ..
             } => {
                 // Tier-Ω.5.m: switch lowering per ECMA-262 §14.12.4.
+                // IR-EXT 32: switch body is a single block-scope per §14.12.4
+                // step 1 — let/const declared in any case are block-scoped to
+                // the switch, visible across all cases (including fall-through
+                // and non-matching cases), and in TDZ until their declaration
+                // line executes. Pre-walk all cases' consequents for let/const
+                // Identifier decls; pre-allocate slots + emit PushTDZ; push
+                // map onto block_pre_slots stack. Mirrors EXT 31 Stmt::Block
+                // exactly, applied to the switch's implicit block.
+                self.block_depth += 1;
+                let mut switch_pre: std::collections::HashMap<String, u16> =
+                    std::collections::HashMap::new();
+                for case in cases.iter() {
+                    for s in &case.consequent {
+                        if let Stmt::Variable(v) = s {
+                            if !matches!(
+                                v.kind,
+                                VariableKind::Let | VariableKind::Const
+                            ) {
+                                continue;
+                            }
+                            for d in &v.declarators {
+                                if let rusty_js_ast::BindingPattern::Identifier(id) = &d.target {
+                                    if switch_pre.contains_key(&id.name) {
+                                        continue;
+                                    }
+                                    let slot = self.alloc_local(LocalDescriptor {
+                                        name: id.name.clone(),
+                                        kind: v.kind,
+                                        depth: 0,
+                                    });
+                                    switch_pre.insert(id.name.clone(), slot);
+                                    encode_op(&mut self.bytecode, Op::PushTDZ);
+                                    encode_op(&mut self.bytecode, Op::InitLocal);
+                                    encode_u16(&mut self.bytecode, slot);
+                                }
+                            }
+                        }
+                    }
+                }
+                self.block_pre_slots.push(switch_pre);
                 // 1. Spill the discriminant into a hidden local so the
                 //    per-case StrictEq compares always use the same value.
                 let disc_slot = self.alloc_temp("<switch.disc>");
@@ -2515,6 +2555,9 @@ impl Compiler {
                 for site in frame.break_patches {
                     self.patch_jump_at(site);
                 }
+                // IR-EXT 32: pop the switch's block_pre_slots entry.
+                self.block_pre_slots.pop();
+                self.block_depth -= 1;
             }
             Stmt::ForIn {
                 left, right, body, ..

@@ -10942,12 +10942,27 @@ impl Runtime {
                         .get(slot)
                         .map(|cell| cell.borrow().clone())
                         .unwrap_or(Value::Undefined);
-                    // Tier-Ω.5.sssss: tag the upvalue name for callee
-                    // diagnostics. Minified closures resolve callees via
-                    // upvalues, so without this tag the trace lost the
-                    // last identifier name before a failing call.
-                    if let Some(desc) = frame.upvalue_names.get(slot) {
-                        frame.last_property_lookup = Some(format!("^{}", desc.name));
+                    let upname = frame
+                        .upvalue_names
+                        .get(slot)
+                        .map(|d| d.name.clone());
+                    if let Some(ref name) = upname {
+                        frame.last_property_lookup = Some(format!("^{}", name));
+                    }
+                    // IR-EXT 32: TDZ check on upvalue read mirrors EXT 23's
+                    // LoadLocal check. Closures that capture a TDZ-seeded
+                    // slot must throw ReferenceError when reading the slot
+                    // before its declaration line overwrites the sentinel.
+                    // Required for switch-case fall-through TDZ + nested
+                    // closure-captures-outer-block-let scenarios.
+                    if let Value::Symbol(ref s) = v {
+                        if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
+                            let nm = upname.unwrap_or_else(|| format!("<upvalue${}>", slot));
+                            return Err(RuntimeError::ReferenceError(format!(
+                                "Cannot access '{}' before initialization",
+                                nm
+                            )));
+                        }
                     }
                     frame.push(v);
                 }

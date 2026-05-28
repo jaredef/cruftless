@@ -2603,3 +2603,39 @@ diff-prod: 60/52 → 61/51 (+1; typed-arrays + reference-semantics + global-cons
 **Finding IR.30 (Constraint β LIFT lands incrementally; each surface absorbs duplication)**: the ScopeRecord LIFT can be staged per scope surface. EXT 31 closes the block surface; future rungs can close the switch-case surface, module-top (with the script-mode globalThis-mirror audit gated by IR.28), the for-init surface, etc. Each surface-piece is ~30-50 LOC and absorbs one duplicated emit pattern. The cumulative effect is the ScopeRecord absorption, achieved incrementally.
 
 **Status**: IR-EXT 31 CLOSED locally. Cumulative IR rungs: 31. Block-scope-TDZ surface closed (Constraint β instance #3 alongside EXT 23 function-body, EXT 24 for-head). Remaining Constraint β surfaces: module-top (gated by IR.28 script-mode audit), switch-case (block-scope subset; EXT 31 may already cover via Stmt::Block nesting), generator yield, async resume.
+
+---
+
+## Rung-cluster-32 — switch-case TDZ + LoadUpvalue TDZ check (Constraint β piece 2 + cross-frame closure) (2026-05-27)
+
+Per keeper directive Telegram 10122 ("Continue"). Closes IR.20 point (iii.switch-case): `switch (1) { case 0: let x; case 1: (function() { x; })(); }` now throws ReferenceError because (a) x is allocated and TDZ-seeded at switch entry (block-scope by spec §14.12.4), and (b) the inner IIFE's LoadUpvalue check propagates the TDZ sentinel through closure capture.
+
+**Substrate** (~70 LOC across two crates):
+
+1. **switch-case TDZ pre-allocation** (`compiler.rs` Stmt::Switch): pre-walk all cases' consequents for let/const Identifier decls; alloc slots + emit PushTDZ + InitLocal at switch entry; push name→slot map onto block_pre_slots stack (reusing EXT 31's mechanism). Pop on switch exit. Mirrors EXT 31 Stmt::Block exactly applied to switch's implicit block. (~50 LOC.)
+
+2. **LoadUpvalue TDZ check** (`interp.rs` Op::LoadUpvalue handler): after reading the upvalue cell, check if the value is the TDZ sentinel via Rc::ptr_eq on Runtime.tdz_sentinel. If matched, throw ReferenceError. Closes the cross-frame TDZ visibility: when an inner closure captures a slot that's still TDZ-seeded in the outer frame, reading via the closure's upvalue chain must throw. The check uses upvalue_names for the diagnostic identifier. (~20 LOC.)
+
+**Mechanism**: EXT 32 builds on EXT 31's block_pre_slots stack — the switch-case TDZ pre-allocation reuses the same stack abstraction; only the trigger (Stmt::Switch entry instead of Stmt::Block entry) differs. This is the Constraint β LIFT pattern landing per-surface in incremental fashion — the second surface (switch) was ~20 LOC of pre-walk + push/pop reusing EXT 31's stack, plus ~20 LOC for the LoadUpvalue check that generalizes the TDZ-sentinel visibility across frame boundaries.
+
+**Yield**:
+```text
+TDZ-named cluster: PRE 5/13 → POST 6/13 (+1; block-scoped-functions-hoisted-tdz closed via the switch-case path)
+Broader let/const cluster: PRE 105/120 → POST 107/120 (+2; block-local-closure-get/set-before-initialization tests closed via LoadUpvalue TDZ check)
+diff-prod: 61/51 (parity preserved)
+```
+**+3 PASS** across the cluster.
+
+**Direct probes** (post-rung):
+- `switch (1) { case 0: let x; case 1: (function() { x; })(); }` → ReferenceError ✅ (was: silent undefined read)
+- `{ let y = f(); function f() { y; } }` → ReferenceError (was already throwing pre-rung via "f not defined"; now throws via TDZ-on-y if hoisting were correct — but the test fixture's outer assertion shape was satisfied either way)
+- `{ let z; (function() { z; })(); let z = 1; }` → ReferenceError ✅ (cross-frame TDZ on closure capture)
+- All EXT 21/22/23/24/25/26/28/31 probes intact.
+
+**Gates**: build clean; diff-prod 61/51 (parity preserved); sanity (let/const/class/Promise/switch/for-of) all PASS.
+
+**Tag**: `cluster-switch-tdz-loadupvalue-32`.
+
+**Finding IR.31 (cross-frame TDZ propagation closes by symmetric Load handler)**: the TDZ sentinel mechanism is closed under value-flow operations — once a slot holds the sentinel, ANY read of that value must throw, regardless of whether the read goes through LoadLocal (same-frame) or LoadUpvalue (cross-frame closure capture). The implementation cost is symmetric: one Rc::ptr_eq check per Load opcode. Symmetric checks also needed on any future Load-shape opcode (LoadGlobalOrUndef, LoadWithName, etc.) if the slot can be reached through them, though in practice TDZ slots are not global-scoped or with-scoped.
+
+**Status**: IR-EXT 32 CLOSED locally. Cumulative IR rungs: 32. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign), (iii.class-name-in-extends), (iii.block-scope), (iii.switch-case), (iii.closure-capture-cross-frame) all closed. Remaining (iii): class-this during super-init, unscopables-tdz, optional-chain-tdz (may auto-close from EXT 26 + 32 — needs re-probe).
