@@ -17805,12 +17805,19 @@ impl Runtime {
             "BigUint64Array",
         ] {
             let n = (*name).to_string();
-            // TAMM-EXT 4: per-type prototype chaining to the shared ta_proto
-            // (which itself chains to ta_proto_proto / %TypedArray%.prototype).
-            // Hosts own BYTES_PER_ELEMENT + constructor per §23.2.6.
+            // TAWR-EXT 1: per-type prototype chains DIRECTLY to
+            // ta_proto_proto (%TypedArray%.prototype) per ECMA-262 §22.2.6:
+            // `[[Prototype]] of Float32Array.prototype is %TypedArrayPrototype%`.
+            // Pre-TAWR-EXT 1 (TAMM-EXT 4 shape) chained through ta_proto
+            // which inserted an extra tier between per_type and ta_proto_proto;
+            // `Object.getPrototypeOf(Float32Array.prototype) === TypedArray.prototype`
+            // assertion required the two-deep chain. ta_proto methods are
+            // mirrored onto ta_proto_proto (TAMM-EXT 3) so instance method
+            // lookup via the shortened chain still resolves.
+            let _ = ta_proto;
             let per_type_proto = {
                 let mut o = Object::new_ordinary();
-                o.proto = Some(ta_proto);
+                o.proto = Some(ta_proto_proto);
                 self.alloc_object(o)
             };
             let proto_id = per_type_proto;
