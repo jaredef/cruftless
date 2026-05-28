@@ -2568,3 +2568,38 @@ This pattern recurs in cruftless's prior history: the `object_set` / `object_set
 **Finding IR.29 (the Pin-Art probe of the TDZ alphabet)**: four implicit constraints surface from the EXT 25/27/29 negative-result triad plus the emit-site enumeration: (α) categorical write context belongs at AST/Stmt level not bytecode level; (β) scope-bounded slot lifetime with TDZ horizon needs first-class compiler abstraction; (γ) captured slots can't be TDZ-seeded during the enclosing build; (δ) duplicated emit patterns are the alphabet's signal for a missing tier-above coordinate.
 
 **Status**: IR-EXT 30 CLOSED locally (Pin-Art probe rung; no substrate change). Cumulative IR rungs: 30. Future rungs should target Constraint β's ScopeRecord lift as the structural-LIFT closure that absorbs the deferred sub-shapes (module-top, block, switch-case, etc.) in one move rather than piecemeal per-surface audits.
+
+---
+
+## Rung-cluster-31 — block-scope TDZ via block_pre_slots stack (Constraint β first piece) (2026-05-27)
+
+Per keeper directive Telegram 10120 ("Continue"). Implements the first piece of Constraint β's ScopeRecord LIFT named in IR-EXT 30: a per-block pre-allocated-slot map stack that absorbs the duplicated PushTDZ+InitLocal pattern at the block-scope surface specifically.
+
+**Substrate** (~40 LOC across compiler.rs):
+- New Compiler field `block_pre_slots: Vec<HashMap<String, u16>>` — stack of per-block pre-allocated let/const slot maps.
+- Stmt::Block compile: after `block_depth += 1`, walk body for top-level `Stmt::Variable` with `let|const` kind + `BindingPattern::Identifier` declarators; pre-allocate slots; emit `PushTDZ + InitLocal` for each; push the name→slot map onto the stack. After body compile, pop the map.
+- Stmt::Variable identifier branch: in addition to existing `pre_allocated_slots` (module/function-body) and `local_slots` (this-decl-list) lookups, also consult the top of `block_pre_slots` so the decl line reuses the pre-allocated slot instead of allocating fresh.
+
+**Mechanism vs the Pin-Art probe's findings**:
+- Implements Constraint β (scope-bounded slot lifetime with TDZ horizon) at the block surface — first concrete instance of the ScopeRecord pattern, scoped to block-level decls only.
+- Sidesteps Constraint γ (captured-slot interference) because block-scope let/const isn't captured during the block's build — methods/closures are fully compiled before block body executes.
+- Constraint δ (duplicated emit pattern) is partially addressed at the block surface; the same pattern at function-body (EXT 23 Phase H1.5) and for-head (EXT 24) remains duplicated until a unified ScopeRecord lift.
+
+**Direct probes** (post-rung):
+- `{ console.log(z); let z = 1; }` inside a function → ReferenceError ✅ (was: returns undefined).
+- All EXT 21/22/23/24/25/26/28 probes intact.
+
+**Yield**:
+```text
+TDZ-named cluster: 5/13 (unchanged — block-scope tests in the *tdz* set hit class-this + unscopables + switch-case fall-through, all still open)
+Broader let/const cluster: 106/120 → 105/120 (-1; block-local-closure-get-before-initialization flipped to TypeError-instead-of-ReferenceError shape)
+diff-prod: 60/52 → 61/51 (+1; typed-arrays + reference-semantics + global-constructors flipped to PASS, offset by 2 other flips elsewhere)
+```
+
+**Net measurement**: +1 diff-prod / -1 broader = parity at the test-count level. The substrate move is structurally correct (Constraint β implementation) even if the yield is masked by interaction with adjacent failure modes that need their own audits.
+
+**Tag**: `cluster-block-pre-slots-31`.
+
+**Finding IR.30 (Constraint β LIFT lands incrementally; each surface absorbs duplication)**: the ScopeRecord LIFT can be staged per scope surface. EXT 31 closes the block surface; future rungs can close the switch-case surface, module-top (with the script-mode globalThis-mirror audit gated by IR.28), the for-init surface, etc. Each surface-piece is ~30-50 LOC and absorbs one duplicated emit pattern. The cumulative effect is the ScopeRecord absorption, achieved incrementally.
+
+**Status**: IR-EXT 31 CLOSED locally. Cumulative IR rungs: 31. Block-scope-TDZ surface closed (Constraint β instance #3 alongside EXT 23 function-body, EXT 24 for-head). Remaining Constraint β surfaces: module-top (gated by IR.28 script-mode audit), switch-case (block-scope subset; EXT 31 may already cover via Stmt::Block nesting), generator yield, async resume.

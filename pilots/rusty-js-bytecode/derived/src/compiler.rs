@@ -327,6 +327,14 @@ pub struct Compiler {
     /// reused the outer slot index from pre_allocated_slots, writing the
     /// inner value into the outer's slot and breaking shadow semantics.
     block_depth: u32,
+    /// IR-EXT 31 (first piece of Constraint β ScopeRecord LIFT): per-block
+    /// pre-allocated let/const slot maps, pushed on Stmt::Block entry and
+    /// popped on exit. Stmt::Variable identifier branch consults the top
+    /// of the stack to reuse a pre-allocated slot instead of allocating
+    /// fresh. Enables block-scope TDZ enforcement: the slots are
+    /// allocated + TDZ-seeded at block-entry, the decl line's InitLocal
+    /// overwrites the sentinel.
+    block_pre_slots: Vec<std::collections::HashMap<String, u16>>,
     /// WBMS-EXT 2: dynamic identifier mode for statement bodies executing
     /// inside one or more `with` object environments.
     with_depth: u32,
@@ -528,6 +536,7 @@ impl Compiler {
             source_line_starts: Vec::new(),
             source_url: String::new(),
             block_depth: 0,
+            block_pre_slots: Vec::new(),
             with_depth: 0,
             construct_tags: Vec::new(),
             strict: false,
@@ -1326,16 +1335,50 @@ impl Compiler {
                 // captured them still find their cell), but later
                 // identifier resolution falls through to upvalue /
                 // global as if the binding had gone out of scope.
-                // Reason: without this, `if(...){const r=...; }` then
-                // a later `r(...)` resolved to the inner shadow rather
-                // than the outer upvalue r — ts-pattern's o function
-                // hit exactly this when the first branch redeclared
-                // `r` and `i` via destructuring.
                 let snapshot = self.locals.len();
                 self.block_depth += 1;
+                // IR-EXT 31: block-scope TDZ. Walk body for top-level
+                // let/const Identifier declarators; pre-allocate slots;
+                // emit PushTDZ + InitLocal at block entry. The
+                // Stmt::Variable identifier branch reuses these slots
+                // via the block_pre_slots stack. Closes the block
+                // surface of TDZ enforcement (point iii partial,
+                // matching the pattern of EXT 23 function-body + EXT 24
+                // for-head). Skips Function/Arrow/Class bodies in walk
+                // (their let/const are their own scope's responsibility).
+                let mut pre: std::collections::HashMap<String, u16> =
+                    std::collections::HashMap::new();
+                for s in body.iter() {
+                    if let Stmt::Variable(v) = s {
+                        if !matches!(
+                            v.kind,
+                            VariableKind::Let | VariableKind::Const
+                        ) {
+                            continue;
+                        }
+                        for d in &v.declarators {
+                            if let rusty_js_ast::BindingPattern::Identifier(id) = &d.target {
+                                if pre.contains_key(&id.name) {
+                                    continue;
+                                }
+                                let slot = self.alloc_local(LocalDescriptor {
+                                    name: id.name.clone(),
+                                    kind: v.kind,
+                                    depth: 0,
+                                });
+                                pre.insert(id.name.clone(), slot);
+                                encode_op(&mut self.bytecode, Op::PushTDZ);
+                                encode_op(&mut self.bytecode, Op::InitLocal);
+                                encode_u16(&mut self.bytecode, slot);
+                            }
+                        }
+                    }
+                }
+                self.block_pre_slots.push(pre);
                 for s in body {
                     self.compile_stmt(s)?;
                 }
+                self.block_pre_slots.pop();
                 self.block_depth -= 1;
                 for i in snapshot..self.locals.len() {
                     // Don't rename pre-allocated names (let/const var
@@ -1407,6 +1450,14 @@ impl Compiler {
                                     s
                                 }
                             } else if let Some(s) = local_slots.get(&id.name).copied() {
+                                s
+                            } else if let Some(s) = self
+                                .block_pre_slots
+                                .last()
+                                .and_then(|m| m.get(&id.name).copied())
+                            {
+                                // IR-EXT 31: reuse slot pre-allocated at
+                                // block-entry for block-scope TDZ.
                                 s
                             } else {
                                 let s = self.alloc_local(LocalDescriptor {
@@ -4414,6 +4465,7 @@ impl Compiler {
             // Ω.5.P52.E3: sub-compilers reset block_depth — the function body
             // is its own top level for scope tracking.
             block_depth: 0,
+            block_pre_slots: Vec::new(),
             with_depth: 0,
             // Ω.5.P53.E2: each function has its own tag list.
             construct_tags: Vec::new(),
