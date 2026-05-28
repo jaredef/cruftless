@@ -1000,6 +1000,7 @@ impl<'src> Parser<'src> {
             | Expr::This { .. }
             | Expr::Super { .. }
             | Expr::MetaProperty { .. }
+            | Expr::TemplateObject { .. }
             | Expr::RegExp { .. }
             | Expr::Opaque { .. } => false,
         }

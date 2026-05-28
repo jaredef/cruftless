@@ -472,6 +472,22 @@ function runOne(path) {
   // Assemble the test source: harness + includes + source.
   // sta.js + assert.js are always prepended.
   let assembled = '';
+  if (meta.features.includes('cross-realm')) {
+    assembled += [
+      'var $262 = {',
+      '  createRealm: function() {',
+      '    return {',
+      '      global: {',
+      '        eval: function(source) {',
+      '          return __cruftless_eval_realm(String(source));',
+      '        }',
+      '      }',
+      '    };',
+      '  }',
+      '};',
+      ''
+    ].join('\n');
+  }
   if (meta.flags.async) {
     assembled += [
       'globalThis.__t262_async_state = { done: false, error: null };',

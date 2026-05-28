@@ -1,0 +1,16 @@
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/arrow-fn-a-following-parameter-is-named-arguments-arrow-func-declare-arguments-assign.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/arrow-fn-a-preceding-parameter-is-named-arguments-arrow-func-declare-arguments-assign.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/func-decl-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/func-decl-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/func-expr-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/func-expr-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/meth-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/meth-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/gen-func-decl-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/gen-func-decl-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/gen-meth-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/gen-meth-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/async-func-decl-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/async-func-decl-a-preceding-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/async-gen-func-decl-a-following-parameter-is-named-arguments-declare-arguments.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/async-gen-func-decl-a-preceding-parameter-is-named-arguments-declare-arguments.js

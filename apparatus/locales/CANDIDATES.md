@@ -360,17 +360,43 @@ Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resol
 **Methodology**: split by boundary family (private slots, template objects, lexical environment capture, iterator-protocol lowering, generator suspension, RegExp match metadata), then check active locale absorption before founding any broad child.
 **Status**: audited by `pilots/apparatus/locale-positioning-audit/findings/spec-boundary-integrity-audit.md`. Do not found as a broad locale. Private fields are absorbed by PFRS/CESS; generator suspension is an AGFA scope-extension; RegExp named captures route under RC. Three fresh baseline-first child candidates are listed below.
 
-### (abj) `tagged-template-object-boundary` — 🟢 SPAWN-READY
+### (abj) `tagged-template-object-boundary` — **SPAWNED** 2026-05-27 as [`pilots/tagged-template-object-boundary/`](../../pilots/tagged-template-object-boundary/seed.md)
 **Telos**: close tagged-template object construction at the AST-to-bytecode/runtime boundary. The visible failure is `strings.raw` not populated, which means the template-object directive did not survive into the call artifact.
 **Pool**: Instance 4 x Axis R tagged-template boundary rows, plus focused fixtures from `language/expressions/tagged-template/` and `language/template-literals/`.
 **Methodology**: baseline must distinguish parser escape/cooked-string issues, raw-source preservation, template-object allocation, `.raw` descriptor shape, and call argument ordering. Redirect lex/raw-source failures to a string/template literal locale; spawn only if object allocation/descriptor shape dominates.
 **Baseline**: LPA-EXT 9 ran all 27 `language/expressions/tagged-template/` rows. Result: 12 PASS / 13 FAIL / 2 ABORT-no-json. Failures cluster around TemplateStringsArray construction, cache identity, freezing, raw/cooked shape, and eval/realm tag binding. TCO rows (`tco-call.js`, `tco-member.js`) abort and should be initial carve-outs.
-**Status**: spawn-ready. Founding baseline should use the LPA-EXT 9 artifact and set first substrate rung to template-object construction/cache/freeze before TCO.
+**Status**: FOUNDED. TTBO-EXT 1 targets TemplateStringsArray construction/cache/freeze before TCO.
 
-### (abk) `direct-eval-lexical-capture` — 🟡 BASELINE-FIRST
+### (abk) `direct-eval-lexical-capture` — ✅ AUDITED / SPLIT
 **Telos**: close direct eval lexical environment capture, especially outer `const`/`let` visibility. This is distinct from lex-error propagation through eval; it is about selecting the caller lexical environment for direct eval execution.
 **Pool**: Instance 4 x Axis R direct-eval capture rows plus direct/indirect eval contrast probes.
 **Methodology**: baseline strict/sloppy direct eval reads, shadowing, and indirect eval contrast; classify owner as parser direct-eval marking, bytecode call lowering, runtime eval entry environment, or environment-record lookup. Redirect lex/parse error propagation to `lex-error-propagation-to-eval-surface/`.
+**Baseline**: LPA-EXT 11 ran all 286 `language/eval-code/direct/` rows plus all 61 `language/eval-code/indirect/` rows. Result: 131 PASS / 212 FAIL / 4 SKIP / 0 NOJSON. The dominant cluster is missing SyntaxError for eval declaration-instantiation early errors (138), followed by binding-shape wrong results (28), TDZ/ReferenceError rows (6), TypeError rows (3), and other eval completion/global-env behavior (37).
+**Status**: do not found as a broad locale. Split into child arcs below.
+
+### (abm) `eval-declaration-instantiation-early-errors` — **SPAWNED** 2026-05-27 as [`pilots/eval-declaration-instantiation-early-errors/`](../../pilots/eval-declaration-instantiation-early-errors/seed.md)
+**Telos**: close the dominant direct-eval early-error cluster: declaration conflicts involving `arguments`, lexical declarations, strictness, and eval declaration instantiation.
+**Pool**: LPA-EXT 11 missing-SyntaxError bucket (138 rows) from `language/eval-code/direct/` and matching indirect contrasts where present.
+**Methodology**: sample by function kind (`function`, arrow, method, generator, async, async-generator), declaration kind (`var`, function, lexical), and strictness. Classify owner as parser early-error pass vs eval declaration-instantiation runtime check.
+**Baseline**: EDIEE-EXT 0 founded a 16-row focused exemplar suite. Current result: 2 PASS / 14 FAIL / 0 SKIP / 0 NOJSON. Async ordinary function rows already pass; arrow, ordinary function, method, generator, generator-method, and async-generator rows still miss SyntaxError.
+**Status**: FOUNDED. Begin with declaration-conflict predicate placement before changing eval environment capture.
+
+### (abn) `eval-var-function-env-instantiation` — 🟡 BASELINE-FIRST
+**Telos**: close eval `var` and function declaration binding effects in global/local environments, including descriptor shape and non-configurable global property update behavior.
+**Pool**: LPA-EXT 11 binding-shape and global-env rows (examples: `var-env-func-init-*`, `var-env-var-init-*`, `global-env-rec-*`).
+**Methodology**: split global vs local eval, direct vs indirect eval, configurable vs non-configurable globals, and function vs var declaration effects.
+**Status**: baseline-first.
+
+### (abo) `eval-this-newtarget-context` — 🟡 BASELINE-FIRST
+**Telos**: close direct/indirect eval context selection for `this` and `new.target`, especially caller strictness and function/global eval differences.
+**Pool**: LPA-EXT 11 `this-value-*` and `new.target*` rows.
+**Methodology**: baseline strict caller, non-strict caller, global eval, function eval, direct eval, and indirect eval contrasts.
+**Status**: baseline-first.
+
+### (abp) `eval-lexical-tdz-reference` — 🟡 BASELINE-FIRST
+**Telos**: close eval lexical TDZ / ReferenceError behavior for uninitialized `let`, `const`, class, and class-heritage names.
+**Pool**: LPA-EXT 11 missing-ReferenceError rows (`lex-env-no-init-*`, `lex-env-heritage`) and sibling lexical-env fixtures.
+**Methodology**: distinguish environment lookup visibility from TDZ uninitialized binding errors; redirect parser-only lexical failures to lex-error propagation if inspection shows parse-tier ownership.
 **Status**: baseline-first.
 
 ### (abl) `destructuring-iterator-protocol-boundary` — 🟡 BASELINE-FIRST

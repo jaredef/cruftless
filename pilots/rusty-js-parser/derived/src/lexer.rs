@@ -988,6 +988,11 @@ impl<'src> Lexer<'src> {
                     _ => false,
                 };
                 self.pos += 1;
+                if self.consume_forbidden_template_numeric_escape() {
+                    cooked_ok = false;
+                    raw.push_str(std::str::from_utf8(&self.src[escape_start..self.pos]).unwrap());
+                    continue;
+                }
                 let mut buf = String::new();
                 match self.read_string_escape(start, &mut buf) {
                     Ok(()) => cooked.push_str(&buf),
@@ -1021,6 +1026,49 @@ impl<'src> Lexer<'src> {
 
     fn continue_template(&mut self, start: usize, preceded_by_lt: bool) -> Result<Token, LexError> {
         self.read_template_segment(start, preceded_by_lt, false)
+    }
+
+    fn consume_forbidden_template_numeric_escape(&mut self) -> bool {
+        let Some(c) = self.peek_byte() else {
+            return false;
+        };
+        match c {
+            b'0' if self.peek_byte_at(1).map_or(false, |b| b.is_ascii_digit()) => {
+                self.pos += 1;
+                let mut n = 0;
+                while n < 2 {
+                    match self.peek_byte() {
+                        Some(b) if (b'0'..=b'7').contains(&b) => {
+                            self.pos += 1;
+                            n += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                true
+            }
+            b'1'..=b'7' => {
+                self.pos += 1;
+                let leading_four_to_seven = matches!(c, b'4'..=b'7');
+                let max_extra_digits = if leading_four_to_seven { 1 } else { 2 };
+                let mut n = 0;
+                while n < max_extra_digits {
+                    match self.peek_byte() {
+                        Some(b) if (b'0'..=b'7').contains(&b) => {
+                            self.pos += 1;
+                            n += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                true
+            }
+            b'8' | b'9' => {
+                self.pos += 1;
+                true
+            }
+            _ => false,
+        }
     }
 
     // ────────────── Regex literals ──────────────

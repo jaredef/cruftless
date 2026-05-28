@@ -163,6 +163,13 @@ pub enum Expr {
         expressions: Vec<Expr>,
         span: Span,
     },
+    /// Tagged-template first argument. `cooked.len() == raw.len()`.
+    /// `None` cooked entries represent invalid escapes in tagged templates.
+    TemplateObject {
+        cooked: Vec<Option<std::rc::Rc<String>>>,
+        raw: Vec<std::rc::Rc<String>>,
+        span: Span,
+    },
     /// Regular-expression literal `/pattern/flags`. Tier-Ω.5.i substrate.
     /// Pattern and flags carry the raw source spelling; pattern compilation
     /// (JS regex → Rust `regex` crate) is deferred to runtime construction.
@@ -383,6 +390,7 @@ impl Expr {
             | Expr::Class { span, .. }
             | Expr::Arrow { span, .. }
             | Expr::TemplateLiteral { span, .. }
+            | Expr::TemplateObject { span, .. }
             | Expr::RegExp { span, .. }
             | Expr::Opaque { span } => *span,
         }

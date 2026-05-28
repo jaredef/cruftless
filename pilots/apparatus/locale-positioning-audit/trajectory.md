@@ -439,3 +439,64 @@ Added Tier N, "resolver-axis heuristics partition":
 **Finding LPA.25 (compiler tier has the widest gap between available data and locale coverage)**: the lexer (7 locales, 6 gaps all covered) and parser (12+ locales) have dense locale coverage. The runtime (20+ locales) has broad coverage. The compiler had 0 dedicated mechanism-gap locales despite being the layer where 5 of the 9 mechanism gaps originate.
 
 **Status**: LPA-EXT 11 CLOSED. 5 compiler-tier locales founded; manifest refreshed to 135 locales.
+
+---
+
+## LPA-EXT 12 — direct eval baseline partition (2026-05-27)
+
+**Trigger**: Keeper directive to pull a new arc after the tagged-template
+handoff audit. LPA selected the next baseline-first sibling from Tier N:
+`direct-eval-lexical-capture`.
+
+**Produced**:
+`pilots/apparatus/locale-positioning-audit/findings/direct-eval-baseline.md`.
+
+**Baseline target**:
+
+- Candidate: `direct-eval-lexical-capture`.
+- Path set: all 286 fixtures under `language/eval-code/direct/` plus all
+  61 fixtures under `language/eval-code/indirect/`.
+- Results artifact:
+  `/Users/jaredfoy/Developer/cruftless-sidecar/results/direct-eval-baseline-20260527-040212/`.
+
+**Result**:
+
+```text
+PASS=131
+FAIL=212
+SKIP=4
+NOJSON=0
+TOTAL=347
+```
+
+**Failure buckets**:
+
+1. Missing SyntaxError / eval declaration-conflict early errors: 138.
+2. Wrong result / binding shape: 28.
+3. Missing ReferenceError / TDZ: 6.
+4. Missing TypeError: 3.
+5. Other eval completion / global-env behavior: 37.
+
+**CANDIDATES.md update**:
+
+- Marked `direct-eval-lexical-capture` as audited/split, not spawnable
+  as a broad locale.
+- Added four child arcs:
+  `eval-declaration-instantiation-early-errors`,
+  `eval-var-function-env-instantiation`, `eval-this-newtarget-context`,
+  and `eval-lexical-tdz-reference`.
+
+**Finding LPA.26 (direct-eval cue is real but over-broad)**: the
+Instance 4 x Axis R direct-eval signal is valid, but the focused
+baseline is dominated by early-error declaration-instantiation failures,
+not lexical capture alone. Spawning a broad `direct-eval-lexical-capture`
+locale would blur parser/early-error, eval environment instantiation,
+this/new.target context, and TDZ behavior into one workstream.
+
+**Finding LPA.27 (baseline-first can demote a candidate)**: LPA-EXT 12
+demotes a baseline-first candidate to audited/split rather than promoting
+it to spawned. This is the desired apparatus behavior: baseline-first
+does not mean spawn-after-measurement; it means measurement decides
+whether the candidate is coherent enough to spawn.
+
+**Status**: LPA-EXT 12 CLOSED. No substrate locale spawned in this rung.
