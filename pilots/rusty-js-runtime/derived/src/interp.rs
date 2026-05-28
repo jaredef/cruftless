@@ -1422,6 +1422,33 @@ impl Runtime {
                 key
             )));
         }
+        if let Some((target, handler)) = self.proxy_target_handler_checked(id)? {
+            let trap = self.object_get(handler, "defineProperty");
+            if matches!(trap, Value::Object(_)) {
+                let desc = self.alloc_object(crate::value::Object::new_ordinary());
+                self.object_set(desc, "value".into(), val.clone());
+                self.object_set(desc, "writable".into(), Value::Boolean(true));
+                self.object_set(desc, "enumerable".into(), Value::Boolean(true));
+                self.object_set(desc, "configurable".into(), Value::Boolean(true));
+                let result = self.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(std::rc::Rc::new(key.to_string())),
+                        Value::Object(desc),
+                    ],
+                )?;
+                if !crate::abstract_ops::to_boolean(&result) {
+                    return Err(RuntimeError::TypeError(format!(
+                        "CreateDataPropertyOrThrow: proxy defineProperty returned false for '{}'",
+                        key
+                    )));
+                }
+                return Ok(());
+            }
+            return self.create_data_property_or_throw(&Value::Object(target), key, val);
+        }
         // Non-configurable existing property → throw (spec
         // ValidateAndApplyPropertyDescriptor returns false → throw).
         if let Some(d) = self.obj(id).get_own(key) {
@@ -4882,9 +4909,10 @@ impl Runtime {
         if !self.is_callable(&reviver) {
             return Ok(unfiltered);
         }
+        let source_spans = Self::json_source_spans(s.as_str())?;
         let root = Value::Object(self.alloc_object(crate::value::Object::new_ordinary()));
         self.create_data_property_or_throw(&root, "", unfiltered)?;
-        self.internalize_json_property(root, "", reviver)
+        self.internalize_json_property(root, "", reviver, &source_spans, Vec::new())
     }
 
     fn internalize_json_property(
@@ -4892,13 +4920,27 @@ impl Runtime {
         holder: Value,
         name: &str,
         reviver: Value,
+        source_spans: &HashMap<Vec<String>, (String, Value)>,
+        path: Vec<String>,
     ) -> Result<Value, RuntimeError> {
         let mut value = self.spec_get(&holder, name)?;
         if let Value::Object(value_id) = value.clone() {
-            let keys = self.ordinary_own_enumerable_string_keys(value_id);
+            let keys = if self.json_internalize_is_array(value_id)? {
+                let len = self.try_array_length(value_id)?;
+                (0..len).map(|i| i.to_string()).collect()
+            } else {
+                self.json_internalize_enumerable_keys(value_id)?
+            };
             for key in keys {
-                let new_element =
-                    self.internalize_json_property(Value::Object(value_id), &key, reviver.clone())?;
+                let mut child_path = path.clone();
+                child_path.push(key.clone());
+                let new_element = self.internalize_json_property(
+                    Value::Object(value_id),
+                    &key,
+                    reviver.clone(),
+                    source_spans,
+                    child_path,
+                )?;
                 if matches!(new_element, Value::Undefined) {
                     let deleted = self.reflect_delete_property_via(
                         &Value::Object(value_id),
@@ -4920,14 +4962,335 @@ impl Runtime {
             }
             value = Value::Object(value_id);
         }
+        let source = source_spans
+            .get(&path)
+            .and_then(|(source, original)| {
+                if crate::abstract_ops::is_strictly_equal(&value, original) {
+                    Some(source.clone())
+                } else {
+                    None
+                }
+            });
+        let context = self.json_reviver_context(source)?;
         self.call_function(
             reviver,
             holder,
             vec![
                 Value::String(std::rc::Rc::new(name.to_string())),
                 value,
+                context,
             ],
         )
+    }
+
+    fn json_reviver_context(&mut self, source: Option<String>) -> Result<Value, RuntimeError> {
+        let context = Value::Object(self.alloc_object(crate::value::Object::new_ordinary()));
+        if let Some(source) = source {
+            self.create_data_property_or_throw(
+                &context,
+                "source",
+                Value::String(std::rc::Rc::new(source)),
+            )?;
+        }
+        Ok(context)
+    }
+
+    fn json_source_spans(
+        source: &str,
+    ) -> Result<HashMap<Vec<String>, (String, Value)>, RuntimeError> {
+        let bytes = source.as_bytes();
+        let mut p = 0;
+        let mut out = HashMap::new();
+        Self::json_source_skip_ws(bytes, &mut p);
+        Self::json_source_value(source, bytes, &mut p, &mut Vec::new(), &mut out)?;
+        Ok(out)
+    }
+
+    fn json_source_value(
+        source: &str,
+        bytes: &[u8],
+        p: &mut usize,
+        path: &mut Vec<String>,
+        out: &mut HashMap<Vec<String>, (String, Value)>,
+    ) -> Result<(), RuntimeError> {
+        Self::json_source_skip_ws(bytes, p);
+        let start = *p;
+        match bytes.get(*p).copied() {
+            Some(b'{') => Self::json_source_object(source, bytes, p, path, out),
+            Some(b'[') => Self::json_source_array(source, bytes, p, path, out),
+            Some(b'"') => {
+                let value = Self::json_source_string_decoded(source, bytes, p)?;
+                out.insert(
+                    path.clone(),
+                    (
+                        source[start..*p].to_string(),
+                        Value::String(std::rc::Rc::new(value)),
+                    ),
+                );
+                Ok(())
+            }
+            Some(b't') if bytes[*p..].starts_with(b"true") => {
+                *p += 4;
+                out.insert(
+                    path.clone(),
+                    (source[start..*p].to_string(), Value::Boolean(true)),
+                );
+                Ok(())
+            }
+            Some(b'f') if bytes[*p..].starts_with(b"false") => {
+                *p += 5;
+                out.insert(
+                    path.clone(),
+                    (source[start..*p].to_string(), Value::Boolean(false)),
+                );
+                Ok(())
+            }
+            Some(b'n') if bytes[*p..].starts_with(b"null") => {
+                *p += 4;
+                out.insert(path.clone(), (source[start..*p].to_string(), Value::Null));
+                Ok(())
+            }
+            Some(b'-' | b'0'..=b'9') => {
+                Self::json_source_number(bytes, p);
+                let raw = source[start..*p].to_string();
+                let n = raw.parse::<f64>().map_err(|_| {
+                    RuntimeError::SyntaxError("JSON.parse source scan: bad number".into())
+                })?;
+                out.insert(path.clone(), (raw, Value::Number(n)));
+                Ok(())
+            }
+            _ => Err(RuntimeError::SyntaxError(
+                "JSON.parse source scan: invalid value".into(),
+            )),
+        }
+    }
+
+    fn json_source_object(
+        source: &str,
+        bytes: &[u8],
+        p: &mut usize,
+        path: &mut Vec<String>,
+        out: &mut HashMap<Vec<String>, (String, Value)>,
+    ) -> Result<(), RuntimeError> {
+        *p += 1;
+        Self::json_source_skip_ws(bytes, p);
+        if matches!(bytes.get(*p), Some(b'}')) {
+            *p += 1;
+            return Ok(());
+        }
+        loop {
+            Self::json_source_skip_ws(bytes, p);
+            let key = Self::json_source_string_decoded(source, bytes, p)?;
+            Self::json_source_skip_ws(bytes, p);
+            if !matches!(bytes.get(*p), Some(b':')) {
+                return Err(RuntimeError::SyntaxError(
+                    "JSON.parse source scan: expected ':'".into(),
+                ));
+            }
+            *p += 1;
+            path.push(key);
+            Self::json_source_value(source, bytes, p, path, out)?;
+            path.pop();
+            Self::json_source_skip_ws(bytes, p);
+            match bytes.get(*p) {
+                Some(b',') => *p += 1,
+                Some(b'}') => {
+                    *p += 1;
+                    return Ok(());
+                }
+                _ => {
+                    return Err(RuntimeError::SyntaxError(
+                        "JSON.parse source scan: expected ',' or '}'".into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    fn json_source_array(
+        source: &str,
+        bytes: &[u8],
+        p: &mut usize,
+        path: &mut Vec<String>,
+        out: &mut HashMap<Vec<String>, (String, Value)>,
+    ) -> Result<(), RuntimeError> {
+        *p += 1;
+        Self::json_source_skip_ws(bytes, p);
+        if matches!(bytes.get(*p), Some(b']')) {
+            *p += 1;
+            return Ok(());
+        }
+        let mut i = 0usize;
+        loop {
+            path.push(i.to_string());
+            Self::json_source_value(source, bytes, p, path, out)?;
+            path.pop();
+            i += 1;
+            Self::json_source_skip_ws(bytes, p);
+            match bytes.get(*p) {
+                Some(b',') => *p += 1,
+                Some(b']') => {
+                    *p += 1;
+                    return Ok(());
+                }
+                _ => {
+                    return Err(RuntimeError::SyntaxError(
+                        "JSON.parse source scan: expected ',' or ']'".into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    fn json_source_skip_ws(bytes: &[u8], p: &mut usize) {
+        while *p < bytes.len() && matches!(bytes[*p], b' ' | b'\t' | b'\n' | b'\r') {
+            *p += 1;
+        }
+    }
+
+    fn json_source_string_decoded(
+        source: &str,
+        bytes: &[u8],
+        p: &mut usize,
+    ) -> Result<String, RuntimeError> {
+        if !matches!(bytes.get(*p), Some(b'"')) {
+            return Err(RuntimeError::SyntaxError(
+                "JSON.parse source scan: expected string".into(),
+            ));
+        }
+        *p += 1;
+        let mut out = String::new();
+        while *p < bytes.len() {
+            let c = bytes[*p];
+            if c == b'"' {
+                *p += 1;
+                return Ok(out);
+            }
+            if c == b'\\' {
+                *p += 1;
+                let Some(esc) = bytes.get(*p).copied() else {
+                    return Err(RuntimeError::SyntaxError(
+                        "JSON.parse source scan: bad escape".into(),
+                    ));
+                };
+                match esc {
+                    b'"' => out.push('"'),
+                    b'\\' => out.push('\\'),
+                    b'/' => out.push('/'),
+                    b'n' => out.push('\n'),
+                    b'r' => out.push('\r'),
+                    b't' => out.push('\t'),
+                    b'b' => out.push('\u{0008}'),
+                    b'f' => out.push('\u{000c}'),
+                    b'u' if *p + 4 < bytes.len() => {
+                        let hex = &source[*p + 1..*p + 5];
+                        let cp = u32::from_str_radix(hex, 16).map_err(|_| {
+                            RuntimeError::SyntaxError("JSON.parse source scan: bad \\u".into())
+                        })?;
+                        if let Some(ch) = char::from_u32(cp) {
+                            out.push(ch);
+                        }
+                        *p += 4;
+                    }
+                    _ => {
+                        return Err(RuntimeError::SyntaxError(
+                            "JSON.parse source scan: bad escape".into(),
+                        ))
+                    }
+                }
+                *p += 1;
+            } else {
+                let tail = std::str::from_utf8(&bytes[*p..]).map_err(|_| {
+                    RuntimeError::SyntaxError("JSON.parse source scan: bad utf-8".into())
+                })?;
+                let Some(ch) = tail.chars().next() else {
+                    return Err(RuntimeError::SyntaxError(
+                        "JSON.parse source scan: unterminated string".into(),
+                    ));
+                };
+                out.push(ch);
+                *p += ch.len_utf8();
+            }
+        }
+        Err(RuntimeError::SyntaxError(
+            "JSON.parse source scan: unterminated string".into(),
+        ))
+    }
+
+    fn json_source_number(bytes: &[u8], p: &mut usize) {
+        if matches!(bytes.get(*p), Some(b'-')) {
+            *p += 1;
+        }
+        while *p < bytes.len() && bytes[*p].is_ascii_digit() {
+            *p += 1;
+        }
+        if matches!(bytes.get(*p), Some(b'.')) {
+            *p += 1;
+            while *p < bytes.len() && bytes[*p].is_ascii_digit() {
+                *p += 1;
+            }
+        }
+        if matches!(bytes.get(*p), Some(b'e' | b'E')) {
+            *p += 1;
+            if matches!(bytes.get(*p), Some(b'+' | b'-')) {
+                *p += 1;
+            }
+            while *p < bytes.len() && bytes[*p].is_ascii_digit() {
+                *p += 1;
+            }
+        }
+    }
+
+    fn json_internalize_enumerable_keys(
+        &mut self,
+        value_id: crate::value::ObjectRef,
+    ) -> Result<Vec<String>, RuntimeError> {
+        if let Some((target, handler)) = self.proxy_target_handler_checked(value_id)? {
+            let trap = self.object_get(handler, "ownKeys");
+            if matches!(trap, Value::Object(_)) {
+                let trap_result =
+                    self.call_function(trap, Value::Object(handler), vec![Value::Object(target)])?;
+                let result_id = match trap_result {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Proxy 'ownKeys' trap must return an object".into(),
+                        ))
+                    }
+                };
+                let len = self.try_array_length(result_id)?;
+                let mut keys = Vec::new();
+                for i in 0..len {
+                    if let Value::String(key) = self.read_property(result_id, &i.to_string())? {
+                        if self.has_property(target, key.as_str()) {
+                            keys.push(key.as_str().to_string());
+                        }
+                    }
+                }
+                return Ok(keys);
+            }
+            return Ok(self.ordinary_own_enumerable_string_keys(target));
+        }
+        Ok(self.ordinary_own_enumerable_string_keys(value_id))
+    }
+
+    fn json_internalize_is_array(
+        &self,
+        value_id: crate::value::ObjectRef,
+    ) -> Result<bool, RuntimeError> {
+        if matches!(
+            self.obj(value_id).internal_kind,
+            crate::value::InternalKind::Array
+        ) {
+            return Ok(true);
+        }
+        if let Some((target, _)) = self.proxy_target_handler_checked(value_id)? {
+            return Ok(matches!(
+                self.obj(target).internal_kind,
+                crate::value::InternalKind::Array
+            ));
+        }
+        Ok(false)
     }
 
     /// Symbol.for(key) per ECMA §20.4.2.6 — interns a registry symbol.
@@ -9684,8 +10047,8 @@ impl Runtime {
                     if !matches!(s, Value::Undefined) {
                         return Some(s.clone());
                     }
-                    return None;
                 }
+                return None;
             }
             cur = o.proto;
         }
@@ -10282,7 +10645,7 @@ impl Runtime {
         // max-safe, and NaN all collapse to one of the bounds; the
         // previous Infinity branch returned usize::MAX which downstream
         // i64 casts in indexOf/lastIndexOf rendered as -1.
-        let v = self.read_property(id, "length")?;
+        let v = self.spec_get(&Value::Object(id), "length")?;
         let n = self.coerce_to_number(&v)?;
         if n.is_nan() || n <= 0.0 {
             return Ok(0);
@@ -10714,6 +11077,7 @@ impl Runtime {
             is_arrow: false,
             param_count: proto.params as usize,
             strict: proto.strict,
+            eval_var_env_is_global: false,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
@@ -13634,11 +13998,23 @@ impl Runtime {
     /// BoundFunction unwraps once, prepending bound args and overriding the
     /// caller's `this` with the bound this.
     pub(crate) fn eval_source_globalish(&mut self, source: String) -> Result<Value, RuntimeError> {
+        self.eval_source_globalish_with_global_declarations(source, true)
+    }
+
+    fn eval_source_globalish_with_global_declarations(
+        &mut self,
+        source: String,
+        materialize_global_declarations: bool,
+    ) -> Result<Value, RuntimeError> {
         use std::sync::atomic::{AtomicUsize, Ordering};
         static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
         let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
         let url = format!("file://<eval:{}>", n);
         crate::intrinsics::eval_global_declaration_instantiation_guard(self, &source)?;
+        if materialize_global_declarations {
+            let eval_var_decls = eval_var_scoped_declarations(&source);
+            self.materialize_eval_global_declarations(&eval_var_decls);
+        }
 
         // Integration: GBSU unified surface.
         let stash_key = format!("__eval_out_{}", n);
@@ -13730,7 +14106,8 @@ impl Runtime {
                 });
             }
         }
-        if self
+        if !caller.eval_var_env_is_global
+            && self
             .global_object
             .map(|gt| self.obj(gt).extensible)
             .unwrap_or(true)
@@ -13786,7 +14163,8 @@ impl Runtime {
             self.define_global_property(&entry.name, entry.value.clone());
             saved.push((entry, prev));
         }
-        let result = self.eval_source_globalish(source);
+        let result =
+            self.eval_source_globalish_with_global_declarations(source, caller.eval_var_env_is_global);
         for (entry, old) in saved.into_iter().rev() {
             if let Some(gt) = self.global_object {
                 if !matches!(entry.target, DirectEvalOverlayTarget::Temporary)
@@ -13825,6 +14203,57 @@ impl Runtime {
         let value = return_value.clone();
         let obj = crate::intrinsics::make_native_with_length(name, 0, move |_, _| Ok(value.clone()));
         Value::Object(self.alloc_object(obj))
+    }
+
+    fn materialize_eval_global_declarations(&mut self, decls: &EvalVarScopedDeclarations) {
+        for name in &decls.vars {
+            if self.global_has_own_property(name) {
+                continue;
+            }
+            self.define_eval_global_binding(name, Value::Undefined, true);
+        }
+        for function in &decls.functions {
+            let value =
+                self.make_eval_function_declaration(&function.name, function.return_value.clone());
+            self.define_eval_global_binding(&function.name, value, true);
+        }
+    }
+
+    fn define_eval_global_binding(&mut self, name: &str, value: Value, deletable: bool) {
+        let Some(gt) = self.global_object else {
+            return;
+        };
+        let key = crate::value::PropertyKey::String(name.to_string());
+        let existing = self.obj(gt).properties.get(&key).cloned();
+        match existing {
+            Some(desc) if !desc.configurable => {
+                self.obj_mut(gt).dict_mut().insert(
+                    key,
+                    crate::value::PropertyDescriptor {
+                        value,
+                        writable: desc.writable,
+                        enumerable: desc.enumerable,
+                        configurable: desc.configurable,
+                        getter: desc.getter,
+                        setter: desc.setter,
+                    },
+                );
+            }
+            Some(_) | None if self.obj(gt).extensible || self.obj(gt).has_own_str(name) => {
+                self.obj_mut(gt).dict_mut().insert(
+                    key,
+                    crate::value::PropertyDescriptor {
+                        value,
+                        writable: true,
+                        enumerable: true,
+                        configurable: deletable,
+                        getter: None,
+                        setter: None,
+                    },
+                );
+            }
+            _ => {}
+        }
     }
 
     fn global_has_own_property(&self, name: &str) -> bool {
@@ -14476,6 +14905,7 @@ impl Runtime {
             is_arrow: frame_is_arrow,
             param_count: proto.params as usize,
             strict: proto.strict,
+            eval_var_env_is_global: false,
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
@@ -15489,6 +15919,7 @@ pub struct Frame<'a> {
     /// overhead for non-IC calls (~40 ns/call saved on cache hit).
     pub ic_dispatch_cache:
         std::collections::HashMap<usize, Option<&'static crate::interp_ic_table::IhiEntry>>,
+    pub eval_var_env_is_global: bool,
 
     /// OSR-EXT 4+5 (2026-05-23): per-site OSR compile cache.
     ///   - Absent: not yet attempted.
@@ -15727,6 +16158,7 @@ impl<'a> Frame<'a> {
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
+            eval_var_env_is_global: m.eval_var_env_is_global,
         }
     }
 
