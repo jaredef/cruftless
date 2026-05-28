@@ -321,3 +321,84 @@ indirect eval.
 **Status**: EVFEI-EXT 3 CLOSED for local-binding materialization. Next
 rung should promote the global-object relation branch rather than widen
 the parent-local bridge.
+
+## EVFEI-EXT 4 — eval varEnv global discriminator (2026-05-28)
+
+**Change**:
+
+- Added an `eval_var_env_is_global` bit to compiled modules and runtime
+  frames.
+- Set the bit for Script-mode compiled modules and threaded it into the
+  active frame.
+- Gated direct-eval temporary var/function overlays on the caller frame's
+  varEnv shape: function-local direct eval still receives temporary
+  write targets, while global direct eval materializes declared
+  var/function names on the global object.
+- Collapsed the global `eval` intrinsic onto the shared
+  `Runtime::eval_source_globalish` path so indirect eval no longer keeps
+  a second copy of the expression/statement eval driver.
+
+This is the first explicit recovery of the implicit pipeline exposed by
+EVFEI.8:
+
+```text
+eval call shape -> eval entry mode -> varEnv selection ->
+declaration materialization -> body execution ->
+binding writeback / descriptor persistence
+```
+
+The rung's discriminator is the `varEnv selection` step. The previous
+negative experiment proved that materializing global declarations
+unconditionally leaks function-local eval declarations onto globalThis.
+The frame bit makes that decision local to the eval mouth that actually
+owns the variable environment.
+
+**Verification**:
+
+```text
+cargo build --release --bin cruft -p cruftless
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  pilots/eval-var-function-env-instantiation/exemplars/run-exemplars.sh
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  CRUFTLESS_SIDECAR=/Users/jaredfoy/Developer/cruftless-sidecar \
+  TEST_ARTIFACTS_DIR=/Users/jaredfoy/Developer/cruftless-sidecar/results \
+  pilots/direct-eval-lexical-capture/exemplars/run-exemplars.sh
+cargo test -p rusty-js-runtime eval --test run_golden -- --nocapture
+cargo test -p rusty-js-bytecode eval_call -- --nocapture
+```
+
+Results:
+
+```text
+EVFEI exemplars: PASS=13 FAIL=3 SKIP=0 NOJSON=0 / 16
+Direct-eval lexical exemplars: PASS=3 FAIL=0 / 3
+runtime eval run_golden probes: 6 passed
+bytecode eval_call probes: 2 passed
+```
+
+Closed rows:
+
+- `language/eval-code/direct/var-env-var-init-global-new.js`
+- `language/eval-code/direct/var-env-func-init-global-new.js`
+- `language/eval-code/direct/var-env-func-init-global-update-configurable.js`
+
+Remaining rows:
+
+- `language/eval-code/direct/var-env-var-init-global-exstng.js`
+- `language/eval-code/indirect/var-env-var-init-global-new.js`
+- `language/eval-code/indirect/var-env-func-init-global-new.js`
+
+**Finding EVFEI.9 (pipeline sharper than call-shape)**:
+Direct-global eval now closes for new var/function bindings and
+configurable function update without reopening the function-local rows.
+The remaining failures are no longer explained by direct-vs-indirect eval
+dispatch alone. They sit one layer deeper: the eval body still lacks a
+fully coherent Script global environment record surface for existing var
+binding writeback and indirect-eval reads/writes of top-level Script
+bindings.
+
+**Status**: EVFEI-EXT 4 PARTIAL. Keep the varEnv discriminator. Next
+rung should target the global environment record writeback/descriptor
+persistence layer rather than adding more eval call-shape special cases.

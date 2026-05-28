@@ -889,6 +889,7 @@ impl Runtime {
             side_effect_imports: Vec::new(),
             construct_tags: Vec::new(),
             line_starts: Vec::new(),
+            eval_var_env_is_global: false,
             strict: false,
         });
         self.modules.insert(
@@ -1433,6 +1434,7 @@ impl Runtime {
             side_effect_imports: Vec::new(),
             construct_tags: Vec::new(),
             line_starts: Vec::new(),
+            eval_var_env_is_global: false,
             strict: false,
         });
         let record = Rc::new(RefCell::new(ModuleRecord {
@@ -1840,6 +1842,7 @@ impl Runtime {
             side_effect_imports: Vec::new(),
             construct_tags: Vec::new(),
             line_starts: Vec::new(),
+            eval_var_env_is_global: false,
             strict: false,
         });
         self.modules.insert(
@@ -2216,6 +2219,7 @@ impl Runtime {
             side_effect_imports: Vec::new(),
             construct_tags: Vec::new(),
             line_starts: Vec::new(),
+            eval_var_env_is_global: false,
             strict: false,
         });
         self.modules.insert(

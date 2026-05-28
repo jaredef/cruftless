@@ -169,6 +169,9 @@ pub struct CompiledModule {
     /// source. Empty for hand-built frames or modules compiled without a
     /// source-line index (legacy callers).
     pub line_starts: Vec<u32>,
+    /// ES-EXT/EVFEI pipeline discriminator: true for Script-mode frames
+    /// whose variable environment is the global environment record.
+    pub eval_var_env_is_global: bool,
 }
 
 /// One ESM import binding. Compiled from ImportDeclaration entries.
@@ -1359,6 +1362,7 @@ impl Compiler {
             construct_tags: std::mem::take(&mut self.construct_tags),
             line_starts: std::mem::take(&mut self.source_line_starts),
             strict: self.strict,
+            eval_var_env_is_global: self.script_mode,
         })
     }
 

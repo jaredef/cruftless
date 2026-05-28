@@ -7852,55 +7852,7 @@ impl Runtime {
                 Some(v) => return Ok(v.clone()), // eval(non-string) returns the arg unchanged per §19.2.1.1
                 None => return Ok(Value::Undefined),
             };
-            use std::sync::atomic::{AtomicUsize, Ordering};
-            static EVAL_COUNTER: AtomicUsize = AtomicUsize::new(0);
-            let n = EVAL_COUNTER.fetch_add(1, Ordering::Relaxed);
-            let url = format!("file://<eval:{}>", n);
-            eval_global_declaration_instantiation_guard(rt, &source)?;
-            // Try expression form first: wrap as assignment so the value
-            // is captured in a stash global. If parse fails, fall through
-            // to raw-statements form (no return value).
-            let stash_key = format!("__eval_out_{}", n);
-            let expr_source = format!("{} = ({});", stash_key, source);
-            // EXT 74: ECMA-262 §19.2.1.1 PerformEval. Indirect eval runs the
-            // source as a Script in the global Lexical Environment with
-            // `this` bound to globalThis (not the caller's `this`, which
-            // is the spec direct-eval shape). This matches Script semantics
-            // — `this` at the top level of a Script *is* globalThis —
-            // which a number of test262 fixtures (S15.3.4.3_A3_T1.js et al.)
-            // depend on when they read `this[\"field\"]` after an apply()
-            // assigned to globalThis inside a sloppy function.
-            // GBSU-EXT 7f.4: canonical lookup via unified globalThis.
-            let gt_val = rt.global_get("globalThis");
-            let saved_this = std::mem::replace(&mut rt.current_this, gt_val);
-            // ES-EXT 1 (eval-scope-binding-chain): route indirect-eval
-            // through evaluate_script (Script semantics). Currently
-            // evaluate_script delegates to evaluate_module; ES-EXT 2/3
-            // will diverge with Script-mode top-level scope so top-level
-            // var attaches to globalThis per §19.2.1.3.
-            let expr_ok = rt.evaluate_script(&expr_source, &url).is_ok();
-            if expr_ok {
-                rt.current_this = saved_this;
-                // GBSU-EXT 4b: read via canonical surface (Object first).
-                let result = rt.global_get(&stash_key);
-                if let Some(gt) = rt.global_object {
-                    rt.obj_mut(gt).remove_str(&stash_key);
-                }
-                return Ok(result);
-            }
-            // Statement form: run as-is, no captured result.
-            let stmt_url = format!("file://<eval:{}:stmt>", n);
-            let r = rt.evaluate_script(&source, &stmt_url);
-            rt.current_this = saved_this;
-            match r {
-                Ok(_) => Ok(Value::Undefined),
-                // §19.2.1.1 PerformEval step 5: if Script parsing fails,
-                // throw a SyntaxError. Surface parse-tier CompileError as
-                // a JS-catchable SyntaxError so test262 negative-phase-parse
-                // tests can observe the throw.
-                Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
-                Err(e) => Err(e),
-            }
+            rt.eval_source_globalish(source)
         });
 
         // Tier-Ω.5.yyy: expose Function.prototype on the Function
