@@ -25,9 +25,9 @@ fn b(e: Expr) -> Box<Expr> {
 pub fn build_json_serialize_property() -> IRFunction {
     let body = vec![
         Step {
-            spec_step: "param.value".into(),
+            spec_step: "param.holder".into(),
             node: IRNode::Let {
-                name: "value".into(),
+                name: "holder".into(),
                 value: Expr::Arg(0),
             },
         },
@@ -38,6 +38,16 @@ pub fn build_json_serialize_property() -> IRFunction {
                 value: Expr::Arg(1),
             },
         },
+        Step {
+            spec_step: "1.get".into(),
+            node: IRNode::Let {
+                name: "value".into(),
+                value: Expr::CallBuiltin {
+                    name: "json_get_property_via",
+                    args: vec![v("holder"), v("key")],
+                },
+            },
+        },
         // §25.5.2.4 step 2: if value is Object or BigInt, dispatch toJSON.
         Step {
             spec_step: "2.tojson".into(),
@@ -46,6 +56,16 @@ pub fn build_json_serialize_property() -> IRFunction {
                 value: Expr::CallBuiltin {
                     name: "json_apply_to_json_via",
                     args: vec![v("value"), v("key")],
+                },
+            },
+        },
+        Step {
+            spec_step: "3.replacer".into(),
+            node: IRNode::Assign {
+                name: "value".into(),
+                value: Expr::CallBuiltin {
+                    name: "json_apply_replacer_via",
+                    args: vec![v("holder"), v("value"), v("key")],
                 },
             },
         },
@@ -188,10 +208,22 @@ pub fn build_json_serialize_property() -> IRFunction {
 pub fn spec_steps_json_serialize_property() -> Vec<SpecStepRecord> {
     vec![
         SpecStepRecord {
+            step_id: "1.get".into(),
+            abstract_ops: vec!["json_get_property_via"],
+            throws: None,
+            prose: "Let value be Get(holder, key).",
+        },
+        SpecStepRecord {
             step_id: "2.tojson".into(),
             abstract_ops: vec!["json_apply_to_json_via"],
             throws: None,
             prose: "If value is Object|BigInt, invoke toJSON method.",
+        },
+        SpecStepRecord {
+            step_id: "3.replacer".into(),
+            abstract_ops: vec!["json_apply_replacer_via"],
+            throws: None,
+            prose: "If ReplacerFunction is not undefined, Call it with holder and (key, value).",
         },
         SpecStepRecord {
             step_id: "4.unwrap".into(),

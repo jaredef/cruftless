@@ -364,14 +364,15 @@ impl Op {
     pub fn operand_size(self) -> usize {
         use Op::*;
         match self {
-            PushNull | PushUndef | PushTrue | PushFalse | PushTDZ | SetThisTDZ | PushThisRaw | Pop | Dup | Swap | Add | Sub | Mul
-            | Div | Mod | Pow | Neg | Pos | Inc | Dec | Lt | Gt | Le | Ge | Eq | Ne | StrictEq
-            | StrictNe | In | Instanceof | BitAnd | BitOr | BitXor | BitNot | Shl | Shr | UShr
-            | Not | Return | ReturnUndef | GetIndex | SetIndex | SetPrototype | NewObject
-            | Typeof | Void | Delete | DeleteIndex | Throw | TryExit | IterInit | IterNext
-            | IterClose | Nop | Debugger | PushThis | PushImportMeta | PushNewTarget | SetThis
-            | PropagateNewTarget | EnterWith | ExitWith | AddI64 | SubI64 | MulI64 | IncI64
-            | DecI64 | LtI64 | LeI64 | GtI64 | GeI64 | EqI64 | NeI64 => 0,
+            PushNull | PushUndef | PushTrue | PushFalse | PushTDZ | SetThisTDZ | PushThisRaw
+            | Pop | Dup | Swap | Add | Sub | Mul | Div | Mod | Pow | Neg | Pos | Inc | Dec | Lt
+            | Gt | Le | Ge | Eq | Ne | StrictEq | StrictNe | In | Instanceof | BitAnd | BitOr
+            | BitXor | BitNot | Shl | Shr | UShr | Not | Return | ReturnUndef | GetIndex
+            | SetIndex | SetPrototype | NewObject | Typeof | Void | Delete | DeleteIndex
+            | Throw | TryExit | IterInit | IterNext | IterClose | Nop | Debugger | PushThis
+            | PushImportMeta | PushNewTarget | SetThis | PropagateNewTarget | EnterWith
+            | ExitWith | AddI64 | SubI64 | MulI64 | IncI64 | DecI64 | LtI64 | LeI64 | GtI64
+            | GeI64 | EqI64 | NeI64 => 0,
             Call | New | CallMethod | DirectEval | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | InitLocal | LoadArg | StoreArg | LoadGlobal
             | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue | DefineLocal

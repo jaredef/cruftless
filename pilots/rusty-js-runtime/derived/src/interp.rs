@@ -4657,7 +4657,10 @@ impl Runtime {
         let result = crate::generated::json_serialize_property(
             self,
             Value::Undefined,
-            &[Value::Object(wrapper), Value::String(std::rc::Rc::new(String::new()))],
+            &[
+                Value::Object(wrapper),
+                Value::String(std::rc::Rc::new(String::new())),
+            ],
         );
         if pushed_replacer {
             self.json_replacer_stack.pop();
@@ -4682,6 +4685,18 @@ impl Runtime {
             None => return Ok(value.clone()),
         };
         self.call_function(replacer, holder.clone(), vec![key.clone(), value.clone()])
+    }
+
+    pub fn json_get_property_via(
+        &mut self,
+        holder: &Value,
+        key: &Value,
+    ) -> Result<Value, RuntimeError> {
+        let key_name = match key {
+            Value::String(s) => (**s).clone(),
+            _ => self.coerce_to_string(key)?,
+        };
+        self.spec_get(holder, &key_name)
     }
 
     /// IR-EXT 68: §25.5.2.4 step 2 — invoke value.toJSON(key) when value
@@ -9788,6 +9803,7 @@ impl Runtime {
             "__super_base_home",
             "__super_get_base",
             "__super_set",
+            "__super_delete",
             "__cruftless_tolerate",
             "__post_eval_trace",
         ]
@@ -14206,8 +14222,8 @@ impl Runtime {
             self.define_global_property(&entry.name, entry.value.clone());
             saved.push((entry, prev));
         }
-        let result =
-            self.eval_source_globalish_with_global_declarations(source, caller.eval_var_env_is_global);
+        let result = self
+            .eval_source_globalish_with_global_declarations(source, caller.eval_var_env_is_global);
         for (entry, old) in saved.into_iter().rev() {
             if let Some(gt) = self.global_object {
                 if !matches!(entry.target, DirectEvalOverlayTarget::Temporary)

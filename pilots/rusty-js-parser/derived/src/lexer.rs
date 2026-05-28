@@ -981,9 +981,7 @@ impl<'src> Lexer<'src> {
                 // Raw form preserves the backslash + next char(s) verbatim.
                 let escape_start = self.pos;
                 let template_decimal_escape_invalid_cooked = match self.peek_byte_at(1) {
-                    Some(b'0') => self
-                        .peek_byte_at(2)
-                        .map_or(false, |b| b.is_ascii_digit()),
+                    Some(b'0') => self.peek_byte_at(2).map_or(false, |b| b.is_ascii_digit()),
                     Some(b'1'..=b'9') => true,
                     _ => false,
                 };

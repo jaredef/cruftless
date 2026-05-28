@@ -172,6 +172,9 @@ pub struct CompiledModule {
     /// ES-EXT/EVFEI pipeline discriminator: true for Script-mode frames
     /// whose variable environment is the global environment record.
     pub eval_var_env_is_global: bool,
+    /// EVFEI-EXT 8: true when Script top-level `var` locals alias the
+    /// global object environment record.
+    pub global_env_alias: bool,
 }
 
 /// One ESM import binding. Compiled from ImportDeclaration entries.
@@ -362,6 +365,9 @@ pub struct Compiler {
     /// globalThis. Set via `set_script_mode(true)` before `compile_module`.
     /// Default false (Module semantics). See is_script_top_var().
     script_mode: bool,
+    /// EVFEI-EXT 8: separates Script lowering from global environment
+    /// record aliasing for direct eval inside function scopes.
+    script_global_env_alias: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -797,6 +803,7 @@ impl Compiler {
             strict: false,
             locals_snapshot: None,
             script_mode: false,
+            script_global_env_alias: false,
         }
     }
 
@@ -816,6 +823,11 @@ impl Compiler {
     /// standard semantics.
     pub fn set_script_mode(&mut self, m: bool) {
         self.script_mode = m;
+        self.script_global_env_alias = m;
+    }
+
+    pub fn set_script_global_env_alias(&mut self, m: bool) {
+        self.script_global_env_alias = m;
     }
 
     /// ES-EXT 2 helper: at a Stmt::Variable compile site, does the
@@ -1367,6 +1379,7 @@ impl Compiler {
             line_starts: std::mem::take(&mut self.source_line_starts),
             strict: self.strict,
             eval_var_env_is_global: self.script_mode,
+            global_env_alias: self.script_mode && self.script_global_env_alias,
         })
     }
 
@@ -3718,6 +3731,29 @@ impl Compiler {
                         object, property, ..
                     } = argument.as_ref()
                     {
+                        if matches!(object.as_ref(), Expr::Super { .. }) {
+                            let helper = self
+                                .constants
+                                .intern(Constant::String("__super_delete".into()));
+                            encode_op(&mut self.bytecode, Op::LoadGlobal);
+                            encode_u16(&mut self.bytecode, helper);
+                            encode_op(&mut self.bytecode, Op::PushThis);
+                            match property.as_ref() {
+                                rusty_js_ast::MemberProperty::Identifier { name, .. }
+                                | rusty_js_ast::MemberProperty::Private { name, .. } => {
+                                    let idx =
+                                        self.constants.intern(Constant::String(name.clone()));
+                                    encode_op(&mut self.bytecode, Op::PushConst);
+                                    encode_u16(&mut self.bytecode, idx);
+                                }
+                                rusty_js_ast::MemberProperty::Computed { expr, .. } => {
+                                    self.compile_expr(expr)?;
+                                }
+                            }
+                            encode_op(&mut self.bytecode, Op::Call);
+                            encode_u8(&mut self.bytecode, 2);
+                            return Ok(());
+                        }
                         match property.as_ref() {
                             rusty_js_ast::MemberProperty::Identifier { name, .. }
                             | rusty_js_ast::MemberProperty::Private { name, .. } => {
@@ -4898,6 +4934,7 @@ impl Compiler {
             // scope — `var` inside a function is function-local regardless
             // of whether the enclosing top-level was Script or Module.
             script_mode: false,
+            script_global_env_alias: false,
         };
         for name in direct_eval_parent_locals {
             let _ = sub.resolve_upvalue(&name);
@@ -7771,8 +7808,7 @@ impl Compiler {
             frame.super_ctor_name.clone()
         } else {
             frame.super_proto_name.clone()
-        }
-        .ok_or_else(|| self.err(span, "super reference in a class with no `extends` clause"))?;
+        };
         // Ω.5.P03.E2.super-get-this: super.X reads dispatch through
         // __super_get(this, super_base, key) so any accessor on the
         // super-base's chain runs with `this = original method's this`
@@ -7787,7 +7823,21 @@ impl Compiler {
         encode_op(&mut self.bytecode, Op::LoadGlobal);
         encode_u16(&mut self.bytecode, helper);
         encode_op(&mut self.bytecode, Op::PushThis);
-        self.emit_load_ident(&target_name);
+        if let Some(target_name) = target_name {
+            self.emit_load_ident(&target_name);
+        } else {
+            let ctor = if frame.is_static {
+                "Function"
+            } else {
+                "Object"
+            };
+            let ctor_idx = self.constants.intern(Constant::String(ctor.into()));
+            encode_op(&mut self.bytecode, Op::LoadGlobal);
+            encode_u16(&mut self.bytecode, ctor_idx);
+            let proto_idx = self.constants.intern(Constant::String("prototype".into()));
+            encode_op(&mut self.bytecode, Op::GetProp);
+            encode_u16(&mut self.bytecode, proto_idx);
+        }
         match property {
             MemberProperty::Identifier { name, .. } => {
                 let idx = self.constants.intern(Constant::String(name.clone()));
@@ -7814,7 +7864,6 @@ impl Compiler {
                 return Ok(());
             }
         }
-        Ok(())
     }
 
     /// Lower `super.method(args...)` — a super member-call with the

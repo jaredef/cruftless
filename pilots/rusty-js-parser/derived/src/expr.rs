@@ -1340,7 +1340,12 @@ impl<'src> Parser<'src> {
             }
         }
 
-        Ok((cooked_quasis, raw_quasis, expressions, self.last_span_end().max(start)))
+        Ok((
+            cooked_quasis,
+            raw_quasis,
+            expressions,
+            self.last_span_end().max(start),
+        ))
     }
 
     fn looks_like_async_method_shorthand(&self) -> bool {

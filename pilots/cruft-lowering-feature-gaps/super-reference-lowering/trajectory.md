@@ -219,3 +219,120 @@ FAIL:  50
 **Next**: no-extends runtime behavior is now the lowest-collision remaining
 cluster. Keep direct-eval rows deferred behind the eval-environment arc, and
 check delete-super against static-semantics ownership before editing.
+
+## SRL-EXT 4 — no-extends SuperProperty base fallback (2026-05-28)
+
+**Target selected**: the four base-class/no-extends SuperProperty rows:
+
+- `language/expressions/optional-chaining/member-expression.js`
+- `language/expressions/super/prop-expr-cls-err.js`
+- `language/expressions/super/prop-expr-cls-key-err.js`
+- `language/statements/class/syntax/class-body-method-definition-super-property.js`
+
+These rows show that `super.prop` and `super[key]` are valid inside a class
+body even when the class has no `extends` clause. Instance methods and base
+constructors must read through `Object.prototype`; static methods read through
+`Function.prototype`. Computed keys must still execute and undergo
+side-effectful `ToPropertyKey` before any lookup result is observed.
+
+**Substrate move**:
+
+- Removed the compiler rejection for class frames with no recorded
+  `super_proto_name`/`super_ctor_name` when lowering SuperProperty reads.
+- Lowered missing instance/base-constructor super bases to
+  `Object.prototype`, and missing static super bases to `Function.prototype`.
+- Routed `__super_get` keys through side-effectful string coercion before
+  property-key lookup, so `super[badToString]` observes the required key
+  coercion error.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-bytecode: PASS (existing warnings)
+cargo build --bin cruft -p cruftless: PASS (existing warnings)
+```
+
+Focused no-extends subset with the freshly built debug binary:
+
+```text
+CLFG exemplars: PASS=4 FAIL=0 SKIP=0 NOJSON=0 / 4
+```
+
+Full child suite with the freshly built debug binary:
+
+```text
+CLFG exemplars: PASS=9 FAIL=13 SKIP=0 NOJSON=0 / 22
+```
+
+Debug diff-prod run:
+
+```text
+total: 112
+PASS:  61
+FAIL:  51
+```
+
+**Residual**:
+
+- Direct-eval context capture remains `compile: super reference outside of a
+  class`.
+- Delete/bare-super rows remain `compile: bare \`super\` reference ...`.
+- Derived-constructor direct-eval `super()` rows remain
+  `compile: super(...) outside of a class`.
+
+**Next**: static-semantics audit for delete-super routing is now the
+lowest-collision local move. Keep direct-eval rows behind the eval-environment
+arc.
+
+## SRL-EXT 5 — delete SuperReference runtime throw (2026-05-28)
+
+**Target selected**: the four `delete super` rows:
+
+- `language/expressions/delete/super-property-method.js`
+- `language/expressions/delete/super-property-null-base.js`
+- `language/expressions/delete/super-property-uninitialized-this.js`
+- `language/expressions/delete/super-property.js`
+
+The tests confirm this is not a parse-time or blanket compile-time rejection.
+The delete operator first evaluates the SuperProperty reference enough to
+observe `this` binding failures and computed-key effects, then throws
+`ReferenceError` because deleting a SuperReference is forbidden.
+
+**Substrate move**:
+
+- Added a `delete super.property` / `delete super[expr]` branch in unary
+  delete lowering before the ordinary member-delete path.
+- The branch emits helper call setup, then `PushThis`, then property-key
+  evaluation. This preserves the order where an uninitialized derived
+  constructor `this` throws before the computed key expression runs.
+- Added hidden runtime helper `__super_delete`, routed through the
+  engine-helper allowlist, which throws the required `ReferenceError`.
+
+**Verification**:
+
+```text
+cargo build --bin cruft -p cruftless: PASS (existing warnings)
+```
+
+Focused delete-super subset with the freshly built debug binary:
+
+```text
+CLFG exemplars: PASS=4 FAIL=0 SKIP=0 NOJSON=0 / 4
+```
+
+Full child suite with the freshly built debug binary:
+
+```text
+CLFG exemplars: PASS=13 FAIL=9 SKIP=0 NOJSON=0 / 22
+```
+
+**Residual**:
+
+- Direct-eval context capture remains `compile: super reference outside of a
+  class`.
+- Derived-constructor direct-eval `super()` rows remain
+  `compile: super(...) outside of a class`.
+
+**Next**: the remaining SRL rows are all eval-context capture. Either hand off
+to the active eval-environment arc or spawn a direct-eval `super` nested rung
+only after reading that arc's current settlement.

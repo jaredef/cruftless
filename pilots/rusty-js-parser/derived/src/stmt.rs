@@ -1533,12 +1533,10 @@ impl<'src> Parser<'src> {
                         }],
                         span: kw_span,
                     };
-                    let left = ForBinding::Pattern(BindingPattern::Identifier(
-                        BindingIdentifier {
-                            name: n,
-                            span: id_span,
-                        },
-                    ));
+                    let left = ForBinding::Pattern(BindingPattern::Identifier(BindingIdentifier {
+                        name: n,
+                        span: id_span,
+                    }));
                     let for_in = Stmt::ForIn {
                         left,
                         right,

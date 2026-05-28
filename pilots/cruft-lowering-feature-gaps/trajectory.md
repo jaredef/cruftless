@@ -109,20 +109,24 @@ belongs there: SRL-EXT 1 child baseline classification.
 
 ## CLFG-EXT 2 — child super-lowering progress checkpoint (2026-05-28)
 
-`super-reference-lowering/` has now closed two low-collision subclusters:
+`super-reference-lowering/` has now closed four low-collision subclusters:
 
 - SRL-EXT 2: object-literal HomeObject `super` for computed method/accessor
   rows, `+3`.
 - SRL-EXT 3: object-method `super[key]` PutValue base/key ordering for
   compound assignment and update rows, `+2`.
+- SRL-EXT 4: no-extends class SuperProperty base fallback and key coercion,
+  `+4`.
+- SRL-EXT 5: delete SuperReference evaluation and ReferenceError routing,
+  `+4`.
 
 Child suite checkpoint:
 
 ```text
-CLFG exemplars: PASS=5 FAIL=17 SKIP=0 NOJSON=0 / 22
+CLFG exemplars: PASS=13 FAIL=9 SKIP=0 NOJSON=0 / 22
 ```
 
-Remaining `super` rows partition into direct-eval context capture,
-delete/bare-super routing, base-class no-extends runtime behavior, and
+Remaining `super` rows are direct-eval context capture and
 derived-constructor direct-eval `super()` capture. Direct eval should stay
-deferred behind the active eval-environment arc.
+deferred behind the active eval-environment arc unless that arc is explicitly
+joined.

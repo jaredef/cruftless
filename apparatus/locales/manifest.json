@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 213,
-    "top_level": 127,
+    "locales": 214,
+    "top_level": 128,
     "nested": 86,
     "warnings": 0
   },
@@ -321,7 +321,7 @@
       "parent": "L.cruft-lowering-feature-gaps",
       "scope": "super-reference-lowering",
       "depth": 2,
-      "rung_count": 4,
+      "rung_count": 6,
       "status": "FOUNDED 2026-05-28 as the first child of"
     },
     {
@@ -656,6 +656,15 @@
       "depth": 1,
       "rung_count": 10,
       "status": "FOUNDED 2026-05-28 from the JSON carve-out search after applying"
+    },
+    {
+      "coord": "json-stringify-semantics",
+      "tag": "L.json-stringify-semantics",
+      "parent": null,
+      "scope": "json-stringify-semantics",
+      "depth": 1,
+      "rung_count": 5,
+      "status": null
     },
     {
       "coord": "length-of-array-like-propagate",

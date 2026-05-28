@@ -75,3 +75,27 @@
 - Full SRL child suite moved `PASS=3 FAIL=19` to `PASS=5 FAIL=17`.
 - Verification: `cargo check -p rusty-js-bytecode`, `cargo check -p rusty-js-runtime`,
   `cargo build --bin cruft -p cruftless`, and debug `diff-prod` (`62/112 PASS`).
+
+## 2026-05-28 — SRL-EXT 4 no-extends SuperProperty fallback
+
+- Removed the compiler rejection for SuperProperty reads in class frames
+  without an `extends` clause.
+- Lowered missing instance/base-constructor super bases to `Object.prototype`
+  and missing static super bases to `Function.prototype`.
+- Routed `__super_get` through side-effectful key coercion before lookup.
+- Focused no-extends rows moved `PASS=0/4` to `PASS=4/4`.
+- Full SRL child suite moved `PASS=5 FAIL=17` to `PASS=9 FAIL=13`.
+- Verification: `cargo check -p rusty-js-bytecode`,
+  `cargo build --bin cruft -p cruftless`, and debug `diff-prod` (`61/112 PASS`).
+
+## 2026-05-28 — SRL-EXT 5 delete SuperReference routing
+
+- Added a unary-delete lowering branch for `delete super.property` and
+  `delete super[expr]`.
+- Preserved `PushThis` before computed-key evaluation, so uninitialized
+  derived-constructor `this` throws before the key expression can run.
+- Added hidden helper `__super_delete`, routed through the engine-helper
+  allowlist, which throws the required `ReferenceError`.
+- Focused delete-super rows moved `PASS=0/4` to `PASS=4/4`.
+- Full SRL child suite moved `PASS=9 FAIL=13` to `PASS=13 FAIL=9`.
+- Verification: `cargo build --bin cruft -p cruftless`.

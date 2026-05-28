@@ -1040,7 +1040,7 @@ pub fn build_number_proto_to_string() -> IRFunction {
     )
 }
 pub fn build_number_proto_to_locale_string() -> IRFunction {
-    nullary_section(
+    variadic_section(
         "21.1.3.4",
         "number_prototype_to_locale_string",
         "Number.prototype.toLocaleString ( )",

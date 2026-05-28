@@ -6159,18 +6159,16 @@ impl Runtime {
             // 15.7 MethodDefinitionEvaluation. Object-literal accessors
             // use a separate helper (__install_accessor_obj__) below to
             // get enumerable:true per sec 13.2.5.5 PropertyDefinitionEvaluation.
-            let desc =
-                rt.obj_mut(target)
-                    .dict_mut()
-                    .entry(key)
-                    .or_insert_with(|| crate::value::PropertyDescriptor {
-                        value: Value::Undefined,
-                        writable: false,
-                        enumerable: false,
-                        configurable: true,
-                        getter: None,
-                        setter: None,
-                    });
+            let desc = rt.obj_mut(target).dict_mut().entry(key).or_insert_with(|| {
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                }
+            });
             if kind == "get" {
                 desc.getter = Some(fn_v);
             } else if kind == "set" {
@@ -6209,18 +6207,16 @@ impl Runtime {
             // dict_mut so an object literal that mixes accessors and later
             // data properties preserves source insertion order under shape
             // enrollment.
-            let desc =
-                rt.obj_mut(target)
-                    .dict_mut()
-                    .entry(key)
-                    .or_insert_with(|| crate::value::PropertyDescriptor {
-                        value: Value::Undefined,
-                        writable: false,
-                        enumerable: true,
-                        configurable: true,
-                        getter: None,
-                        setter: None,
-                    });
+            let desc = rt.obj_mut(target).dict_mut().entry(key).or_insert_with(|| {
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                }
+            });
             // If the property already existed (e.g. installed by a
             // sibling getter/setter half of the pair), force enumerable
             // back to true in case the prior install used the class form.
@@ -6336,16 +6332,12 @@ impl Runtime {
         register_engine_helper(self, "__super_get", |rt, args| {
             let this_val = args.first().cloned().unwrap_or(Value::Undefined);
             let super_base = args.get(1).cloned().unwrap_or(Value::Undefined);
-            let key: String = match args.get(2) {
-                Some(Value::String(s)) => (**s).clone(),
-                Some(Value::Number(n)) => {
-                    if n.fract() == 0.0 {
-                        format!("{}", *n as i64)
-                    } else {
-                        format!("{}", n)
-                    }
+            let key = match args.get(2) {
+                Some(Value::Symbol(_)) => crate::interp::property_key(args.get(2).unwrap()),
+                Some(v) => {
+                    crate::interp::property_key(&Value::String(Rc::new(rt.coerce_to_string(v)?)))
                 }
-                _ => return Ok(Value::Undefined),
+                None => crate::interp::property_key(&Value::String(Rc::new("undefined".into()))),
             };
             let base_id = match super_base {
                 Value::Object(id) => id,
@@ -6354,20 +6346,11 @@ impl Runtime {
             // Walk super_base.[[Prototype]] chain (i.e. start at super_base
             // itself, since super.X looks up X on super_base which is the
             // parent prototype). Find the property descriptor.
-            let mut cur: Option<rusty_js_gc::ObjectId> = Some(base_id);
-            while let Some(c) = cur {
-                let o = rt.obj(c);
-                if let Some(desc) = o.get_own(&key) {
-                    if let Some(getter) = desc.getter.clone() {
-                        // Accessor with getter — invoke with this = original this_val.
-                        return rt.call_function(getter, this_val, vec![]);
-                    }
-                    // Data property — return value directly.
-                    return Ok(desc.value.clone());
-                }
-                cur = o.proto;
+            if let Some(getter) = rt.find_getter_pk(base_id, &key) {
+                // Accessor with getter — invoke with this = original this_val.
+                return rt.call_function(getter, this_val, vec![]);
             }
-            Ok(Value::Undefined)
+            Ok(rt.object_get_pk(base_id, &key))
         });
         // SRL-EXT 2: object-literal `super`. Object method HomeObject is
         // the literal object itself; GetSuperBase reads its live prototype
@@ -6459,6 +6442,11 @@ impl Runtime {
                 rt.object_set_pk(this_id, key, value.clone());
             }
             Ok(value)
+        });
+        register_engine_helper(self, "__super_delete", |_rt, _args| {
+            Err(RuntimeError::ReferenceError(
+                "cannot delete super property".into(),
+            ))
         });
         // Ω.5.P04.E1.for-in-nullish-skip: __for_in_keys(obj) returns
         // Object.keys(obj) for object/function receivers, but [] for
@@ -16887,10 +16875,14 @@ impl Runtime {
             let modulus = JsBigInt::one().shl(&bits_bi).ok_or_else(|| {
                 RuntimeError::RangeError("BigInt shift exponent out of range".into())
             })?;
-            let (_, rem) = bi.divmod(&modulus).ok_or_else(|| {
-                RuntimeError::RangeError("BigInt modulo by zero".into())
-            })?;
-            let m = if rem.is_negative() { rem.add(&modulus) } else { rem };
+            let (_, rem) = bi
+                .divmod(&modulus)
+                .ok_or_else(|| RuntimeError::RangeError("BigInt modulo by zero".into()))?;
+            let m = if rem.is_negative() {
+                rem.add(&modulus)
+            } else {
+                rem
+            };
             if signed {
                 let half = JsBigInt::one()
                     .shl(&JsBigInt::from_u64(bits - 1))

@@ -130,7 +130,7 @@ pub fn build_with() -> IRFunction {
     )
 }
 pub fn build_to_locale_string() -> IRFunction {
-    nullary_section(
+    variadic_section(
         "23.1.3.30",
         "array_prototype_to_locale_string",
         "Array.prototype.toLocaleString ( )",

@@ -38,6 +38,8 @@ and routes each cluster to the smallest coherent substrate locale.
 | SRL-EXT 1 | child exemplar suite | 22 | 0 | Child baseline: 22/22 still fail with `super` compiler diagnostics; internal split recorded in child trajectory. |
 | SRL-EXT 2 | child exemplar suite | 22 | 3 | Object-literal HomeObject bridge flips the three computed-property object method/accessor `super` rows. |
 | SRL-EXT 3 | child exemplar suite | 22 | 5 | Super PutValue base/key ordering flips the two object-method compound/update rows. |
+| SRL-EXT 4 | child exemplar suite | 22 | 9 | No-extends SuperProperty fallback flips the four base-class/no-extends rows. |
+| SRL-EXT 5 | child exemplar suite | 22 | 13 | Delete SuperReference routing flips the four `delete super` rows. |
 
 ## Cross-locale findings
 
@@ -82,9 +84,24 @@ then performs side-effectful `ToPropertyKey`, preserving the spec order where a
 key object's `toString()` can mutate the HomeObject prototype without changing
 the already-captured super base.
 
+**Finding LFGT.7 (no-extends SuperProperty is runtime fallback, not syntax
+rejection)**: SRL-EXT 4 closes the four base-class/no-extends rows by treating
+missing super-base bindings as `Object.prototype` for instance/base-constructor
+reads and `Function.prototype` for static reads. The computed-key rows also
+confirm that key coercion must remain side-effectful even when the class has no
+explicit `extends`.
+
+**Finding LFGT.8 (delete-super is a reference-evaluation branch)**: SRL-EXT 5
+closes the four `delete super` rows by lowering delete of SuperProperty as
+reference evaluation followed by a required `ReferenceError`, not as a parser
+or compiler ban. The uninitialized-this fixture fixes the order constraint:
+`PushThis` precedes computed-key evaluation.
+
 ## Status
 
 IN PROGRESS. Parent locale founded; Rule-23 baseline completed; first child
 `super-reference-lowering/` founded. SRL has closed the object-literal
-HomeObject and object-method PutValue ordering subclusters. Pending next move:
-no-extends runtime behavior or a static-semantics check for delete-super.
+HomeObject, object-method PutValue ordering, no-extends SuperProperty, and
+delete SuperReference subclusters. Pending next move: defer to the
+eval-environment arc for direct-eval `super` capture or explicitly join that
+arc's current settlement.
