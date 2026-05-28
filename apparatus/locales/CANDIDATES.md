@@ -6,6 +6,66 @@ Living document; append-only at the bottom (newest at top within a section). Eac
 
 ---
 
+## Importance scoring per Doc 744 + 745 candidate heuristic (2026-05-28)
+
+Per keeper directive Telegram 10168: apply the pipeline-form-discovery heuristic (Doc 744) + structured per-Phase emission protocol with SIPE-T fractal fitting (Doc 745 candidate) to rank the un-spawned candidates by importance. The ranking composes three factors:
+
+- **Substrate yield estimate** (per-candidate yield as cluster PASS / engagement-rate-delta if known).
+- **Phase 1 completeness** per Doc 744 §V.1: count of (M, T, I, R, observability, mouth-gating) elements explicit at candidate description. Lower implicit count → fewer rule-13 rounds expected at spawn per Doc 744 §V.3 rounds-to-closure formula.
+- **Arc-tier coherence** per Doc 745 candidate §IV fractal fit: whether the candidate's (M, T, I, R) sub-shape fits cleanly under an existing or already-scaffolded arc.
+
+**Importance classes**:
+
+### 🔴 HIGH — spawn-ready + arc-coherent + high yield estimate
+
+These candidates have all four Phase 1 elements explicit at description, fit cleanly under an existing arc per Doc 745 §IV.3, and carry high substrate-yield estimates. Rounds-to-closure expected ≤ 2 per Doc 744 §V.3. Spawn before any other.
+
+| Candidate | Arc enrollment | Yield estimate | Note |
+|---|---|---|---|
+| (c) `ihi-array-entries` — **SPAWNED** 2026-05-28 | 2026-05-28-engine-hot-path-amortization (proposed) + lattice-meet 2026-05-28-array-exotic-substrate | json_parse_transform -10%, cruft/node 14.78× → ≤13.3× | Active keeper trajectory (4 commits last 3d); composes with TAMM substrate work |
+| (a) `iter-protocol-bytecode-rewrite` — **SPAWNED** 2026-05-24 | 2026-05-28-iterator-protocol-substrate | string_url_sweep header_loop ≥50% remaining per-iter | Closes IPS arc's primary cost dominator |
+| (v) `cruft-parser-feature-gaps` — 🟢 RIPE | 2026-05-28-parser-early-error-conformance | ~471 fails on PCR `missing-parser-feature` | Direct arc-roster fit |
+| (w) `cruft-lowering-feature-gaps` — 🟢 RIPE | needs new compiler-lowering arc per orphan-disposition §II.5 | diff-prod mechanism gaps #1, #5, #6, #7 | Provisional in parser-early-error arc until ≥3 compiler-tier locales justify split |
+
+### 🟠 MEDIUM — arc-coherent but (M, T, I, R) partially implicit OR yield un-probed
+
+These candidates fit an arc but have ≥1 implicit Phase 1 element OR un-measured yield. Rounds-to-closure expected 2-3.
+
+| Candidate | Arc enrollment | Implicit Phase 1 element | Note |
+|---|---|---|---|
+| (e) `arith-tight-loop-closure` — ⚪ HYPOTHETICAL | 2026-05-28-engine-hot-path-amortization (proposed) | A1 dominator (typed-op dispatch vs f64-boxing) not probed | Needs component A/B before spawn |
+| (b) `jit-getprop-method-ic` — 🟡 PROBED | 2026-05-28-engine-hot-path-amortization (proposed) | A5 emission-shape (Cranelift stub vs runtime helper) | Composition with OSR boundary not designed |
+| (ss) `regex-literal-lexing` — 🟡 PROBED | 2026-05-28-lex-tier-conformance | A2 op-set partial (regex-vs-Div lex-goal coupling) | Cross-arc relation with regexp-conformance |
+| (y) Class-D scope extensions (LPA-EXT 3 rec 4) | 2026-05-28-parser-early-error-conformance | I (interior contour) not sketched | Promotion target for the LGSS→PPIF→FHNB spinoff pattern |
+
+### 🟡 LOW — speculative or apparatus-only
+
+These candidates are speculative substrate work OR apparatus-pilot extensions whose substrate yield is bounded. Defer unless the apparatus needs them.
+
+| Candidate | Arc enrollment | Note |
+|---|---|---|
+| (d) `gpi-override-safety` — ⚪ HYPOTHETICAL | engine-hot-path-amortization (proposed) | Correctness fixture; defer until consumer-app surfaces divergence |
+| (f) `module-loader-eager-cache` — ⚪ HYPOTHETICAL | new "module-load-perf" arc (would need ≥3 sibling locales) | Cold-start perf; no current empirical anchor |
+| (g) `regex-jit-precompile` — ⚪ HYPOTHETICAL | new "regex-perf" arc | No current empirical anchor |
+| (i) `crypto-sha256-batch-investigation` — ⚪ HYPOTHETICAL | host-runtime-api umbrella | Speculative; defer until consumer-app surfaces |
+
+### ⚫ DEFERRED — gated by an unclosed mouth-gating DAG prerequisite per Doc 744 §IV.1.a
+
+Per Doc 744 §IV.1.a mouth-gating: these candidates' mouth is gated by another candidate's terminus. Wait for the upstream closure before spawning.
+
+| Candidate | Gating prerequisite | Note |
+|---|---|---|
+| (k) `cruftscript-spec` — ⚪ DEFERRED | TSR-EXT 5 probe returned NULL at IPBR consumer 2026-05-24 | C3 cost-positive condition failed; defer until consumer-tier rationale emerges |
+| (m-s) `ts-resolve-*` sub-locales — ⚪ QUEUED | TCC failure-table | Wait for TCC measurement to gate per-locale spawn |
+
+### Standing recommendation per Doc 744 §V.3 prediction
+
+A candidate with all four Phase 1 elements explicit at description closes in ≤ 3 rungs. The HIGH-class candidates have already been spawned (c, a) or fit existing arcs with sub-shape correspondence (v, w). Spawn order recommendation: pick HIGH-class candidates whose arc is currently IN PROGRESS first; pick MEDIUM-class after probing the missing Phase 1 element via Rule 23 founding-baseline-inspection.
+
+**Cross-reference**: the cross-orphan patterns surfaced at `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §III apply to this candidate ranking too — when a candidate's seed enumerates sub-substrates at the same coordinate tier, treat the spawn as an arc per pattern III.1, not a locale.
+
+---
+
 ## Tier A — empirically-anchored single-pilot yield targets
 
 ### (a) `iter-protocol-bytecode-rewrite` — **SPAWNED** 2026-05-24 as [`pilots/iter-protocol-bytecode-rewrite/`](../../pilots/iter-protocol-bytecode-rewrite/seed.md)
