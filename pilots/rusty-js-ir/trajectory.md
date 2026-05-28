@@ -2769,3 +2769,54 @@ diff-prod: 61/51 → 62/50 (+1 — typed-arrays-rest or similar destructure fixt
 **Finding IR.35 (the compile-time-guard pattern is the workhorse for captured-slot TDZ)**: four of the eleven TDZ sub-shapes closed in this session use compile-time guards via the expr_refs_free walker rather than runtime sentinel machinery (EXT 21/22/28/36). The pattern compounds: each new captured-slot site adds ~10-25 LOC by reusing expr_refs_free + emit_throw_referenceerror. Rule 26 prospectively predicts when to choose the pattern.
 
 **Status**: IR-EXT 36 CLOSED locally. Cumulative IR rungs: 36. 11 TDZ enforcement sub-shapes closed. Remaining 2 fundamentally distinct: class-this during super-init (needs derived-class ctor super-init machinery), unscopables-tdz (needs Symbol.unscopables + with semantics).
+
+---
+
+## Rung-cluster-37 — TDZ chapter fold (2026-05-28)
+
+Per keeper directive Telegram 10140 ("Continue") + scope-bounded judgment that the 2 remaining sub-shapes (class-this during super-init, unscopables-tdz) are each substantial new-substrate rungs, not extensions of the existing compile-time-guard or block_pre_slots patterns. Folds the TDZ chapter at 11-of-13-sub-shapes closed.
+
+**Probe of class-this** (post-EXT 36 baseline):
+- Cruft: `class C extends B { constructor() { var p = () => this; p(); super(); } }` → `p()` returns Undefined silently before super(), no throw. Spec §15.4.5.4: in derived class ctor, `this` is in TDZ until BindThisValue is called by super().
+- Substrate scope: needs (a) `FunctionInternals.is_derived_class_ctor` field + plumbing through call_function; (b) frame.this_value sentinel-seed at derived-ctor entry; (c) PushThis TDZ check (and PushThis-via-this_cell for arrow capture). ~80-150 LOC across runtime + bytecode + compiler. Rule 25 applies (Load symmetric check needed for Op::PushThis); rule 26 does NOT apply since `this_value` isn't a captured-slot-via-upvalue — it's a frame field with its own this_cell mechanism.
+
+**Probe of unscopables-tdz**:
+- Cruft: with-blocks + Symbol.unscopables interaction needs separate substrate; likely not in cruft at all (with is implemented but Symbol.unscopables guard not). Substrate scope: ~100 LOC in with-binding lookup path; cross-cuts the with-name dispatch.
+
+**TDZ chapter fold (per Phase 5 chapter-close-inspect across the rung-20-to-36 range)**:
+
+| Sub-shape | Status | Rung | Pattern |
+|---|---|---|---|
+| (i) let/const self-init identifier | CLOSED | EXT 21 | compile-time guard |
+| (i) let/const self-init destructure | CLOSED | EXT 22 | compile-time guard |
+| (ii) function-body let/const access-before-decl | CLOSED | EXT 23 | scope-entry PushTDZ |
+| (iii.for-head) for-of/for-in head let/const | CLOSED | EXT 24 | scope-entry PushTDZ |
+| (iii.compound-assign-on-tdz-let) | CLOSED | EXT 26 (rule-13 after EXT 25) | StoreLocal TDZ check |
+| (iii.class-name-extends) | CLOSED | EXT 28 (after EXT 27 negative) | compile-time guard |
+| (iii.block-scope) | CLOSED | EXT 31 | block_pre_slots stack |
+| (iii.switch-case) | CLOSED | EXT 32 | block_pre_slots reuse |
+| (iii.closure-capture-cross-frame) | CLOSED | EXT 32 + 33 | LoadUpvalue/StoreUpvalue TDZ checks |
+| (iii.optional-chain-tdz) | CLOSED | auto-closed by EXT 26/32/33 | (combo) |
+| (iii.module-top) | CLOSED | EXT 34 (rule-13 after EXT 29) | module Phase A.7 PushTDZ |
+| (iii.param-expression) | CLOSED | EXT 36 | compile-time guard |
+| (iii.class-this-pre-super) | OPEN | — | needs derived-ctor machinery (~80-150 LOC) |
+| (iii.unscopables) | OPEN | — | needs Symbol.unscopables + with substrate (~100 LOC) |
+
+**Pattern distribution (12 closed substrates + 1 auto-close):**
+- Compile-time guard via expr_refs_free: 4 (EXT 21, 22, 28, 36)
+- block_pre_slots stack (Constraint β LIFT pieces): 2 (EXT 31, 32)
+- Scope-entry PushTDZ (single-surface): 3 (EXT 23 function-body, EXT 24 for-head, EXT 34 module-top via rule-13)
+- Runtime sentinel-check (Load/Store symmetric pairs): 4 (EXT 23 LoadLocal, EXT 26 StoreLocal, EXT 32 LoadUpvalue, EXT 33 StoreUpvalue) — these are the runtime check sites that the compile-time emit sites depend on, supporting all 12 substrate closures.
+- Substrate-prep rule-13 prefixes that landed positive yield via deeper-layer closures: 2 (EXT 25 → 26, EXT 29 → 34).
+
+**Cumulative reading across the 17-rung TDZ chapter (EXT 20-36):**
+- TDZ-named cluster: 0/13 → 8/13 (+8 PASS on the 13-path explicit *tdz* probe set; 4 of remaining 5 are SKIP for feature-flag reasons, 1 is class-this-OPEN).
+- Broader let/const cluster (120 paths): ~100/120 baseline → 107+/120 (varies +5 to +9 across rungs; some flakiness from adjacent failure modes).
+- diff-prod: 59/53 → 62/50 (+3 cumulative; substrate-stability gains across the chapter).
+- engagement-wide test262 sample (IR-EXT 35 measurement): +6.7pp across all engagement work since 2026-05-22 (24% → ~50% telos progress).
+
+**Tag**: `cluster-tdz-chapter-fold-37`.
+
+**Finding IR.36 (TDZ chapter pattern distribution)**: TDZ enforcement decomposes into 3 substrate patterns (compile-time guard, scope-entry PushTDZ via shared block_pre_slots stack, Load/Store symmetric runtime checks). The patterns compose: compile-time guard for captured slots (4 sites); block_pre_slots stack for scope surfaces (3 surfaces); runtime checks (4 Load/Store pairs) support both compile-time and scope-entry patterns at execution time. The 2 remaining sub-shapes (class-this, unscopables) require new substrate patterns outside this composition — they are not 12th and 13th instances of the existing patterns.
+
+**Status**: IR-EXT 37 CLOSED locally (chapter fold rung; no substrate change). Cumulative IR rungs: 37. TDZ chapter folded at 11 of 13 sub-shapes closed. Remaining work explicitly named for future spawns; the IR locale's telos at ~50% (rate 84.3% / gap 14.9pp / target ≤10pp). The next IR rung should pick a coordinate from the post-rebaseline failure-table top rows — likely outside the TDZ surface unless keeper directs class-this or unscopables specifically.
