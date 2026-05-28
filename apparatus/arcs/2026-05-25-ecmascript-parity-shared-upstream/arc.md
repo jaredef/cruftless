@@ -1,20 +1,18 @@
-# ecmascript-parity-shared-upstream-arc — Resume Vector / Seed
+---
+arc: 2026-05-25-ecmascript-parity-shared-upstream
+trigger: Successor arc to T262C's first ECMAScript-parity round per T262C-EXT 2 prospective analysis (2026-05-25). Promoted from pilots/ecmascript-parity-shared-upstream-arc/ on 2026-05-28 per apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md (the seed was filed as a locale but is structurally an arc per Doc 744 + 745 candidate; canonical instance of pattern III.1 arc-tier-as-locale mis-categorization).
+opened: 2026-05-25
+closed: IN PROGRESS
+close_condition: post-five-shared-substrates target ~85% runnable rate on test262-sample (+340 PASS cascade from the 80.6% baseline); zero PASS→FAIL regressions per round per Finding T262C.5 default discipline.
+---
 
-**Locale tag**: `L.ecmascript-parity-shared-upstream-arc` (top-level)
+# EPSUA: ECMAScript Parity Shared-Upstream Arc
 
-**Status as of 2026-05-25**: **WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints.
+## Provenance
 
-**Workstream**: drive test262-sample runnable rate from the post-ASD baseline (80.6%, 5872/7288) toward the projected post-five-substrates target (~85%, +340 PASS cascade), then assess residual via per-cluster reason-heterogeneity probe per Finding T262C.6.
+This arc was originally filed as a top-level locale at `pilots/ecmascript-parity-shared-upstream-arc/seed.md` (founded 2026-05-25). The 2026-05-28 coverage-gap orphan-disposition exercise (per keeper Telegram 10160; doc at `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §II.1) identified it as the canonical instance of **pattern III.1 arc-tier-as-locale mis-categorization**: the seed's telos enumerated five sub-substrates at the same coordinate tier as the seed itself, which is the arc shape per Doc 744 + Doc 745 candidate. The promotion preserves the original 2026-05-25 founding date in the arc slug; original seed.md + trajectory.md content is migrated to this arc.md + log.md.
 
-**Author**: 2026-05-25 session.
-**Parent**: none (top-level); successor to [T262C](../test262-categorize/) at the arc-tier.
-**Siblings**: TCC, TXC, T262C (instrument-tier); FODAS, PPA, REOU, VHTB, IPEP, AEVPD, SDIBP, ASD (closed sub-locales from the first arc round).
-**Composes with**:
-- [docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md](../../docs/engagement/prospective/test262-long-tail-shared-vs-mutually-exclusive.md) — the structural analysis this arc operationalizes
-- [T262C-EXT 2 chapter close](../test262-categorize/trajectory.md) — Findings T262C.4 (shared vs mutually-exclusive), T262C.5 (Doc 740 default discipline), T262C.6 (matrix over-aggregation refinement)
-- [Doc 740](../../docs/corpus-ref/740-multi-tier-cascade-revival-when-the-hot-path-traverses-multiple-tiers-closing-one-tier-alone-is-insufficient.md) — multi-tier closure discipline (the engagement-default per Finding T262C.5)
-- [Doc 742 §V](../../docs/corpus-ref/742-the-resolver-instance-pattern-at-full-strength-downstream-dispatch-and-upstream-elision-as-doc-729s-empirical-refinements-from-a-typescript-parity-research-arc.md) — upstream elision (the structural shape of every shared-upstream constraint)
-- [standing-rule-13-prospective-application](../../apparatus/docs/standing-rule-13-prospective-application.md) — every sub-locale of this arc applies rule 13 prospectively
+---
 
 ## I. Telos
 

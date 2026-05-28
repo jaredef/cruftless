@@ -1,3 +1,9 @@
+# EPSUA: ECMAScript Parity Shared-Upstream Arc — Event Log
+
+Append-only per `apparatus/docs/arc-as-coordinate.md` §F. Promoted from the locale's trajectory.md on 2026-05-28; pre-promotion entries below preserve their original timestamps.
+
+---
+
 # ecmascript-parity-shared-upstream-arc — Trajectory
 
 ## EPSUA-EXT 0 — workstream founding (2026-05-25)
@@ -209,3 +215,11 @@ The 226 TypeError-not-thrown cluster (constraint #1) demonstrates the failure mo
 The arc empirically validates Finding T262C.4's discriminator structure but refutes its projected magnitudes. The remaining work (constraint #1 sub-clusters + #3 createRealm + heterogeneous tail) is no longer a single coherent arc; each sub-cluster spawns as its own top-level locale.
 
 Next per keeper directive: spawn `array-species-create-discipline` as a standalone top-level locale (the largest clean sub-cluster of the former constraint #1, ~20-23 tests, §7.3.21 single substrate site).
+
+---
+
+## 2026-05-28 — Promoted from locale-tier to arc-tier
+
+Per keeper directive Telegram 10162 (after Telegram 10160 + the coverage-gap orphan-disposition exercise). The seed.md + trajectory.md content above is migrated from `pilots/ecmascript-parity-shared-upstream-arc/` per `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §II.1. Original locale directory removed; manifest refreshed via `apparatus/locales/discover.sh`.
+
+Per Doc 745 candidate's SIPE-T fractal correspondence, the arc-tier promotion preserves all per-locale (sub-substrate) emissions in this log; future arc-tier Phase 5 chapter-close-inspections will accumulate above.

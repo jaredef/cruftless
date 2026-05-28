@@ -1,11 +1,11 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 212,
-    "top_level": 128,
-    "nested": 84,
+    "locales": 211,
+    "top_level": 126,
+    "nested": 85,
     "warnings": 0
   },
   "locales": [
@@ -15,7 +15,7 @@
       "parent": null,
       "scope": "annexB-runtime-quirks",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 1,
       "status": null
     },
     {
@@ -96,7 +96,7 @@
       "parent": "L.apparatus",
       "scope": "tokenizer-error-classification-refinement",
       "depth": 2,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -105,7 +105,7 @@
       "parent": "L.apparatus",
       "scope": "ts-consumer-corpus",
       "depth": 2,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "**CHAPTER CLOSED at TCC-EXT 1 (1 implementation round; Pred-tcc.5 HELD)**. All five Pred-tcc.* HELD plus the discipline falsifier. Baseline parse-success = **37.7%** (141/374 files from rxjs + ajv + pino). Failure-frequency table operational; top-10 categories cover ~52% of corpus and set the sub-locale priority order. Substrate-bug priority finding (Finding TCC.3): TSR's strip step corrupts source inside string/template literals on ~11 files \u2014 highest-priority next sub-locale."
     },
     {
@@ -116,6 +116,15 @@
       "depth": 2,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TXC-EXT 1 (1 implementation round; standing rule 13 ninth corroboration)**. Execute-parity baseline = **5.1%** vs parse-parity baseline = 95.2% (**90.1 pp gap**). 64% of the gap traces to ONE substrate gap: cruft's module loader is TS-unaware. Load-bearing next sub-locale: `ts-resolve-module-loader-extension/`."
+    },
+    {
+      "coord": "apparatus/via-method-audit",
+      "tag": "L.apparatus.via-method-audit",
+      "parent": "L.apparatus",
+      "scope": "via-method-audit",
+      "depth": 2,
+      "rung_count": 2,
+      "status": null
     },
     {
       "coord": "array-create-data-property-discipline",
@@ -334,15 +343,6 @@
       "status": null
     },
     {
-      "coord": "ecmascript-parity-shared-upstream-arc",
-      "tag": "L.ecmascript-parity-shared-upstream-arc",
-      "parent": null,
-      "scope": "ecmascript-parity-shared-upstream-arc",
-      "depth": 1,
-      "rung_count": 6,
-      "status": "**WORKSTREAM FOUNDED (EPSUA-EXT 0)**. Successor arc to T262C's first ECMAScript-parity round. Carries the resume vector through the five shared-upstream substrates identified at T262C-EXT 2's prospective analysis. Each sub-locale closes one of the five named constraints."
-    },
-    {
       "coord": "engine-sentinel-non-enumerable",
       "tag": "L.engine-sentinel-non-enumerable",
       "parent": null,
@@ -402,7 +402,7 @@
       "parent": null,
       "scope": "eval-var-function-env-instantiation",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -636,7 +636,7 @@
       "parent": null,
       "scope": "json-parse-reviver-semantics",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 4,
       "status": "FOUNDED 2026-05-28 from the JSON carve-out search after applying"
     },
     {
@@ -1853,15 +1853,6 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at VHTB-EXT 1** (1 implementation round)."
-    },
-    {
-      "coord": "via-method-audit",
-      "tag": "L.via-method-audit",
-      "parent": null,
-      "scope": "via-method-audit",
-      "depth": 1,
-      "rung_count": 2,
-      "status": null
     },
     {
       "coord": "weakmap-upsert-methods",

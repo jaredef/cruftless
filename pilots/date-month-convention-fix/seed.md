@@ -99,3 +99,9 @@ Any test that was passing via bug-compensation will newly fail; document and dec
 ## Status
 
 DMCF-EXT 1 LANDED 2026-05-26. One-character fix: `month + 9` → `month + 10` in the `month < 2` branch. Zero regression across tokenization locales + Temporal sub-rungs; instant-arithmetic +4 sibling yield. Date 100-sample at 61% PASS. DMCF-EXT 2 (full Date test262 baseline + targeted regression sweep) deferred.
+
+---
+
+## Cross-arc disposition (2026-05-28)
+
+Per coverage-gap-orphan-disposition-2026-05-28.md §II.8: closed singleton (LANDED at IDTP-EXT 1; +4 sibling yield). Lattice-meet between the `2026-05-26-temporal-implementation` arc (Date math shared with Temporal.Instant) and the future `2026-05-28-annex-b-language-partition` arc (Date legacy methods per Annex B §B.2.3). Retroactive enrollment in the Annex B arc when scaffolded.

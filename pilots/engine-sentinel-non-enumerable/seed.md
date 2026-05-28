@@ -45,3 +45,9 @@ The `size` entries are a separate concern (spec says `size` is an accessor on th
 ## Resume protocol
 
 Read `trajectory.md` tail; if `agent-feedback.md` is present, read its head + most recent review per apparatus/docs/agent-feedback-schema.md.
+
+---
+
+## Cross-arc disposition (2026-05-28)
+
+Per `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §II.2/II.3/II.7 + §III.2 lattice-meet repetition pattern: this locale forms part of the **install-helper-convention triplet** with `engine-sentinel-non-enumerable`, `global-builtins-non-enumerable`, and `via-method-audit`. All three share the install-with-descriptor emit-shape at the engine-runtime tier and are lattice-meet candidates per Doc 744 §IV.2. The triplet enrolls into the future `2026-05-28-property-descriptor-bridge` arc when scaffolded; until then, the cross-reference here makes the meet discoverable.

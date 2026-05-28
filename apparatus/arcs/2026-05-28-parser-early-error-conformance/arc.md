@@ -32,6 +32,7 @@ Subsume the eleven parser-tier locales under one arc with explicit (M, T, I, R) 
 | `yield-in-function-params` | yield in function-params rejection | LANDED |
 | `statement-declaration-in-body-position` | SD-in-body-position early error | LANDED |
 | `tagged-template-object-construction` | tagged-template Object boundary | LANDED |
+| `finally-abrupt-completion-lowering` | finally-block execution on abrupt completion (try/catch/finally lowering) | LANDED — **provisional enrollment 2026-05-28** per coverage-gap orphan-disposition §II.5; promote to a compiler-lowering arc when ≥3 compiler-tier locales (diff-prod mechanism gaps #1, #5, #6, #7) justify the split |
 
 ## Cumulative yield
 

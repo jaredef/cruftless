@@ -46,3 +46,9 @@ This is a substrate-bridge gap of the same shape as RES-EXT 1 (`.groups`), GBNE-
 ## Resume protocol
 
 Read `trajectory.md` tail; if `agent-feedback.md` is present, read its head + most recent review per apparatus/docs/agent-feedback-schema.md.
+
+---
+
+## Cross-arc disposition (2026-05-28)
+
+Per coverage-gap-orphan-disposition-2026-05-28.md §II.4: DAG ↑ host-runtime tier. Deferred enrollment in the future `host-node-compat` sub-arc when the `2026-05-28-host-runtime-api-conformance` umbrella is scaffolded with its sub-arc decomposition per Doc 744 §IV.2. Spec source is Node `util.inspect` (not WHATWG), so it sits in the node-compat sub-arc, not web-platform.

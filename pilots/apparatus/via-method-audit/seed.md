@@ -39,3 +39,9 @@ This locale tracks the audit pass + fixes per finding. Per Standing Rule 21 each
 ## Resume protocol
 
 Read `trajectory.md` tail.
+
+---
+
+## Cross-arc disposition (2026-05-28)
+
+Per `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §II.2/II.3/II.7 + §III.2 lattice-meet repetition pattern: this locale forms part of the **install-helper-convention triplet** with `engine-sentinel-non-enumerable`, `global-builtins-non-enumerable`, and `via-method-audit`. All three share the install-with-descriptor emit-shape at the engine-runtime tier and are lattice-meet candidates per Doc 744 §IV.2. The triplet enrolls into the future `2026-05-28-property-descriptor-bridge` arc when scaffolded; until then, the cross-reference here makes the meet discoverable.
