@@ -1268,3 +1268,52 @@ Rule 23 fired correctly. The inspection rung surfaced the disagreement; the firs
 - Per Doc 727 §X basin-stability, Addendum XIV remains in place with this correction appended.
 
 Total: **45 findings** (44 + NLC.0-revised + NLC.2; NLC.0 retracted in place); **23 standing rules** (unchanged; Rule 23 stands).
+
+## Addendum XVI — TDZ enforcement via Pin-Art-probed incremental LIFT (2026-05-27; rusty-js-ir locale, rungs 20-34)
+
+Per keeper directive Telegram 10128 ('these are important findings, can you bubble them up to the apparatus tier'). Promotes findings from the IR locale's 15-rung TDZ-enforcement session into the engagement-wide canonical record. The session validated rule 13 + Pin-Art probing as load-bearing methodology for the TDZ-shaped substrate class and surfaced three new standing-rule candidates.
+
+### Session anchor
+
+The rusty-js-ir locale's rungs 20-34 (commits d2b9bcfd through 5dcfc7f4) implemented TDZ enforcement per ECMA-262 §13.3.1.1 across 10 sub-shapes of three enforcement points (i: self-init; ii: function-body access-before-decl; iii: composite — for-head, compound-assign, class-name-in-extends, block-scope, switch-case, closure-capture, optional-chain, module-top). Two rule-13 trajectories ran their full revert-then-deeper-layer-closure cycle: EXT 25→26 (Op::InitLocal substrate prep + StoreLocal TDZ check) and EXT 29→34 (module-top TDZ via EXT 31-33's intermediate emit-site audits as the deeper-layer closure). Per-rung yield ranged from 0 (negative-result) to +5 (single-rung wins).
+
+### Promoted findings
+
+**Finding IR.24** (substrate-introduction-prefix without enumeration tax): when a runtime check is added that ALL existing emit sites need to opt out of, the rung either lands the full emit-site audit (high LOC, high test-coverage requirement) or stages the opcode/discriminator surface first and defers the runtime flip. The IR locale chose the latter at EXT 25, paid by EXT 26. The trade is between immediate-rung yield (full audit) and substrate amortization (staged prefix + later closure).
+
+**Finding IR.26** (TDZ probe must not repurpose a captured upvalue slot): when a slot is captured by upvalues during the compile of a construct (class methods, function self-name, generator yields), TDZ-initing it for the duration of the construct's build breaks downstream captures even when the slot is correctly overwritten by end-of-build. Surfaced by EXT 27 negative result on class self_name_slot.
+
+**Finding IR.27** (compile-time guard vs runtime TDZ machinery): when a TDZ probe target is a slot captured by inner-closure upvalues, the compile-time guard pattern (expr-walk + synthetic throw) is preferable to runtime PushTDZ + InitLocal because it sidesteps the captured-upvalue interference of IR.26. Pattern recurs across rusty-js-ir EXT 21 (let self-init), EXT 22 (destructure self-init), EXT 28 (class extends).
+
+**Finding IR.28** (per-surface emit-site audit cost): each new TDZ surface (function-body, for-head, block, module-top, switch) needs its own emit-site enumeration to catch init writes that must use Op::InitLocal. Cost-per-surface is ~5-15 LOC of emit-site conversion; the runtime check itself is amortized across surfaces.
+
+**Finding IR.29** (Pin-Art probe surfaces four implicit constraints — the alphabet's tier-above signal): probing the TDZ emit-pattern duplication across function-body/for-head/module-top/block/switch surfaced four implicit constraints: (α) categorical write context (INIT vs ASSIGN) belongs at AST/Stmt level not bytecode level; (β) scope-bounded slot lifetime with TDZ horizon needs first-class compiler ScopeRecord; (γ) captured slots can't be TDZ-seeded during the enclosing build (named in IR.26-27); (δ) duplicated emit patterns are the alphabet's signal for a missing tier-above coordinate (the LIFT). Constraint δ generalizes: the rung-18 object_set / object_set_pk LIFT precedent had the same shape.
+
+**Finding IR.30** (Constraint β LIFT lands incrementally per scope surface): the ScopeRecord abstraction the IR.29 Constraint β named doesn't require a monolithic refactor. Each scope surface (block, switch, function-body, module-top) can absorb the duplicated TDZ-emit pattern in 20-50 LOC by introducing per-surface pre-allocated-slot maps that share the runtime sentinel mechanism. Cost-per-surface drops as the abstraction generalizes.
+
+**Finding IR.31** (cross-frame TDZ propagation closes by symmetric Load handler): the TDZ sentinel mechanism is closed under value-flow operations — once a slot holds the sentinel, ANY read of that value must throw, regardless of whether the read goes through LoadLocal (same-frame) or LoadUpvalue (cross-frame closure capture). Each new Load-shape opcode added that can carry a TDZ value gets the Rc::ptr_eq check.
+
+**Finding IR.32** (Load/Store opcode symmetry across frame boundaries): per-Load + per-Store TDZ checks form symmetric pairs at each frame-boundary semantic. Same-frame: LoadLocal ⇄ StoreLocal. Cross-frame: LoadUpvalue ⇄ StoreUpvalue. The pattern is mechanical.
+
+**Finding IR.33** (cumulative substrate amortization across rule-13 chains): the 10-rung chain EXT 25→34 has comparable total LOC to a single naive monolithic TDZ rewrite (~500 LOC) but spreads cost across rungs that each have measurable yield. EXT 25's prefix paid by EXT 26's small fix. EXT 30's Pin-Art probe identified the LIFT pattern. EXT 31's block_pre_slots stack reused by EXT 32 in 1/3 the LOC. EXT 32-33's cross-frame visibility unlocked EXT 34's clean re-attempt of EXT 29.
+
+### Promoted standing-rule candidates
+
+**Rule 24 (proposed) — Duplication-as-Pin-Art-signal**: when an emit pattern is duplicated across 3+ sites with the same shape and divergent failure modes, the duplication itself is a Pin-Art signal that a higher-tier coordinate (the abstraction the duplication is approximating) is the actual substrate move. Apply: pause the per-site work, run a Pin-Art probe, surface the implicit constraint, then design from the tier-above coordinate downward. **Evidence**: rusty-js-ir EXT 23/24/29 attempts on TDZ scope-entry emit; precedent at rung-18 object_set/object_set_pk LIFT.
+
+**Rule 25 (proposed) — Load/Store opcode symmetric TDZ-shaped checks**: any TDZ-shaped sentinel value that can flow through bytecode value-stack operations requires symmetric Load + Store checks at every frame-boundary semantic. Adding a new LoadX opcode that may carry a TDZ value mandates adding the corresponding StoreX TDZ check. Apply: when introducing a new value-flow opcode, immediately enumerate the symmetric counterpart and either implement or document the deferral. **Evidence**: rusty-js-ir EXT 23 LoadLocal ⇄ EXT 26 StoreLocal; EXT 32 LoadUpvalue ⇄ EXT 33 StoreUpvalue.
+
+**Rule 26 (proposed) — Captured-slot TDZ uses compile-time guard, not runtime sentinel**: when a TDZ-target slot is captured by inner-closure upvalues during the enclosing construct's build, prefer compile-time guard (AST expr-walk + synthetic ReferenceError throw) over runtime PushTDZ + InitLocal seeding. Apply: at compile-class, compile-function-with-name, compile-generator, compile-async — check whether the binding slot is or will be captured; if yes, use expr-walk for any TDZ probes referencing the binding. **Evidence**: rusty-js-ir EXT 27 negative-result on class self_name_slot; EXT 28 compile-time guard close.
+
+### Methodology consolidation
+
+Rule 13 (revert-then-deeper-layer-closure) + Pin-Art probing form a reproducible methodology for substrate classes where naive monolithic implementation is too expensive but per-surface incremental work risks divergence. Two complete rule-13 trajectories ran in the IR session (EXT 25→26 and EXT 29→34); both produced positive yield via the deeper-layer closure that the substrate prefix enabled. Combined with rule 23 (founding-baseline-inspection) and rule 11 (5-axis pre-spawn coverage check), the engagement now has a complete substrate-shaped-work discipline: spawn ⇒ baseline-inspect ⇒ Pin-Art-probe-if-duplicated ⇒ revert-then-deeper-layer-closure-if-negative ⇒ chapter-close-inspect.
+
+### Totals update
+
+- **48 findings** (45 + IR.24 + IR.26 + IR.27 + IR.28 + IR.29 + IR.30 + IR.31 + IR.32 + IR.33; IR.25 is the rule-13 validation rolled into the methodology consolidation).
+- **23 standing rules** (unchanged; rules 24/25/26 above are PROPOSED — awaiting keeper review per standing-rule promotion discipline).
+- **16 addenda** (this).
+- Cumulative IR locale rungs at fold: 34.
+- Engagement-wide diff-prod: 61/51 (was 59/53 at IR session start; +2 from the IR + TAMM/ASU/AT collateral).
+
