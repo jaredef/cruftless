@@ -2389,3 +2389,36 @@ diff-prod: 60/52 (parity restored)
 **Finding IR.24 (substrate-introduction-prefix without enumeration tax)**: when a runtime check is added that ALL existing emit sites need to opt out of, the rung either lands the full emit-site audit (high-LOC, high-test-coverage requirement) or stages the opcode/discriminator surface first and defers the runtime flip. The IR locale chose the latter at this rung per rule 13. The next rung to revisit the TDZ-on-assign close should enumerate emit sites via grep + categorize each as init vs assign + convert init→InitLocal + then re-flip the StoreLocal runtime check.
 
 **Status**: IR-EXT 25 CLOSED locally (substrate-prep-only). Cumulative IR rungs: 25. The opcode + 3 emit sites are landed but inert; rule-13 deferred to a future rung that completes the full init-vs-assign emit-site audit. Yield unchanged from EXT 24.
+
+---
+
+## Rung-cluster-26 — TDZ-on-assign (deeper-layer closure of EXT 25) (2026-05-27)
+
+Per keeper directive Telegram 10110 ("push through this pipeline"). Closes IR.20 point (iii.c) compound-assign-TDZ: `x = 1; let x;` now throws ReferenceError per §13.3.1.1 step 26.b. The rule-13 deeper-layer closure of EXT 25's substrate-prep prefix.
+
+**Substrate**:
+- Re-enabled the TDZ-sentinel check on Op::StoreLocal (interp.rs).
+- Converted the remaining init sites in `emit_destructure` (Identifier leaf write) + `emit_element_with_default` (Identifier leaf write) from StoreLocal to InitLocal. These are the 4 sites the EXT 25 negative-result diff-prod regression identified.
+
+**Yield**:
+```text
+TDZ-named cluster: PRE 4/13 → POST 5/13 (+1)
+Broader let/const cluster: PRE 106/120 → POST 106/120 (unchanged)
+diff-prod: 60/52 (parity preserved through the destructure InitLocal conversion)
+```
+**+1 PASS** on TDZ-named. The +1 closes the compound-assign-TDZ test that probes `x = 1; let x;` shape.
+
+**Direct probes** (post-rung):
+- `(() => { x = 1; let x; })();` → ReferenceError "Cannot access 'x' before initialization" ✅
+- All EXT 23/24/25 probes still pass.
+- `for (let v of [1,2,3]) console.log(v)` works ✅ (destructure-decl InitLocal conversion preserves iter binding write path).
+
+**Gates**: build clean; diff-prod 60/52 (parity); sanity (let/const + class + Promise + for-of) all PASS.
+
+**Tag**: `cluster-tdz-on-assign-26`.
+
+**Validation of rule 13 (revert-then-deeper-layer-closure)**: EXT 25 reverted the runtime flip after the initial -4 diff-prod regression; kept the substrate prefix (Op::InitLocal + 3 emit sites). EXT 26 added 2 more emit sites + re-enabled the runtime flip without touching the substrate already in place. The deeper-layer closure landed in 2 sites + 1 runtime re-flip = a fraction of the LOC the full audit would have cost, exactly because the EXT 25 prefix established the pattern + tooling for the audit.
+
+**Finding IR.25 (rule-13 in the IR locale)**: rule 13's prospective application worked across rungs 25 → 26. EXT 25's substrate-prep was the prefix; EXT 26's emit-site additions + runtime re-flip was the closure. Total LOC: ~80 across the two rungs. Lands the third TDZ enforcement point of IR.20 (the assign-to-TDZ-binding shape) at moderate cost.
+
+**Status**: IR-EXT 26 CLOSED locally. Cumulative IR rungs: 26. TDZ enforcement points (i), (ii), (iii.for-head), (iii.compound-assign) all closed. Remaining (iii): class-this TDZ during super-init, optional-chain-tdz (probably same root cause as compound-assign now closed; needs re-probe), unscopables-tdz, block-scoped-functions-hoisted-tdz.

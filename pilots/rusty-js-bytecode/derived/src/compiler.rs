@@ -2731,7 +2731,10 @@ impl Compiler {
                     .expect("destructure leaf: binding slot pre-allocated by caller");
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, src_slot);
-                encode_op(&mut self.bytecode, Op::StoreLocal);
+                // IR-EXT 26: destructure-decl leaf write uses InitLocal
+                // so it can overwrite the TDZ sentinel that scope-entry
+                // seeded into the bound name's slot.
+                encode_op(&mut self.bytecode, Op::InitLocal);
                 encode_u16(&mut self.bytecode, slot);
             }
             rusty_js_ast::BindingPattern::Array(arr) => {
@@ -2975,7 +2978,8 @@ impl Compiler {
                 let slot = self
                     .resolve_local(&id.name)
                     .expect("destructure leaf: binding slot pre-allocated by caller");
-                encode_op(&mut self.bytecode, Op::StoreLocal);
+                // IR-EXT 26: destructure-decl leaf write bypasses TDZ check.
+                encode_op(&mut self.bytecode, Op::InitLocal);
                 encode_u16(&mut self.bytecode, slot);
             }
             nested => {

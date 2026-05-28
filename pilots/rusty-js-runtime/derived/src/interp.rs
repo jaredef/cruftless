@@ -10721,14 +10721,30 @@ impl Runtime {
                     let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
                     frame.pc += 2;
                     let v = frame.pop()?;
+                    // IR-EXT 26 TDZ-on-assign: assignment to a still-TDZ
+                    // binding throws ReferenceError per §13.3.1.1 step 26.b.
+                    // Init sites use Op::InitLocal which bypasses this check.
+                    let prev = frame.read_local(slot);
+                    if let Value::Symbol(ref s) = prev {
+                        if std::rc::Rc::ptr_eq(s, &self.tdz_sentinel) {
+                            let lname = frame
+                                .locals_names
+                                .get(slot)
+                                .map(|d| d.name.clone())
+                                .unwrap_or_else(|| format!("<local${}>", slot));
+                            return Err(RuntimeError::ReferenceError(format!(
+                                "Cannot access '{}' before initialization",
+                                lname
+                            )));
+                        }
+                    }
                     frame.write_local(slot, v);
                 }
                 Op::InitLocal => {
-                    // IR-EXT 25: peer of StoreLocal reserved for variable-
-                    // decl init sites. Currently semantically identical to
-                    // StoreLocal; the distinction matters once StoreLocal
-                    // grows a TDZ-on-assign check that init sites must bypass
-                    // (deferred — see IR-EXT 25 trajectory entry).
+                    // IR-EXT 25/26: init-site peer of StoreLocal that
+                    // bypasses the TDZ-on-assign check so the legitimate
+                    // overwrite of a TDZ-seeded slot at the binding's
+                    // declaration / per-iter write site succeeds.
                     let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
                     frame.pc += 2;
                     let v = frame.pop()?;
