@@ -145,3 +145,44 @@ TAWR cluster POST-EXT 3: PASS=55 FAIL=45 / 100 (55.0%)
 **Cross-locale note**: per orphan-disposition Pattern III.2 (lattice-meet repetition), this rung is a candidate for spawning a `bigint-arithmetic-wrongness` locale on the next BigInt-namespace move; the substrate locus repeats across `asIntN`/`asUintN`/`BigInt(arg)` constructor / `BigInt.prototype.toLocaleString` etc. Defer until duplication count reaches the spawn threshold.
 
 **Status**: TAWR-EXT 3 CLOSED locally. Arc-tier accumulation: third rung in `2026-05-28-array-exotic-substrate` arc (enrolled by lattice-meet via BigInt64Array shape, even though the substrate locus is the BigInt namespace).
+
+## TAWR-EXT 4 — LANDED (2026-05-28) — prototype.constructor slot installation (ArrayBuffer, DataView, BigInt)
+
+Per keeper directive Telegram 10179 ("go"). Fourth rung; arc enrollment `2026-05-28-array-exotic-substrate`.
+
+**Phase 1 (Spawn)**:
+- **M** = `Object.getPrototypeOf(instance).constructor` at consumer code; equivalently the class-name diagnostic `instance.constructor.name`.
+- **T** = the originating constructor function (ArrayBuffer / DataView / BigInt) per §25.1.5.1 / §25.3.4.1 / §21.2.3.
+- **I** = the `constructor` own-property slot on each ctor's `.prototype` object.
+- **R** = lattice with array-exotic + BigInt namespaces; DAG ↑ Object.getPrototypeOf walk + Object.prototype.constructor fallback.
+- **Observability** = ordinary.
+- **Mouth-gating prerequisite**: the constructor functions exist (already true).
+
+**Phase 2 (Baseline-inspect)**: post-EXT 3 TAWR=55/100; DataView exemplars (10) and ArrayBuffer exemplars (4) dominated the residual. Direct probe (`ctorprobe.js` scanning 30 built-ins): three offenders — ArrayBuffer, DataView, BigInt. Other 27 built-ins (Map, Set, Promise, Date, RegExp, Array, Object, Function, Error*, all TypedArrays, Symbol, Number, String, Boolean, SharedArrayBuffer) had own-constructor slot installed correctly. Three-way coincidence indicates a known apparatus-shape: when a ctor + proto pair is wired via `set_own_frozen("prototype", proto)` but the reverse-edge `proto.constructor = ctor` is omitted, lookups walk past proto to Object.prototype.constructor which returns Object.
+
+**Phase 3**: duplication of three (ArrayBuffer, DataView, BigInt) of the same shape at three sites. Below Doc 737 §II's ≥5 spawn threshold for a Pin-Art LIFT probe, but at-or-above the threshold for emitting Deferral Ledger Entry 008 (see below).
+
+**Phase 4**: single-round, no negative. Direct probe post-fix shows all three ctor.prototype.constructor === ctor with OWN slot.
+
+**Substrate** (~9 LOC across three call sites in `pilots/rusty-js-runtime/derived/src/intrinsics.rs`):
+- After `array_buffer_proto` is wired to `ab_id`: `set_own_internal("constructor", ab_id)` on the proto.
+- After `dv_proto` is wired to `dv_ctor_id`: `set_own_internal("constructor", dv_ctor_id)` on the proto.
+- After `bi_proto` is wired to `bi_id`: `set_own_internal("constructor", bi_id)` on the proto.
+- `set_own_internal` is the per-engine convention for `{writable:true, enumerable:false, configurable:true}` own properties; matches the descriptor shape the other ctor.prototype.constructor slots use (verified by inheritance probe showing OWN matches across all other built-ins).
+
+**Yield**:
+```text
+TAWR cluster PRE-EXT 4:  PASS=55 FAIL=45 / 100 (55.0%)
+TAWR cluster POST-EXT 4: PASS=61 FAIL=39 / 100 (61.0%)
+```
+**+6 PASS** this rung. DataView family residual 10 → ~4; ArrayBuffer family residual 4 → ~2.
+
+**Gates**: build clean; diff-prod 61/51 (parity preserved); TAMM unchanged 82/100; sanity intact.
+
+**Tag**: `cluster-proto-constructor-slot-installation-4`.
+
+**Finding TAWR.4 (proto.constructor reverse-edge omission)**: when a constructor + prototype pair is wired with the forward edge (`ctor.prototype = proto` via `set_own_frozen("prototype", proto)`) but the reverse edge (`proto.constructor = ctor`) is omitted, the omission is invisible to method-dispatch tests (proto's methods still resolve) and visible only to spec-reflective queries (`Object.getPrototypeOf(instance).constructor`). The query walks past proto to `Object.prototype.constructor` which silently returns `Object`. Standing rec: pair every `set_own_frozen("prototype", proto)` with `set_own_internal("constructor", ctor)` on the proto. Audit the apparatus for any constructor-creating helper that registers only one side of the pair.
+
+**Phase 6 (deferral emission)**: surfaces candidate `prototype-constructor-reverse-edge-audit` as an apparatus-pilot rather than a substrate locale (audit-tier work per orphan-disposition Pattern III.3). Emitted as Ledger Entry 008 in `apparatus/docs/deferrals-ledger.md` (see ledger).
+
+**Status**: TAWR-EXT 4 CLOSED locally. Arc-tier accumulation: fourth rung in `2026-05-28-array-exotic-substrate` arc. Cumulative TAWR across arc: 36 → 47 → 49 → 55 → 61 (+25 total over four rungs).

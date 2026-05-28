@@ -15150,6 +15150,9 @@ impl Runtime {
         });
         self.obj_mut(bi_id)
             .set_own_frozen("prototype".into(), Value::Object(bi_proto));
+        // PCM-EXT 1: BigInt.prototype.constructor = BigInt per §21.2.3.
+        self.obj_mut(bi_proto)
+            .set_own_internal("constructor".into(), Value::Object(bi_id));
         self.bigint_prototype = Some(bi_proto);
         self.define_global_property("BigInt", Value::Object(bi_id));
         // Boolean ctor with prototype.valueOf.
@@ -17682,6 +17685,11 @@ impl Runtime {
         let ab_id = self.alloc_object(array_buffer_ctor);
         self.obj_mut(ab_id)
             .set_own_frozen("prototype".into(), Value::Object(array_buffer_proto));
+        // PCM-EXT 1: ArrayBuffer.prototype.constructor = ArrayBuffer per
+        // §25.1.5.1. Without this slot, Object.getPrototypeOf(ab).constructor
+        // walks up to Object.prototype.constructor === Object.
+        self.obj_mut(array_buffer_proto)
+            .set_own_internal("constructor".into(), Value::Object(ab_id));
         // TAMM-EXT 1: ArrayBuffer[Symbol.species] per ECMA-262 §25.1.4.3.
         // Returns the constructor itself; subclasses can override. The
         // accessor surfaces as a real getter property keyed under
@@ -17851,6 +17859,9 @@ impl Runtime {
         let dv_ctor_id = self.alloc_object(dv_ctor);
         self.obj_mut(dv_ctor_id)
             .set_own_frozen("prototype".into(), Value::Object(dv_proto));
+        // PCM-EXT 1: DataView.prototype.constructor = DataView per §25.3.4.1.
+        self.obj_mut(dv_proto)
+            .set_own_internal("constructor".into(), Value::Object(dv_ctor_id));
         self.define_global_property("DataView", Value::Object(dv_ctor_id));
 
         for name in &[

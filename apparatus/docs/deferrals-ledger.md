@@ -105,3 +105,12 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: a consumer-app surfaces a sha256-batched workload where the per-batch dispatch overhead is observable.
 - **Un-defer condition**: empirical anchor lands.
 - **Status**: DEFERRED.
+
+### Entry 008 — `prototype-constructor-reverse-edge-audit` (2026-05-28)
+
+- **Candidate name**: `prototype-constructor-reverse-edge-audit` (proposed apparatus-pilot at `pilots/apparatus/prototype-constructor-reverse-edge-audit/` — audit-tier, NOT a substrate locale per orphan-disposition Pattern III.3).
+- **Originating rung**: `typed-array-wrong-result/trajectory.md` TAWR-EXT 4, Phase 6 deferral emission.
+- **Class**: spawn-threshold (Doc 737 §II) — three offenders surfaced at one rung (ArrayBuffer, DataView, BigInt). Below the ≥5 threshold for an audit-pilot LIFT scan. Defer until a fourth offender surfaces OR until the keeper directs a sweep.
+- **Gating predicate**: any future rung surfaces a fourth built-in whose `prototype.constructor` reverse-edge is missing (the failure shape: `Object.getPrototypeOf(instance).constructor === Object` rather than the expected ctor).
+- **Un-defer condition**: fourth offender lands, OR keeper directs an apparatus-pilot sweep over the constructor-registration helpers in `intrinsics.rs` to enumerate every `set_own_frozen("prototype", proto)` site and verify a paired `set_own_internal("constructor", ctor)` exists.
+- **Status**: DEFERRED.
