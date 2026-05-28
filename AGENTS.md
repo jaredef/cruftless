@@ -24,6 +24,17 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 - [`apparatus/arcs/`](apparatus/arcs/) — registry of multi-locale arcs (operational units above locale).
 - [`apparatus/docs/deferrals-ledger.md`](apparatus/docs/deferrals-ledger.md) — append-only registry of candidate locales surfaced-but-not-founded; each entry carries gating predicate + un-defer condition. A substrate rung that surfaces a candidate locale at Phase 5 (chapter-close-inspect) but does not found it owes the apparatus a ledger entry, not merely a trajectory cross-locale note.
 - [`apparatus/docs/deletions-ledger.md`](apparatus/docs/deletions-ledger.md) — append-only registry of constraint-induced substrate deletions, paired with the deferrals-ledger as the symmetric "tracked-but-not-an-addition" records.
+- [`apparatus/docs/agent-engagement.md`](apparatus/docs/agent-engagement.md) — canonical substrate-disciplined LLM resolver directions; the consolidated source of truth for how an LLM resolver operates within this apparatus. This CLAUDE.md and AGENTS.md route to it.
+- Triumvirate + service-tier articulations (governance frame): [`apparatus/docs/triumvirate-protocol-keeper-helmsman-arbiter.md`](apparatus/docs/triumvirate-protocol-keeper-helmsman-arbiter.md) (ontology), [`apparatus/docs/triumvirate-operational-protocol.md`](apparatus/docs/triumvirate-operational-protocol.md) (operational spec with Stage 1–4 deployment plan), [`apparatus/docs/apparatus-audit-for-triumvirate-protocol.md`](apparatus/docs/apparatus-audit-for-triumvirate-protocol.md) (audit + gap matrix), [`apparatus/docs/service-tier-and-statefulness-protocol.md`](apparatus/docs/service-tier-and-statefulness-protocol.md) (watcher + deputy + freshness protocol).
+- Per-role engagement docs (read only the one for your appointed role): [`apparatus/docs/engagement-doc-{helmsman,arbiter,watcher,deputy}.md`](apparatus/docs/). The keeper engagement doc at [`apparatus/docs/engagement-doc-keeper.md`](apparatus/docs/engagement-doc-keeper.md) is for hypostatic agents only and should not be consumed by LLM resolvers.
+
+## Resolver role discipline
+
+An LLM resolver entering this engagement operates as the **helmsman** (substrate-derivation resolver) by default. The other enumerated triumvirate-plus-service-tier roles — **arbiter** (apparatus-meta + veto authority), **watcher** (erasure-state freshness monitoring), **deputy** (fleet-communication relay) — are distinct roles that an LLM resolver takes up **only when directly indicated by keeper Rung-2 intervention** (typically via an explicit appointment in the inbound message, sometimes via a dedicated session-loading skill like `/arbiter-load`, `/watcher-load`, `/deputy-load`).
+
+Until the keeper explicitly appoints you to a non-helmsman role, you are the helmsman. Do not assume the arbiter, watcher, or deputy role on your own initiative; the role separation is load-bearing for the apparatus's coordination structure, and a resolver that occupies a role it was not appointed to corrupts the triumvirate's discipline.
+
+Each non-helmsman role has its own engagement doc + (eventually) its own context-load skill + its own authority scope. If you find yourself reading one of those engagement docs without an explicit keeper appointment, you are reading the wrong doc; close it and operate as the helmsman per `apparatus/docs/agent-engagement.md` + `apparatus/docs/engagement-doc-helmsman.md`.
 
 ## Project identity
 
