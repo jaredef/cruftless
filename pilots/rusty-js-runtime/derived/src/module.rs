@@ -961,8 +961,13 @@ impl Runtime {
             None
         };
         let script_mode = std::mem::replace(&mut self.pending_script_mode, false);
+        let eval_super_context = self.pending_eval_super_context.clone();
         let bytecode = if script_mode {
-            rusty_js_bytecode::compile_script_with_url(source, url)
+            rusty_js_bytecode::compile_script_with_url_and_super_context(
+                source,
+                url,
+                eval_super_context,
+            )
         } else {
             rusty_js_bytecode::compile_module_with_url(source, url)
         }
@@ -1147,7 +1152,13 @@ impl Runtime {
         // For ordinary module loads (current_this is the engine default
         // Value::Undefined) this is a no-op — top-level Module `this` is
         // undefined per §16.2.
-        frame.this_value = self.current_this.clone();
+        frame.this_value = self
+            .pending_eval_this
+            .clone()
+            .unwrap_or_else(|| self.current_this.clone());
+        frame.derived_initial_this = self.pending_eval_derived_initial_this.clone();
+        frame.new_target = self.pending_eval_new_target.clone();
+        frame.private_home = self.pending_eval_private_home;
         // Ω.5.P51.E1: thread the URL through so the enrichment helper
         // can emit `@url:line:col` instead of bare `@line:col`. Each
         // module's frame carries its own URL.

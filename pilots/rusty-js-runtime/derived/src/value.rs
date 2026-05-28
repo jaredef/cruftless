@@ -1148,6 +1148,11 @@ pub struct ClosureInternals {
     /// pre-super pre-allocated empty this and never see the post-super
     /// constructor return value.
     pub bound_this_cell: Option<UpvalueCell>,
+    /// Arrow-inherited derived-constructor raw `this`, used when a direct eval
+    /// inside the arrow contains `super(...)`.
+    pub bound_derived_initial_this: Option<Value>,
+    /// Arrow-inherited new.target, forwarded through eval-super lowering.
+    pub bound_new_target: Option<Value>,
     /// Ω.5.P04.E2.jit-runtime-dispatch: per-closure invocation counter.
     /// Incremented at every call_function entry; the runtime consults the
     /// JIT after the counter crosses a threshold (see Runtime::jit_threshold).

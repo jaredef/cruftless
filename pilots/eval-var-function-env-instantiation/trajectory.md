@@ -402,3 +402,50 @@ bindings.
 **Status**: EVFEI-EXT 4 PARTIAL. Keep the varEnv discriminator. Next
 rung should target the global environment record writeback/descriptor
 persistence layer rather than adding more eval call-shape special cases.
+
+## EVFEI-EXT 5 — negative global-env local-alias probe (2026-05-28)
+
+**Probe**:
+
+Tested a frame-level consumption of the existing compiled
+`global_env_alias` bit by routing script-top `var` `LoadLocal`,
+`StoreLocal`, and `InitLocal` through the global object when the local
+descriptor was a depth-0 `var`. The probe also tried normalizing an
+existing eval-global `var` descriptor during declaration instantiation
+so the remaining `var-env-var-init-global-exstng.js` row would preserve
+the global-var descriptor shape while body execution updated the value.
+
+**Negative result**:
+
+```text
+cargo build --release --bin cruft -p cruftless
+EVFEI exemplars: PASS=8 FAIL=8 SKIP=0 NOJSON=0 / 16
+Direct-eval lexical exemplars: PASS=1 FAIL=2 / 3
+```
+
+Newly reopened rows included the function-local eval cases and the
+direct-eval tagged-template cache rows from the DELC guard. The probe was
+therefore reverted in code, leaving no retained substrate change from
+this rung.
+
+**Verification after revert**:
+
+```text
+cargo build --release --bin cruft -p cruftless
+EVFEI exemplars: PASS=13 FAIL=3 SKIP=0 NOJSON=0 / 16
+Direct-eval lexical exemplars: PASS=3 FAIL=0 / 3
+```
+
+**Finding EVFEI.10 (global-env alias cannot sit below eval overlay)**:
+Blindly aliasing script-top `var` locals to the global object at the
+generic local opcode layer is too low. It collapses direct-eval's
+temporary overlay discipline and breaks lexical-capture invariants. The
+remaining failures still require a global environment record primitive,
+but the primitive must be installed at eval declaration-instantiation
+and binding-resolution boundaries, not as a universal local-slot
+read/write rewrite.
+
+**Status**: EVFEI-EXT 5 NEGATIVE, reverted. Next coherent move is a
+Pin-Art probe over the duplicated global-binding write sites (`StoreGlobal`,
+`define_eval_global_binding`, script-top var declaration mirror, and
+`store_with_name`) before introducing another runtime write path.

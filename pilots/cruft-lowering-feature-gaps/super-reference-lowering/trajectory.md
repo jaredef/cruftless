@@ -336,3 +336,65 @@ CLFG exemplars: PASS=13 FAIL=9 SKIP=0 NOJSON=0 / 22
 **Next**: the remaining SRL rows are all eval-context capture. Either hand off
 to the active eval-environment arc or spawn a direct-eval `super` nested rung
 only after reading that arc's current settlement.
+
+## SRL-EXT 6 — direct-eval super context threading (2026-05-28)
+
+**Target selected**: the direct-eval `super` residuals left after SRL-EXT 5.
+The prior state rejected them at compile time (`super reference outside of a
+class` / `super(...) outside of a class`). The coherent boundary is not a
+parser carve-out: direct eval must compile Script code with the caller's
+method/constructor super context and must execute with the caller's `this`,
+`new.target`, and private-home coordinates.
+
+**Substrate move**:
+
+- Added an `EvalSuperContext` handoff from runtime direct-eval dispatch into
+  script compilation.
+- Threaded caller `this`, derived-constructor initial-this, `new.target`, and
+  private-home state through the pending eval script execution path.
+- Extended direct-eval capture of hidden super/home descriptors so eval source
+  can resolve compiler-synthesized super slots instead of treating `super` as
+  outside-class source.
+- Arrow closures now capture derived-initial-this and `new.target` from the
+  enclosing frame so arrow-shaped eval probes preserve constructor context.
+
+**Verification**:
+
+```text
+cargo build --bin cruft -p cruftless: PASS (existing warnings)
+T262_ROOT=/Users/jaredfoy/Developer/cruftless-sidecar/test262 \
+  pilots/direct-eval-lexical-capture/exemplars/run-exemplars.sh
+Direct-eval lexical exemplars: PASS=3 FAIL=0 / 3
+```
+
+Focused SRL child suite:
+
+```text
+CLFG exemplars: PASS=17 FAIL=5 SKIP=0 NOJSON=0 / 22
+```
+
+Rows newly moved from the SRL-EXT 5 residual:
+
+- `language/expressions/class/elements/derived-cls-direct-eval-contains-superproperty-1.js`
+- `language/expressions/class/elements/nested-derived-cls-direct-eval-contains-superproperty-1.js`
+- `language/expressions/class/elements/nested-private-derived-cls-direct-eval-contains-superproperty-1.js`
+- `language/statements/class/elements/derived-cls-direct-eval-contains-superproperty-1.js`
+
+**Residual**:
+
+- Object-literal method direct eval still reads through the no-extends fallback
+  instead of the literal HomeObject:
+  `language/eval-code/direct/super-prop-method.js`.
+- Arrow-body class-field eval rows still attempt to call the resulting
+  `super.x`/`super.#x` value and need a sharper eval completion / arrow body
+  boundary:
+  `arrow-body-derived-cls-direct-eval-contains-superproperty-1.js` and
+  `arrow-body-private-derived-cls-direct-eval-contains-superproperty-1.js`.
+- Derived-constructor eval-super-call rows now reach runtime this-TDZ rather
+  than compile rejection. They require a constructor-initialization closure,
+  not another compile acceptability carve-out:
+  `derivedConstructorArrowEval{Nested,}SuperCall.js`.
+
+**Status**: POSITIVE. This is a boundary-threading rung, not full PerformEval
+closure. It moves four direct-eval class-element rows while preserving the
+direct-eval lexical exemplar closure and all SRL-EXT 2-5 rows.

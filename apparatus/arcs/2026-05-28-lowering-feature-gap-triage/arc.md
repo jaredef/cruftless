@@ -40,6 +40,7 @@ and routes each cluster to the smallest coherent substrate locale.
 | SRL-EXT 3 | child exemplar suite | 22 | 5 | Super PutValue base/key ordering flips the two object-method compound/update rows. |
 | SRL-EXT 4 | child exemplar suite | 22 | 9 | No-extends SuperProperty fallback flips the four base-class/no-extends rows. |
 | SRL-EXT 5 | child exemplar suite | 22 | 13 | Delete SuperReference routing flips the four `delete super` rows. |
+| SRL-EXT 6 | child exemplar suite | 22 | 17 | Direct-eval class-element super-context threading flips four eval-contained SuperProperty rows. |
 
 ## Cross-locale findings
 
@@ -97,11 +98,23 @@ reference evaluation followed by a required `ReferenceError`, not as a parser
 or compiler ban. The uninitialized-this fixture fixes the order constraint:
 `PushThis` precedes computed-key evaluation.
 
+**Finding LFGT.9 (direct-eval super splits into context threading vs
+constructor initialization)**: SRL-EXT 6 proves that several direct-eval
+SuperProperty rows are closed by threading the caller's super context, `this`,
+`new.target`, and private-home coordinate through eval script compilation and
+execution. The remaining eval rows are no longer compile-acceptance failures:
+object-literal HomeObject eval, arrow-body eval completion/private dispatch,
+and derived-constructor eval `super()` each require their own boundary, with
+the staging super-call rows now failing at runtime this-TDZ rather than
+`super(...) outside of a class`.
+
 ## Status
 
 IN PROGRESS. Parent locale founded; Rule-23 baseline completed; first child
 `super-reference-lowering/` founded. SRL has closed the object-literal
 HomeObject, object-method PutValue ordering, no-extends SuperProperty, and
-delete SuperReference subclusters. Pending next move: defer to the
-eval-environment arc for direct-eval `super` capture or explicitly join that
-arc's current settlement.
+delete SuperReference subclusters, and has partially closed direct-eval
+SuperProperty by adding super-context threading. Pending next move: split the
+five remaining SRL rows into object-literal HomeObject eval, arrow-body eval
+completion/private dispatch, and derived-constructor eval `super()` this
+initialization.

@@ -11,8 +11,8 @@ pub mod disasm;
 pub mod op;
 
 pub use compiler::{
-    CompileError, CompiledModule, Compiler, ExportBinding, ImportBinding, ImportBindingKind,
-    LocalDescriptor, UpvalueDescriptor, UpvalueSource,
+    CompileError, CompiledModule, Compiler, EvalSuperContext, ExportBinding, ImportBinding,
+    ImportBindingKind, LocalDescriptor, UpvalueDescriptor, UpvalueSource,
 };
 pub use constants::{Constant, ConstantsPool};
 pub use disasm::disassemble;
@@ -49,6 +49,14 @@ pub fn compile_module_with_url(src: &str, url: &str) -> Result<CompiledModule, C
 /// without semantic change yet. ES-EXT 2 will flip top-level var emissions
 /// from StoreLocal to StoreGlobal at compile time.
 pub fn compile_script_with_url(src: &str, url: &str) -> Result<CompiledModule, CompileError> {
+    compile_script_with_url_and_super_context(src, url, None)
+}
+
+pub fn compile_script_with_url_and_super_context(
+    src: &str,
+    url: &str,
+    super_context: Option<EvalSuperContext>,
+) -> Result<CompiledModule, CompileError> {
     // ES-EXT 2: set script_mode on the Compiler so top-level `var`
     // declarations route to StoreGlobal at compile time, attaching to the
     // realm's global object per §19.2.1.3 PerformEval (indirect-eval) and
@@ -61,6 +69,9 @@ pub fn compile_script_with_url(src: &str, url: &str) -> Result<CompiledModule, C
     c.set_source_line_starts(compute_line_starts(src));
     c.set_source_url(url.to_string());
     c.set_script_mode(true);
+    if let Some(ctx) = super_context {
+        c.set_eval_super_context(ctx);
+    }
     c.compile_module(&ast)
 }
 

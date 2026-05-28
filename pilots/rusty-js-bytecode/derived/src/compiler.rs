@@ -35,6 +35,15 @@ pub enum UpvalueSource {
     Upvalue(u16),
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct EvalSuperContext {
+    pub super_ctor_name: Option<String>,
+    pub super_proto_name: Option<String>,
+    pub super_home_name: Option<String>,
+    pub in_constructor: bool,
+    pub is_static: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionProto {
     pub bytecode: Vec<u8>,
@@ -828,6 +837,16 @@ impl Compiler {
 
     pub fn set_script_global_env_alias(&mut self, m: bool) {
         self.script_global_env_alias = m;
+    }
+
+    pub fn set_eval_super_context(&mut self, ctx: EvalSuperContext) {
+        self.class_stack.push(ClassFrame {
+            super_ctor_name: ctx.super_ctor_name,
+            super_proto_name: ctx.super_proto_name,
+            super_home_name: ctx.super_home_name,
+            in_constructor: ctx.in_constructor,
+            is_static: ctx.is_static,
+        });
     }
 
     /// ES-EXT 2 helper: at a Stmt::Variable compile site, does the
@@ -4880,11 +4899,21 @@ impl Compiler {
         // instead of cloning `self.locals` per child.
         let locals_snap = self.locals_snapshot();
         let direct_eval_parent_locals: Vec<String> = if body_contains_direct_eval(body) {
-            locals_snap
+            let mut names: Vec<String> = locals_snap
                 .iter()
-                .filter(|local| !local.name.starts_with('<'))
+                .filter(|local| {
+                    !local.name.starts_with('<')
+                        || local.name.contains(".super.")
+                        || local.name.contains(".home>")
+                })
                 .map(|local| local.name.clone())
-                .collect()
+                .collect();
+            for upvalue in &self.upvalues {
+                if upvalue.name.contains(".super.") || upvalue.name.contains(".home>") {
+                    names.push(upvalue.name.clone());
+                }
+            }
+            names
         } else {
             Vec::new()
         };

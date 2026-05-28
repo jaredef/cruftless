@@ -402,6 +402,11 @@ pub struct Runtime {
     /// the compile site so subsequent ESM compiles inside this Runtime
     /// revert to Module semantics.
     pub pending_script_mode: bool,
+    pub pending_eval_super_context: Option<rusty_js_bytecode::EvalSuperContext>,
+    pub pending_eval_this: Option<Value>,
+    pub pending_eval_derived_initial_this: Option<Value>,
+    pub pending_eval_new_target: Option<Value>,
+    pub pending_eval_private_home: Option<ObjectRef>,
     /// GBSU-EXT 1 (global-binding-surface-unification rung 1): direct
     /// ObjectId handle to the globalThis Object — the spec's global Variable
     /// Environment Record (ECMA-262 §9.1.1.4, §16.1). Today the substrate
@@ -673,6 +678,11 @@ impl Runtime {
             napi_keepalive: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             caps: std::sync::Arc::new(crate::caps::CapDispatcher::compat()),
             pending_script_mode: false,
+            pending_eval_super_context: None,
+            pending_eval_this: None,
+            pending_eval_derived_initial_this: None,
+            pending_eval_new_target: None,
+            pending_eval_private_home: None,
             global_object: None,
         };
         // GBSU-EXT 7f.4: eager-allocate the unified globalThis Object at
@@ -13120,6 +13130,16 @@ impl Runtime {
                                 is_arrow,
                                 bound_this,
                                 bound_this_cell,
+                                bound_derived_initial_this: if is_arrow {
+                                    frame.derived_initial_this.clone()
+                                } else {
+                                    None
+                                },
+                                bound_new_target: if is_arrow {
+                                    frame.new_target.clone()
+                                } else {
+                                    None
+                                },
                                 call_count: std::cell::Cell::new(0),
                                 jit_disabled: std::cell::Cell::new(false),
                                 tb_metadata_ptr: std::cell::Cell::new(None),
@@ -14207,6 +14227,33 @@ impl Runtime {
             }
         }
 
+        let mut super_context = direct_eval_super_context(caller);
+        for entry in &overlay {
+            direct_eval_super_context_visit(&mut super_context, &entry.name);
+        }
+        if let Some(home) = caller.private_home {
+            const DIRECT_EVAL_HOME_NAME: &str = "<direct.eval.home>";
+            match super_context.as_mut() {
+                None => {
+                    super_context = Some(rusty_js_bytecode::EvalSuperContext {
+                        super_home_name: Some(DIRECT_EVAL_HOME_NAME.to_string()),
+                        ..Default::default()
+                    });
+                }
+                _ => {}
+            }
+            if !overlay
+                .iter()
+                .any(|entry| entry.name == DIRECT_EVAL_HOME_NAME)
+            {
+                overlay.push(DirectEvalOverlay {
+                    name: DIRECT_EVAL_HOME_NAME.to_string(),
+                    value: Value::Object(home),
+                    target: DirectEvalOverlayTarget::Temporary,
+                });
+            }
+        }
+
         // Integration: GBSU unified surface — overlay/restore over globalThis Object.
         let mut saved: Vec<(DirectEvalOverlay, Option<Value>)> = Vec::with_capacity(overlay.len());
         for entry in overlay {
@@ -14222,8 +14269,23 @@ impl Runtime {
             self.define_global_property(&entry.name, entry.value.clone());
             saved.push((entry, prev));
         }
+        let saved_eval_super_context = self.pending_eval_super_context.clone();
+        let saved_eval_this = self.pending_eval_this.clone();
+        let saved_eval_derived_initial_this = self.pending_eval_derived_initial_this.clone();
+        let saved_eval_new_target = self.pending_eval_new_target.clone();
+        let saved_eval_private_home = self.pending_eval_private_home;
+        self.pending_eval_super_context = super_context;
+        self.pending_eval_this = Some(caller.this_value_for_eval());
+        self.pending_eval_derived_initial_this = caller.derived_initial_this.clone();
+        self.pending_eval_new_target = caller.new_target.clone();
+        self.pending_eval_private_home = caller.private_home;
         let result = self
             .eval_source_globalish_with_global_declarations(source, caller.eval_var_env_is_global);
+        self.pending_eval_super_context = saved_eval_super_context;
+        self.pending_eval_this = saved_eval_this;
+        self.pending_eval_derived_initial_this = saved_eval_derived_initial_this;
+        self.pending_eval_new_target = saved_eval_new_target;
+        self.pending_eval_private_home = saved_eval_private_home;
         for (entry, old) in saved.into_iter().rev() {
             if let Some(gt) = self.global_object {
                 if !matches!(entry.target, DirectEvalOverlayTarget::Temporary)
@@ -14338,6 +14400,9 @@ impl Runtime {
     }
 
     fn eval_overlay_binding_name(name: &str) -> Option<String> {
+        if name.contains(".super.") || name.contains(".home>") {
+            return Some(name.to_string());
+        }
         let logical = if let Some(rest) = name.strip_prefix("<scoped@") {
             rest.split_once('>')
                 .map(|(_, suffix)| suffix)
@@ -14530,7 +14595,15 @@ impl Runtime {
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
         let mut frame_is_arrow = false;
-        let (proto_opt, native_opt, effective_this, effective_args, private_home) = {
+                    let (
+                        proto_opt,
+                        native_opt,
+                        effective_this,
+                        effective_args,
+                        private_home,
+                        bound_derived_initial_this,
+                        bound_new_target,
+                    ) = {
             let o = self.obj(id);
             let private_home = o.private_home;
             match &o.internal_kind {
@@ -14557,6 +14630,8 @@ impl Runtime {
                     } else {
                         this.clone()
                     };
+                    let bound_derived_initial_this = c.bound_derived_initial_this.clone();
+                    let bound_new_target = c.bound_new_target.clone();
                     let params = c.proto.params;
                     let jit_disabled = c.jit_disabled.get();
                     if !jit_disabled
@@ -14686,6 +14761,8 @@ impl Runtime {
                                 actual_this,
                                 args,
                                 private_home,
+                                bound_derived_initial_this,
+                                bound_new_target,
                             ),
                             _ => unreachable!("closure flipped kind mid-dispatch"),
                         }
@@ -14712,11 +14789,27 @@ impl Runtime {
                         // false) so external probes that read it stay
                         // valid; this branch no longer writes to it.
                         let _ = (count, proto_key);
-                        (Some(c.proto.clone()), None, actual_this, args, private_home)
+                        (
+                            Some(c.proto.clone()),
+                            None,
+                            actual_this,
+                            args,
+                            private_home,
+                            bound_derived_initial_this,
+                            bound_new_target,
+                        )
                     }
                 }
                 crate::value::InternalKind::Function(f) => {
-                    (None, Some(f.native.clone()), this, args, private_home)
+                    (
+                        None,
+                        Some(f.native.clone()),
+                        this,
+                        args,
+                        private_home,
+                        None,
+                        None,
+                    )
                 }
                 crate::value::InternalKind::Proxy(p) => {
                     // EXT 84: revoked-proxy guard per §10.5.{12,13}.
@@ -14971,14 +15064,22 @@ impl Runtime {
             with_env_stack: Vec::new(),
             this_value: this.clone(),
             this_cell: None,
-            derived_initial_this: None,
+            derived_initial_this: if frame_is_arrow {
+                bound_derived_initial_this
+            } else {
+                None
+            },
             upvalues,
             last_property_lookup: None,
             pending_method_name: None,
             pending_method_getprop_pc: None,
             private_home,
             import_meta: None,
-            new_target: nt_for_this_call.clone(),
+            new_target: if frame_is_arrow {
+                bound_new_target
+            } else {
+                nt_for_this_call.clone()
+            },
             is_arrow: frame_is_arrow,
             param_count: proto.params as usize,
             strict: proto.strict,
@@ -15541,6 +15642,38 @@ fn caller_has_lexical_binding(frame: &Frame<'_>, name: &str) -> bool {
                 rusty_js_ast::VariableKind::Let | rusty_js_ast::VariableKind::Const
             )
     })
+}
+
+fn direct_eval_super_context(frame: &Frame<'_>) -> Option<rusty_js_bytecode::EvalSuperContext> {
+    let mut out = None;
+    for desc in frame.upvalue_names {
+        direct_eval_super_context_visit(&mut out, &desc.name);
+    }
+    for desc in frame.locals_names {
+        direct_eval_super_context_visit(&mut out, &desc.name);
+    }
+    if let Some(ctx) = &mut out {
+        ctx.in_constructor = frame.derived_initial_this.is_some();
+    }
+    out
+}
+
+fn direct_eval_super_context_visit(
+    out: &mut Option<rusty_js_bytecode::EvalSuperContext>,
+    name: &str,
+) {
+    let ctx = if name.contains(".super.") || name.contains(".home>") {
+        out.get_or_insert_with(rusty_js_bytecode::EvalSuperContext::default)
+    } else {
+        return;
+    };
+    if name.contains(".super.ctor") {
+        ctx.super_ctor_name = Some(name.to_string());
+    } else if name.contains(".super.proto") {
+        ctx.super_proto_name = Some(name.to_string());
+    } else if name.contains(".home>") {
+        ctx.super_home_name = Some(name.to_string());
+    }
 }
 
 struct DirectEvalOverlay {
@@ -16234,6 +16367,14 @@ impl<'a> Frame<'a> {
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
             eval_var_env_is_global: m.eval_var_env_is_global,
+        }
+    }
+
+    fn this_value_for_eval(&self) -> Value {
+        if let Some(cell) = &self.this_cell {
+            cell.borrow().clone()
+        } else {
+            self.this_value.clone()
         }
     }
 
