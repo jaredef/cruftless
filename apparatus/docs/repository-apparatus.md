@@ -175,7 +175,7 @@ Every substrate move is observed by at least one instrument before it lands. Ins
 | **CRB (cross-runtime bench)** | `pilots/apparatus/cross-runtime-bench/scripts/run-bench.sh` | Wall-clock per-fixture vs node + bun | node v22.22.0 + bun 1.3.11 |
 | **diff-prod** | `scripts/diff-prod/run-all.sh` | Byte-identical stdout under cruft vs bun | bun 1.3.11; 112-fixture suite |
 | **test262-sample** | `scripts/test262-sample/run-sample.sh` | ECMA-262 conformance via official suite | TC39 test262; 7,598-test curated representative sample |
-| **test262-full** | `pilots/apparatus/test262-categorize/derived/src/bin/full_pinart.rs` | Full 50,506-test suite projected to 294 Pin-Art coordinates | TC39 test262 |
+| **test262-full** | `pilots/apparatus/test262-categorize/derived/src/bin/full_pinart.rs` | Full test262 suite projected to 323 Pin-Art coordinates across 12 resolver instances (latest run: 47,997 runnable; 67.6% pass) | TC39 test262 |
 | **canonical fuzz** | `pilots/rusty-js-shapes/consumer-migration/fixtures/fuzz-canonical.mjs` | Deterministic accumulator over 2000 randomized invocations | node acc=−932188103 |
 
 ### Locale-tier corpus instruments
