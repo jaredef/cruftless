@@ -1,0 +1,2 @@
+language/expressions/tagged-template/tco-call.js
+language/expressions/tagged-template/tco-member.js

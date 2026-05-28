@@ -188,3 +188,46 @@ handled by the eval environment/global binding follow-on locales.
 for the strict-caller reserved-word row. The remaining
 missing-SyntaxError row should be split as the next predicate rather than
 folded into the non-strict declaration-conflict check.
+
+## EDIEE-EXT 3 — STRICT-EVAL RESERVED BINDING CLOSURE (2026-05-28)
+
+Closed the residual strict-caller row from EDIEE-EXT 2 by separating the
+strict-eval predicate from the non-strict declaration-conflict predicate.
+
+Substrate moves:
+
+- compute `strict_eval` once for direct eval from caller strictness or an
+  eval-source directive prologue;
+- reject direct-eval var-scoped declaration names that are invalid strict
+  binding identifiers (`eval`, `arguments`, `yield`, and strict-mode
+  future reserved words);
+- keep the existing caller lexical/var conflict guard scoped to
+  non-strict direct eval, now using the same `strict_eval` predicate.
+
+Measurement:
+
+```text
+$ cargo build --bin cruft -p cruftless
+
+Focused residual:
+language/eval-code/direct/strict-caller-function-context.js PASS
+
+EDIEE exemplars:
+PASS=16 FAIL=0 SKIP=0 NOJSON=0 / 16
+
+EDIEE missing-SyntaxError bucket:
+PASS=138 FAIL=0 SKIP=0 NOJSON=0 / 138
+
+EDIEE direct+indirect eval sweep:
+PASS=280 FAIL=63 SKIP=4 NOJSON=0 / 347
+```
+
+**Finding EDIEE.6 (strict caller is a direct-eval syntax context)**:
+`PerformEval` inherits strictness from a strict caller before evaluating
+the eval source. A sloppy eval string inside a strict caller therefore
+uses strict binding-identifier restrictions, so `var public = 1` must
+throw `SyntaxError` even without a directive prologue in the eval text.
+
+**Status**: the EDIEE missing-SyntaxError bucket is closed at 138/138.
+Remaining failures in the wider eval sweep are outside this bucket and
+belong to follow-on eval environment/global binding partitions.

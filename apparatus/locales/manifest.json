@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
   "totals": {
-    "locales": 208,
-    "top_level": 124,
+    "locales": 209,
+    "top_level": 125,
     "nested": 84,
     "warnings": 0
   },
@@ -1150,6 +1150,15 @@
       "scope": "tagged-template-object-construction",
       "depth": 1,
       "rung_count": 2,
+      "status": null
+    },
+    {
+      "coord": "tagged-template-tail-call-boundary",
+      "tag": "L.tagged-template-tail-call-boundary",
+      "parent": null,
+      "scope": "tagged-template-tail-call-boundary",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {

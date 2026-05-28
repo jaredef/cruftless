@@ -515,6 +515,13 @@ Identified during the Temporal arc landing review (keeper directive Telegram 996
 **LOC estimate**: 0 LOC (apparatus rerun + matrix inspection).
 **Status**: standing rec; cheap to run; informs every subsequent prioritization decision.
 
+### (TTTC) `tagged-template-tail-call-boundary` — SPAWNED 2026-05-28
+**Telos**: absorb the two terminal tagged-template TCO carve-outs
+(`tco-call.js`, `tco-member.js`) after TTBO/TTOB reduced the ordinary
+tagged-template surface to zero FAIL rows. This is a control-flow lowering
+locale, not a TemplateStringsArray object-boundary locale.
+**Status**: spawned as `pilots/tagged-template-tail-call-boundary/`.
+
 ---
 
 ## Standing edits

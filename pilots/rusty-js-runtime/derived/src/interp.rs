@@ -84,6 +84,10 @@ pub struct Runtime {
     /// the runtime attempts compile. Default 100; can be overridden for
     /// bench/test purposes.
     pub jit_threshold: u32,
+    /// TTTC-EXT 1: host-stack guard at the JS call dispatcher boundary.
+    /// Until proper-tail-call lowering lands, deeply recursive call sites
+    /// must fail as ordinary JS RangeErrors instead of aborting the host.
+    pub call_depth: usize,
     /// Ω.5.P55.E1 (Doc 729 §VII.B — engine-internal bilateral boundary).
     /// Compiler-emitted lowerings (`__await`, `__dynamic_import`, `__apply`,
     /// `__construct`, `__install_accessor__`, `__yield_push__`,
@@ -550,6 +554,7 @@ impl Runtime {
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(100),
+            call_depth: 0,
             engine_helpers: HashMap::new(),
             last_value: Value::Undefined,
             host_hooks: crate::module::HostHooks::default(),
@@ -13528,6 +13533,18 @@ impl Runtime {
         };
 
         let eval_var_names = eval_var_scoped_declaration_names(&source);
+        let strict_eval = caller.strict || eval_source_is_strict(&source);
+        if strict_eval {
+            if let Some(name) = eval_var_names
+                .iter()
+                .find(|name| is_strict_mode_reserved_binding_name(name))
+            {
+                return Err(RuntimeError::SyntaxError(format!(
+                    "direct eval strict-mode declaration uses reserved binding '{}'",
+                    name
+                )));
+            }
+        }
         if eval_var_names.iter().any(|name| name == "arguments")
             && caller_has_arguments_conflict_binding(caller)
         {
@@ -13535,7 +13552,7 @@ impl Runtime {
                 "direct eval declaration conflicts with arguments binding".into(),
             ));
         }
-        if !caller.is_arrow && !caller.strict && !eval_source_is_strict(&source) {
+        if !caller.is_arrow && !strict_eval {
             if let Some(name) = eval_var_names
                 .iter()
                 .find(|name| caller_has_lexical_binding(caller, name))
@@ -13620,6 +13637,26 @@ impl Runtime {
     }
 
     pub fn call_function(
+        &mut self,
+        callee: Value,
+        this: Value,
+        args: Vec<Value>,
+    ) -> Result<Value, RuntimeError> {
+        const MAX_CALL_DEPTH: usize = 16_384;
+
+        if self.call_depth >= MAX_CALL_DEPTH {
+            return Err(RuntimeError::RangeError(
+                "Maximum call stack size exceeded".to_string(),
+            ));
+        }
+
+        self.call_depth += 1;
+        let result = self.call_function_inner(callee, this, args);
+        self.call_depth -= 1;
+        result
+    }
+
+    fn call_function_inner(
         &mut self,
         callee: Value,
         this: Value,
@@ -14905,6 +14942,23 @@ fn collect_binding_pattern_names(pattern: &rusty_js_ast::BindingPattern, out: &m
     for binding in pattern.collect_names() {
         out.push(binding.name.clone());
     }
+}
+
+fn is_strict_mode_reserved_binding_name(name: &str) -> bool {
+    matches!(
+        name,
+        "eval"
+            | "arguments"
+            | "yield"
+            | "implements"
+            | "interface"
+            | "let"
+            | "package"
+            | "private"
+            | "protected"
+            | "public"
+            | "static"
+    )
 }
 
 pub fn property_key(v: &Value) -> crate::value::PropertyKey {
