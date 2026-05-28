@@ -74,7 +74,7 @@ fn main() {
     let mut coords = Vec::new();
     for record in records {
         *totals.entry(record.status.clone()).or_insert(0) += 1;
-        if record.status != "PASS" && record.status != "SKIP" {
+        if record.status != "PASS" {
             coords.push(classify(&record));
         }
     }
@@ -368,7 +368,13 @@ fn constraint_axis(rel: &str, surface: &str, resolver: &str) -> String {
 
 fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
     let r = reason.to_lowercase();
-    if harness_surface(reason) {
+    if r.starts_with("feature deliberately omitted:") {
+        format!("skip-policy/{}", skip_feature_slug(reason))
+    } else if r.contains("module-flag tests need a real module loader") {
+        "skip-runner/module-loader-required".into()
+    } else if r.contains("raw tests skip harness") {
+        "skip-runner/raw-harness-required".into()
+    } else if harness_surface(reason) {
         "runner-harness/$262-or-host-hook".into()
     } else if missing_surface(reason) {
         if r.contains("not defined") || r.contains("referenceerror") {
@@ -495,7 +501,13 @@ fn projection_axis(rel: &str, reason: &str, surface: &str) -> String {
 
 fn availability_axis(rel: &str, reason: &str, surface: &str) -> String {
     let r = reason.to_lowercase();
-    if harness_surface(reason) {
+    if r.starts_with("feature deliberately omitted:") {
+        "skip-policy-deferred".into()
+    } else if r.contains("module-flag tests need a real module loader") {
+        "skip-runner-module-deferred".into()
+    } else if r.contains("raw tests skip harness") {
+        "skip-runner-raw-deferred".into()
+    } else if harness_surface(reason) {
         "runner-deferred".into()
     } else if rel.contains("staging/") || surface.starts_with("staging.") {
         "policy-deferred".into()
@@ -525,6 +537,12 @@ fn availability_axis(rel: &str, reason: &str, surface: &str) -> String {
 }
 
 fn cut_kind(status: &str, reason: &str, availability: &str) -> String {
+    if status == "SKIP" && availability.starts_with("skip-policy") {
+        return "skip/version-or-policy-cut".into();
+    }
+    if status == "SKIP" && availability.starts_with("skip-runner") {
+        return "skip/measurement-deferred".into();
+    }
     if status == "NO_OUTPUT" || status == "TIMEOUT" || availability == "runner-deferred" {
         return "measurement-residue".into();
     }
@@ -562,6 +580,9 @@ fn harness_surface(reason: &str) -> bool {
 }
 
 fn failure_mode(status: &str, reason: &str) -> String {
+    if status == "SKIP" {
+        return format!("skip/{}", skip_feature_slug(reason));
+    }
     if status == "NO_OUTPUT" {
         return "runner/no-output".into();
     }
@@ -590,7 +611,12 @@ fn failure_mode(status: &str, reason: &str) -> String {
 
 fn abstract_op_candidate(rel: &str, surface: &str, reason: &str) -> String {
     let r = reason.to_lowercase();
-    if r.contains("samevalue") {
+    if r.starts_with("feature deliberately omitted:")
+        || r.contains("module-flag tests need a real module loader")
+        || r.contains("raw tests skip harness")
+    {
+        "SkipPolicy/DeferredCoverage".into()
+    } else if r.contains("samevalue") {
         "SameValue/SameValueZero".into()
     } else if r.contains("not callable") || r.contains("is not a function") {
         "IsCallable/GetMethod".into()
@@ -617,6 +643,27 @@ fn abstract_op_candidate(rel: &str, surface: &str, reason: &str) -> String {
     } else {
         "(unmapped)".into()
     }
+}
+
+fn skip_feature_slug(reason: &str) -> String {
+    let lower = reason.to_lowercase();
+    let raw = lower
+        .strip_prefix("feature deliberately omitted:")
+        .unwrap_or(lower.as_str())
+        .trim();
+    if raw.contains("module-flag tests need a real module loader") {
+        return "module-loader".into();
+    }
+    if raw.contains("raw tests skip harness") {
+        return "raw-harness".into();
+    }
+    raw.chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 fn feature_shape(path: &str, reason: &str) -> String {

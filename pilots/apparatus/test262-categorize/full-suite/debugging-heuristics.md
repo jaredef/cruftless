@@ -74,6 +74,36 @@ Always partition before choosing a target.
 
 This is the central rule: compare rows only inside a partition.
 
+## III.a Skip Coverage Partition
+
+`SKIP` rows are now first-class apparatus records. They are not engine
+failures, and they are not successes. They are deferred coverage pressure:
+the test suite has named a behavior surface, and the current runner or policy
+has declined to observe it.
+
+Skip rows use dedicated classes:
+
+| Class | Meaning | Action |
+|---|---|---|
+| `skip-policy-deferred` | A feature or subsystem is deliberately omitted by runner policy | Decide whether the omission is still policy or should promote to an implementation arc |
+| `skip-runner-module-deferred` | Module-flag tests are hidden behind the indirect-eval runner | Found or resume module-loader apparatus before treating the rows as engine failures |
+| `skip-runner-raw-deferred` | Raw tests require a harness path the current runner does not implement | Fix runner/raw harness or enroll in a lex-tier apparatus locale |
+| `skip/version-or-policy-cut` | The cut is a standard-version or product-policy boundary | Do not rank against available-surface bugs |
+| `skip/measurement-deferred` | The cut is apparatus inability to observe the test | Fix apparatus before drawing engine conclusions |
+
+The skip partition answers a different question from FAIL rows:
+
+```text
+FAIL / NO_OUTPUT -> what behavior cruft tried to execute and did not satisfy
+SKIP             -> what behavior the apparatus declined to observe
+```
+
+A large skip cluster can justify an arc when it has a coherent mouth,
+terminus, and interior, but it should be founded as a policy/coverage arc or
+as an apparatus-gated implementation arc. It should not displace high-yield
+available-surface bug rows unless the keeper deliberately chooses chapter
+coverage over immediate pass-rate lift.
+
 ## IV. Work Shapes
 
 ### A. Implement-Chapter
@@ -222,6 +252,20 @@ The clean next spectra are:
 5. Abstract-op mapping refinement.
 
 Temporal and broad Intl should be chosen deliberately as subsystem work, not accidentally because they dominate raw counts.
+
+With skip coverage enabled, add this reading pass before choosing new arcs:
+
+1. Read `skip-policy-deferred` by projection to find deliberately hidden
+   subsystem mass.
+2. Read `skip-runner-*` by projection to find apparatus mouth-gates.
+3. Crosswalk large skip clusters against existing arcs. If the cluster's
+   prerequisite arc already exists, enroll it there; if not, found a new arc
+   only when the cluster has at least three sibling surfaces or one large
+   subsystem surface with a clear implementation trajectory.
+4. Compare the skip arc recommendation against active FAIL pressure. If both
+   point at the same subsystem, the recommendation is strong. If SKIP is large
+   but FAIL is absent, the recommendation is coherent but lower priority or
+   apparatus-gated.
 
 ## VIII. Debugging Rule
 
