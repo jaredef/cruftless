@@ -115,6 +115,15 @@ The engagement composes its standing rules into a five-phase pipeline that every
 
 Canonical references: `pilots/rusty-js-jit/findings.md` (canonical 26-rule ledger), `apparatus/docs/predictive-ruleset.md` (consolidated derived view), `apparatus/docs/standing-rule-13-prospective-application.md` (rule 13's prospective-application thesis), `apparatus/docs/repository-apparatus.md` §III (apparatus enumeration).
 
+### Orphan-disposition protocol (engagement-tier Phase 5 instance)
+
+When a back-fit cluster analysis flags ≥3 locales that do not cluster cleanly under any single arc, run the orphan-disposition protocol at `apparatus/docs/orphan-disposition-protocol.md`. The protocol is the engagement-tier instance of Phase 5 chapter-close-inspect operating at the locale-to-arc subsumption boundary. Per orphan: recover (M, T, I, R, observability) per Doc 744; discriminate the relational form per Doc 744 §IV; test eight disposition candidates in order (enroll-existing-arc / enroll-scaffolded-arc / lift-to-arc-tier / relocate-to-apparatus-pilot / lattice-meet-annotation / scaffold-new-arc / defer-with-cross-reference / close-as-singleton); first that fits is the disposition. After all orphans dispositioned, surface cross-orphan patterns for standing-rule promotion per Doc 727 §X.
+
+Three cross-orphan patterns have been observed to recur (per the 2026-05-28 canonical run at `apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md` §III):
+- **Pattern III.1** arc-tier-as-locale mis-categorization: multi-substrate program filed as a single locale.
+- **Pattern III.2** lattice-meet repetition: locales sharing emit-shape + tier should pair-enroll.
+- **Pattern III.3** apparatus-vs-substrate mis-categorization: audit-discipline artifacts filed as substrate-pilots.
+
 ## Source-identifier coordinate conventions
 
 The Rust source carries an encoded coordinate system in its identifier conventions. Reading a name yields substrate position without external documentation:
