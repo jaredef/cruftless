@@ -2227,3 +2227,37 @@ Per keeper directive Telegram 10095 ("Pivot to IR") after TAMM (ten rungs) + ASU
 **Tag**: `cluster-pivot-resurvey-20`. Defers substrate to rung-21 pending keeper selection.
 
 **Status**: IR-EXT 20 CLOSED locally (survey-only rung; no substrate). Awaiting keeper rung-21 selection from candidates A-D.
+
+---
+
+## Rung-cluster-21 — TDZ self-init guard (candidate D) (2026-05-27)
+
+Per keeper directive Telegram 10097 ("begin to acquaint to the state by handling D first").
+
+**Cluster**: `let x = <expr that references x>` and `const x = <expr that references x>` — the initializer expression evaluates with the binding in TDZ per §13.3.1.1 step 24, so any free reference to the binding's own name inside the initializer must throw ReferenceError.
+
+**Substrate** (~80 LOC in `pilots/rusty-js-bytecode/derived/src/compiler.rs`):
+- New helper `expr_refs_free(expr, name) -> bool`: AST walk that returns true if `expr` contains a free `Identifier { name }` reference, skipping into Function / Arrow / Class bodies (which create their own scopes; references to outer-scope names there are legitimate closure captures that don't require initialization until the function is called).
+- New helper `emit_throw_referenceerror(msg)`: parallel to `emit_throw_typeerror`; emits `throw new ReferenceError(msg)` as bytecode.
+- `Stmt::Variable` identifier-target branch: for `let`/`const` declarators, if the initializer contains a free reference to the binding name, emit `emit_throw_referenceerror("Cannot access 'x' before initialization")` instead of compiling the initializer. The slot still receives a PushUndef + StoreLocal afterwards (unreachable, but keeps the bytecode well-formed).
+
+**Yield**:
+```text
+TDZ-named test262 paths (13 explicit *tdz* files): PRE 0/13 → POST 0/13 (no change — those tests probe richer TDZ shapes beyond self-init, mostly function-body access-before-decl and for-of head-binding TDZ)
+Broader let/const cluster (120 paths): PRE 102/120 → POST 105/120 (+3 PASS)
+```
+**+3 PASS** this rung. The narrow self-init shape is closed; the function-body and for-head TDZ shapes remain — they need candidate A's scope-entry hoist-to-uninit machinery.
+
+**Direct probes** (post-rung):
+- `let y = y;` → ReferenceError ✅
+- `function f() { return x; let x = 1; }` → still returns undefined (function-body access-before-decl, candidate A territory).
+- `function f4() { return c; const c = 1; }` → still returns undefined (same shape).
+- `function f3() { if (true) { return x; let x = 1; }}` → still throws (was passing pre-rung; partial TDZ machinery scoped to nested-block paths).
+
+**Gates**: build clean; diff-prod 60/52 (parity preserved).
+
+**Tag**: `cluster-tdz-self-init-21`.
+
+**Finding IR.20 (the TDZ surface decomposes into three independent enforcement points)**: (i) self-init within the declarator (`let y = y`) — closed by compile-time AST walk (this rung). (ii) Access before declaration line within the same scope (`function f() { return x; let x = 1; }`) — needs scope-entry hoist-to-uninit + runtime LoadLocal sentinel check (candidate A). (iii) For-head TDZ + cross-iteration freshness — needs (ii) plus per-iter-fresh bookkeeping in for/for-in/for-of. Closing (i) doesn't close (ii) or (iii); each needs its own substrate.
+
+**Status**: IR-EXT 21 CLOSED locally. Candidate A (function-body TDZ) remains the highest-yield deferred IR rung if pursued next.

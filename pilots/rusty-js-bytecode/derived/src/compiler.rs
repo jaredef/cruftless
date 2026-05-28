@@ -1410,10 +1410,30 @@ impl Compiler {
                                 s
                             };
                             if let Some(init) = &d.init {
-                                // Tier-Ω.5.P15.E1: NamedEvaluation hint for
-                                // anonymous function expressions and arrows
-                                // bound by `let`/`const`/`var x = ...`.
-                                self.compile_expr_with_name_hint(init, Some(&id.name))?;
+                                // IR-EXT 21: TDZ self-init guard per §13.3.1.1.
+                                // For let/const, if the initializer expression
+                                // contains a free reference to the binding's
+                                // own name, the binding is in TDZ during init
+                                // eval — emit a synthetic ReferenceError throw.
+                                // Var is exempt (var hoists with undefined init).
+                                if matches!(v.kind, VariableKind::Let | VariableKind::Const)
+                                    && self.expr_refs_free(init, &id.name)
+                                {
+                                    self.emit_throw_referenceerror(&format!(
+                                        "Cannot access '{}' before initialization",
+                                        id.name
+                                    ));
+                                    // Throw unwinds; remaining init+store
+                                    // bytecode is unreachable. Still emit a
+                                    // PushUndef + StoreLocal so the bytecode
+                                    // verifier sees a well-formed sequence.
+                                    encode_op(&mut self.bytecode, Op::PushUndef);
+                                } else {
+                                    // Tier-Ω.5.P15.E1: NamedEvaluation hint for
+                                    // anonymous function expressions and arrows
+                                    // bound by `let`/`const`/`var x = ...`.
+                                    self.compile_expr_with_name_hint(init, Some(&id.name))?;
+                                }
                             } else {
                                 encode_op(&mut self.bytecode, Op::PushUndef);
                             }
@@ -4847,6 +4867,90 @@ impl Compiler {
 
     /// Emit code that throws `new TypeError(msg)` at runtime. Used at
     /// compile-time-detectable spec violations (const reassignment) so
+    /// IR-EXT 21 (TDZ self-init): emit `throw new ReferenceError(msg)`
+    /// as bytecode. Used at compile-time when a let/const initializer
+    /// references its own binding name (e.g. `let y = y`) and the binding
+    /// is therefore in TDZ during init evaluation per §13.3.1.1.
+    fn emit_throw_referenceerror(&mut self, msg: &str) {
+        let ctor_name = self
+            .constants
+            .intern(Constant::String("ReferenceError".to_string()));
+        let msg_idx = self.constants.intern(Constant::String(msg.to_string()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, ctor_name);
+        encode_op(&mut self.bytecode, Op::PushConst);
+        encode_u16(&mut self.bytecode, msg_idx);
+        encode_op(&mut self.bytecode, Op::New);
+        self.bytecode.push(1u8);
+        encode_op(&mut self.bytecode, Op::Throw);
+    }
+
+    /// IR-EXT 21: detect free reference to `name` in an expression at
+    /// compile time, skipping nested function/arrow/class scopes (which
+    /// shadow). Used to recognize the let/const self-init TDZ pattern.
+    fn expr_refs_free(&self, expr: &rusty_js_ast::Expr, name: &str) -> bool {
+        use rusty_js_ast::Expr as E;
+        match expr {
+            E::Identifier { name: n, .. } => n == name,
+            E::Parenthesized { expr, .. } => self.expr_refs_free(expr, name),
+            E::Member { object, .. } => self.expr_refs_free(object, name),
+            E::Call { callee, arguments, .. }
+            | E::New { callee, arguments, .. } => {
+                if self.expr_refs_free(callee, name) {
+                    return true;
+                }
+                arguments.iter().any(|a| match a {
+                    rusty_js_ast::Argument::Expr(e) => self.expr_refs_free(e, name),
+                    rusty_js_ast::Argument::Spread { expr, .. } => {
+                        self.expr_refs_free(expr, name)
+                    }
+                })
+            }
+            E::Update { argument, .. } | E::Unary { argument, .. } => {
+                self.expr_refs_free(argument, name)
+            }
+            E::Binary { left, right, .. } => {
+                self.expr_refs_free(left, name) || self.expr_refs_free(right, name)
+            }
+            E::Conditional { test, consequent, alternate, .. } => {
+                self.expr_refs_free(test, name)
+                    || self.expr_refs_free(consequent, name)
+                    || self.expr_refs_free(alternate, name)
+            }
+            E::Assign { target, value, .. } => {
+                self.expr_refs_free(target, name) || self.expr_refs_free(value, name)
+            }
+            E::Sequence { expressions, .. } => {
+                expressions.iter().any(|e| self.expr_refs_free(e, name))
+            }
+            E::Array { elements, .. } => elements.iter().any(|el| match el {
+                rusty_js_ast::ArrayElement::Expr(e) => self.expr_refs_free(e, name),
+                rusty_js_ast::ArrayElement::Spread { expr, .. } => {
+                    self.expr_refs_free(expr, name)
+                }
+                rusty_js_ast::ArrayElement::Elision { .. } => false,
+            }),
+            E::Object { properties, .. } => properties.iter().any(|p| match p {
+                rusty_js_ast::ObjectProperty::Property { value, .. } => {
+                    self.expr_refs_free(value, name)
+                }
+                rusty_js_ast::ObjectProperty::Spread { expr, .. } => {
+                    self.expr_refs_free(expr, name)
+                }
+            }),
+            E::TemplateLiteral { expressions, .. } => {
+                expressions.iter().any(|e| self.expr_refs_free(e, name))
+            }
+            // Function / Arrow / Class create their own scopes; their bodies
+            // may reference `name` legitimately as a closure capture of the
+            // outer binding, which is fine — the binding only needs to be
+            // initialized by the time the function is *called*, not by the
+            // time the initializer expression evaluates. Skip them.
+            E::Function { .. } | E::Arrow { .. } | E::Class { .. } => false,
+            _ => false,
+        }
+    }
+
     /// the resulting error is JS-catchable rather than a host-level
     /// CompileError. Leaves nothing on the stack (Throw consumes its
     /// operand and unwinds).
