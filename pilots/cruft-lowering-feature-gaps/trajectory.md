@@ -130,3 +130,86 @@ Remaining `super` rows are direct-eval context capture and
 derived-constructor direct-eval `super()` capture. Direct eval should stay
 deferred behind the active eval-environment arc unless that arc is explicitly
 joined.
+
+## CLFG-EXT 3 — second sibling-child landing (2026-05-28)
+
+`for-in-destructure-head/` sub-locale spawned + closed in one rung (FIDH-EXT 1
+at 572fa682). All 6 target exemplars flip FAIL → PASS via for-in handler
+mirroring the for-of destructure-head substrate pattern (compiler.rs:2140–
+2395). See `pilots/cruft-lowering-feature-gaps/for-in-destructure-head/
+trajectory.md` for the FIDH-EXT 0 + FIDH-EXT 1 record.
+
+## CLFG-EXT 4 — update-target cover-id lowering (2026-05-28)
+
+Per keeper directive Telegram 10233 ("continue the arc"). Third tail-cluster
+close; folded into parent trajectory rather than spawned as a sub-locale
+because the cluster is small (3 exemplars / 4 matrix rows) and the substrate
+move is a single-line unwrap.
+
+**Phase 1 (Spawn)**:
+- **M** = `(x)++`, `(x)--`, `++(x)`, `--(x)` and analogous parenthesized
+  identifier or member targets.
+- **T** = the compiler unwraps the ParenthesizedExpression cover and lowers
+  to the underlying target's update path per ECMA-262 §12.4.1 + §13.5.1.1 +
+  §13.15.2 RS:IsValidSimpleAssignmentTarget (parens preserve target
+  validity).
+- **I** = `compile_update` (compiler.rs:6665). Add a `Parenthesized` unwrap
+  before the structural match.
+- **R** = lattice with the broader parenthesized-cover-grammar handling
+  already present at compiler.rs:518, 688, 3716, 3984, 5973, 6008, 6258
+  (every other site already unwraps; `compile_update` was an omission, not
+  a deliberate restriction).
+- **Observability**: ordinary (test262 assertion).
+
+**Phase 2 (Baseline-inspect)**: all 3 parent-list exemplars (postfix-
+decrement, postfix-increment, prefix-decrement target-cover-id) fail with
+the same `compile: update on non-identifier non-member target not yet
+supported` diagnostic at compiler.rs:6801. Adjacent prefix-increment
+exemplar (not on parent list) shares the diagnostic; would also flip.
+
+**Substrate** (3 LOC inserted at compiler.rs:6671):
+
+```rust
+if let Expr::Parenthesized { expr, .. } = argument {
+    return self.compile_update(span, operator, expr, prefix);
+}
+```
+
+Recurs into self with the unwrapped expression; handles nested parens
+naturally.
+
+**Yield**:
+```text
+PRE-CLFG-EXT 4: 3 target exemplars FAIL (parent list) + 1 adjacent FAIL
+POST-CLFG-EXT 4: 3 target exemplars PASS + 1 adjacent PASS
+```
+Parent CLFG exemplar suite: 19/32 → 26/32 (+7). Of the +7, 3 are
+attributable to this rung's parenthesized fix; the other +4 surfaced
+when the rebase brought in `4f3bd525 "Thread direct eval super context"`
+which partially closed the super-direct-eval cluster at the compile tier
+(remaining 5 super-direct-eval cells now fail at runtime rather than
+compile, indicating eval-environment threading is partial).
+
+**Gates** (all unchanged): TAMM 82/100, TAWR 63/100, diff-prod 61/51,
+build clean, sanity intact.
+
+**Tag**: `cluster-update-target-cover-id-parenthesized-unwrap-4`.
+
+**Finding** (none required): the omission is the canonical instance of a
+substrate location that should have followed the broader codebase pattern
+(every other expression handler already unwraps Parenthesized) but didn't.
+The fix is to apply the established pattern at the omitted site. No new
+standing rule warranted; the substrate cross-reference (compiler.rs:518,
+688, etc.) is the implicit precedent.
+
+**Phase 6 (deferral emission)**: no new deferrals. Remaining CLFG parent
+tail-clusters: super-direct-eval cells (5; runtime-tier work after 4f3bd525
+partial close — defer per existing super-deferred-behind-eval-environment-
+arc policy), complex-assignment-target (1; would be CLFG-EXT 5 if pursued,
+edge case in compound short-circuit NamedEvaluation).
+
+**Status**: CLFG-EXT 4 CLOSED. Parent CLFG locale's three tail-clusters
+named in CLFG-EXT 0 baseline are now: super (super-reference-lowering child
+closed + super-direct-eval residual), for-in destructure (FIDH-EXT 1
+closed), update-target (CLFG-EXT 4 closed). One tail-cluster remains
+(complex-assignment-target, 1 cell).

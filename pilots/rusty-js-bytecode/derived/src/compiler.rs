@@ -6669,6 +6669,14 @@ impl Compiler {
         argument: &Expr,
         prefix: bool,
     ) -> Result<(), CompileError> {
+        // UTCL-EXT 1: parenthesized cover-grammar targets — `(x)++`,
+        // `(obj.prop)--`, etc. Per ECMA-262 §12.4.1 + §13.5.1.1 +
+        // §13.15.2 RS:IsValidSimpleAssignmentTarget, a ParenthesizedExpression
+        // wrapping a valid assignment target is itself a valid target.
+        // Unwrap before the structural match.
+        if let Expr::Parenthesized { expr, .. } = argument {
+            return self.compile_update(span, operator, expr, prefix);
+        }
         let op = match operator {
             UpdateOp::Inc => Op::Inc,
             UpdateOp::Dec => Op::Dec,
