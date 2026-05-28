@@ -381,11 +381,12 @@ Candidates surfaced by `pilots/apparatus/locale-positioning-audit/findings/resol
 **Baseline**: EDIEE-EXT 0 founded a 16-row focused exemplar suite. Current result: 2 PASS / 14 FAIL / 0 SKIP / 0 NOJSON. Async ordinary function rows already pass; arrow, ordinary function, method, generator, generator-method, and async-generator rows still miss SyntaxError.
 **Status**: FOUNDED. Begin with declaration-conflict predicate placement before changing eval environment capture.
 
-### (abn) `eval-var-function-env-instantiation` — 🟡 BASELINE-FIRST
+### (abn) `eval-var-function-env-instantiation` — **SPAWNED** 2026-05-28 as [`pilots/eval-var-function-env-instantiation/`](../../pilots/eval-var-function-env-instantiation/seed.md)
 **Telos**: close eval `var` and function declaration binding effects in global/local environments, including descriptor shape and non-configurable global property update behavior.
 **Pool**: LPA-EXT 11 binding-shape and global-env rows (examples: `var-env-func-init-*`, `var-env-var-init-*`, `global-env-rec-*`).
 **Methodology**: split global vs local eval, direct vs indirect eval, configurable vs non-configurable globals, and function vs var declaration effects.
-**Status**: baseline-first.
+**Baseline**: EVFEI-EXT 0 ran a 61-row direct/indirect eval var/function environment pool: 29 PASS / 32 FAIL / 0 SKIP / 0 NOJSON. Focused 16-row sample: 6 PASS / 10 FAIL.
+**Status**: FOUNDED. Begin with direct eval local `var`/function declaration materialization before global descriptor update cases.
 
 ### (abo) `eval-this-newtarget-context` — 🟡 BASELINE-FIRST
 **Telos**: close direct/indirect eval context selection for `this` and `new.target`, especially caller strictness and function/global eval differences.

@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/Users/jaredfoy/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 209,
-    "top_level": 125,
+    "locales": 210,
+    "top_level": 126,
     "nested": 84,
     "warnings": 0
   },
@@ -366,7 +366,7 @@
       "parent": null,
       "scope": "eval-declaration-instantiation-early-errors",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -394,6 +394,15 @@
       "scope": "es-foundation",
       "depth": 2,
       "rung_count": 5,
+      "status": null
+    },
+    {
+      "coord": "eval-var-function-env-instantiation",
+      "tag": "L.eval-var-function-env-instantiation",
+      "parent": null,
+      "scope": "eval-var-function-env-instantiation",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {
@@ -1158,7 +1167,7 @@
       "parent": null,
       "scope": "tagged-template-tail-call-boundary",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {

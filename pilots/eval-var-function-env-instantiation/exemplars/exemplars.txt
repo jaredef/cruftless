@@ -1,0 +1,16 @@
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-func-init-local-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-func-init-local-update.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-var-init-local-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-var-init-global-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-var-init-global-exstng.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-func-init-global-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-func-init-global-update-configurable.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/var-env-func-init-global-update-non-configurable.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/non-definable-global-var.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/non-definable-global-function.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/global-env-rec.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/direct/global-env-rec-fun.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/indirect/var-env-var-init-global-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/indirect/var-env-func-init-global-new.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/indirect/non-definable-global-var.js
+/Users/jaredfoy/Developer/cruftless-sidecar/test262/test/language/eval-code/indirect/global-env-rec.js
