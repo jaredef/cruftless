@@ -407,6 +407,21 @@ fn indirect_eval_non_extensible_global_var_throws_type_error() {
 }
 
 #[test]
+fn direct_eval_reads_caller_variable_environment() {
+    assert_eq!(
+        run_module("return (function(){ var x = 7; return eval(\"x\"); })();").unwrap(),
+        Value::Number(7.0)
+    );
+}
+
+#[test]
+fn indirect_eval_does_not_read_caller_variable_environment() {
+    let err = run_module("return (function(){ var x = 7; return (0, eval)(\"x\"); })();")
+        .expect_err("expected ReferenceError");
+    assert!(matches!(err, RuntimeError::ReferenceError(_)));
+}
+
+#[test]
 fn mapped_arguments_parameter_and_index_share_binding() {
     let value = run_module(
         "function f(a) { \

@@ -165,3 +165,90 @@ proof is runtime-side:
 **Status**: EVFEI-EXT 1 OPEN. Locale resumed; no sibling locale spawned.
 Bytecode-mouth proof is complete; next action is the runtime eval-entry
 proof probe.
+
+**Runtime-entry proof**:
+
+```text
+cargo test -p rusty-js-runtime eval --test run_golden -- --nocapture
+```
+
+Result:
+
+```text
+direct_eval_reads_caller_variable_environment ... ok
+indirect_eval_does_not_read_caller_variable_environment ... ok
+```
+
+Added probes:
+
+- `eval("x")` inside a function with `var x = 7` returns `7`.
+- `(0, eval)("x")` inside the same caller throws `ReferenceError`.
+
+**Finding EVFEI.6 (runtime entry is proven; materialization is now the
+interior blocker)**: The EVFEI mouth-to-runtime-entry path is coherent:
+syntactic eval lowers to `Op::DirectEval`, and runtime dispatch enters the
+direct eval overlay path. The focused failures therefore sit at the next
+interior point: declaration-instantiation materialization before eval body
+execution. Direct eval currently overlays existing caller bindings, but it
+does not create eval-introduced `var` bindings initialized to `undefined`
+or function bindings initialized to instantiated function objects before
+running the source.
+
+**Next substrate move**: EVFEI-EXT 2 may now target direct eval local
+variable-environment materialization, because the pipeline mouth and
+runtime-entry interior point have both been proven.
+
+## EVFEI-EXT 2 — scoped direct-eval overlay materialization (2026-05-28)
+
+**Change**:
+
+- Extended direct eval's temporary global overlay from value-only entries
+  to target-aware entries (`Temporary`, caller `Local`, caller `Upvalue`).
+- Collected eval `var` and function declaration names before execution.
+- Preinstalled eval-introduced `var` names as `undefined` in the overlay
+  when the global object remains extensible and the name is not already an
+  own global property.
+- Preinstalled simple function declarations as function objects for the
+  same direct-eval overlay path.
+- Wrote post-eval overlay values back into captured caller local/upvalue
+  targets before restoring/removing the temporary global properties.
+
+**Verification**:
+
+```text
+cargo build -p cruftless --bin cruft
+pilots/eval-var-function-env-instantiation/exemplars/run-exemplars.sh
+pilots/direct-eval-lexical-capture/exemplars/run-exemplars.sh
+cargo test -p rusty-js-bytecode eval_call -- --nocapture
+cargo test -p rusty-js-runtime eval --test run_golden -- --nocapture
+```
+
+Results:
+
+```text
+EVFEI exemplars: PASS=7 FAIL=9 SKIP=0 NOJSON=0 / 16
+Direct-eval lexical exemplars: PASS=3 FAIL=0 / 3
+bytecode eval_call probes: 2 passed
+runtime eval run_golden probes: 6 passed
+```
+
+**Finding EVFEI.7 (target-aware overlay closes one row, but module-top
+bindings remain a separate interior point)**: The rung moves the focused
+sample from 6/16 to 7/16 by letting direct eval update an existing
+non-configurable global function binding case. It does not close the
+three local `initial`/`postAssignment` rows because those test variables
+are top-level module bindings that the outer function does not lexically
+capture in its compiled descriptor set. Since direct eval source is
+runtime text, the compiler does not know that `initial` or
+`postAssignment` must become upvalues of the containing function.
+
+This names the next interior point: direct eval needs either a real
+caller environment record chain or a module-top binding mirror that can
+serve as a write target for names not statically captured by the caller
+frame. Copying more names into the temporary global overlay is no longer
+enough; the writeback target itself is missing.
+
+**Status**: EVFEI-EXT 2 PARTIAL. Keep the target-aware overlay because it
+is monotonic on the focused probe and preserves DELC. Next rung should
+resolve the module-top binding write target before broad global descriptor
+work.

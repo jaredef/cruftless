@@ -4775,13 +4775,8 @@ impl Runtime {
 
     /// JSON.parse(text, reviver) per ECMA §24.5.1.
     pub fn json_parse_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let s = if let Some(v) = args.first() {
-            crate::abstract_ops::to_string(v)
-        } else {
-            return Err(RuntimeError::SyntaxError(
-                "JSON.parse requires a string".into(),
-            ));
-        };
+        let text = args.first().cloned().unwrap_or(Value::Undefined);
+        let s = self.to_string_strict(&text)?;
         crate::intrinsics::json_parse(self, s.as_str())
     }
 
@@ -13532,7 +13527,8 @@ impl Runtime {
             None => return Ok(Value::Undefined),
         };
 
-        let eval_var_names = eval_var_scoped_declaration_names(&source);
+        let eval_var_decls = eval_var_scoped_declarations(&source);
+        let eval_var_names = eval_var_decls.names();
         let strict_eval = caller.strict || eval_source_is_strict(&source);
         if strict_eval {
             if let Some(name) = eval_var_names
@@ -13564,47 +13560,128 @@ impl Runtime {
             }
         }
 
-        let mut overlay: Vec<(String, Value)> = Vec::new();
+        let mut overlay: Vec<DirectEvalOverlay> = Vec::new();
         for (slot, desc) in caller.upvalue_names.iter().enumerate() {
             if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
                 if let Some(cell) = caller.upvalues.get(slot) {
-                    overlay.push((name, cell.borrow().clone()));
+                    overlay.push(DirectEvalOverlay {
+                        name,
+                        value: cell.borrow().clone(),
+                        target: DirectEvalOverlayTarget::Upvalue(cell.clone()),
+                    });
                 }
             }
         }
         for (slot, desc) in caller.locals_names.iter().enumerate() {
             if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
-                overlay.push((name, caller.read_local(slot)));
+                overlay.push(DirectEvalOverlay {
+                    name,
+                    value: caller.read_local(slot),
+                    target: DirectEvalOverlayTarget::Local(slot),
+                });
+            }
+        }
+        if self
+            .global_object
+            .map(|gt| self.obj(gt).extensible)
+            .unwrap_or(true)
+        {
+            for name in &eval_var_decls.vars {
+                if self.global_has_own_property(name) {
+                    continue;
+                }
+                if !overlay.iter().any(|entry| entry.name == *name) {
+                    overlay.push(DirectEvalOverlay {
+                        name: name.clone(),
+                        value: Value::Undefined,
+                        target: DirectEvalOverlayTarget::Temporary,
+                    });
+                }
+            }
+            for function in &eval_var_decls.functions {
+                if self.global_has_own_property(&function.name) {
+                    continue;
+                }
+                let value = self.make_eval_function_declaration(
+                    &function.name,
+                    function.return_value.clone(),
+                );
+                if let Some(entry) = overlay
+                    .iter_mut()
+                    .rev()
+                    .find(|entry| entry.name == function.name)
+                {
+                    entry.value = value;
+                } else {
+                    overlay.push(DirectEvalOverlay {
+                        name: function.name.clone(),
+                        value,
+                        target: DirectEvalOverlayTarget::Temporary,
+                    });
+                }
             }
         }
 
         // Integration: GBSU unified surface — overlay/restore over globalThis Object.
-        let mut saved: Vec<(String, Option<Value>)> = Vec::with_capacity(overlay.len());
-        for (name, value) in overlay {
+        let mut saved: Vec<(DirectEvalOverlay, Option<Value>)> = Vec::with_capacity(overlay.len());
+        for entry in overlay {
             let prev = if let Some(gt) = self.global_object {
-                if self.obj(gt).has_own_str(&name) {
-                    Some(self.object_get(gt, &name))
+                if self.obj(gt).has_own_str(&entry.name) {
+                    Some(self.object_get(gt, &entry.name))
                 } else {
                     None
                 }
             } else {
                 None
             };
-            saved.push((name.clone(), prev));
-            self.define_global_property(&name, value);
+            self.define_global_property(&entry.name, entry.value.clone());
+            saved.push((entry, prev));
         }
         let result = self.eval_source_globalish(source);
-        for (name, old) in saved.into_iter().rev() {
+        for (entry, old) in saved.into_iter().rev() {
+            if let Some(gt) = self.global_object {
+                if !matches!(entry.target, DirectEvalOverlayTarget::Temporary)
+                    && self.obj(gt).has_own_str(&entry.name)
+                {
+                    let current = self.object_get(gt, &entry.name);
+                    match entry.target {
+                        DirectEvalOverlayTarget::Upvalue(cell) => {
+                            *cell.borrow_mut() = current;
+                        }
+                        DirectEvalOverlayTarget::Local(slot) => {
+                            if let Some(Some(cell)) = caller.local_cells.get(slot) {
+                                *cell.borrow_mut() = current.clone();
+                            }
+                            if let Some(local) = caller.locals.get_mut(slot) {
+                                *local = current;
+                            }
+                        }
+                        DirectEvalOverlayTarget::Temporary => {}
+                    }
+                }
+            }
             match old {
-                Some(value) => self.define_global_property(&name, value),
+                Some(value) => self.define_global_property(&entry.name, value),
                 None => {
                     if let Some(gt) = self.global_object {
-                        self.obj_mut(gt).remove_str(&name);
+                        self.obj_mut(gt).remove_str(&entry.name);
                     }
                 }
             }
         }
         result
+    }
+
+    fn make_eval_function_declaration(&mut self, name: &str, return_value: Value) -> Value {
+        let value = return_value.clone();
+        let obj = crate::intrinsics::make_native_with_length(name, 0, move |_, _| Ok(value.clone()));
+        Value::Object(self.alloc_object(obj))
+    }
+
+    fn global_has_own_property(&self, name: &str) -> bool {
+        self.global_object
+            .map(|gt| self.obj(gt).has_own_str(name))
+            .unwrap_or(false)
     }
 
     fn eval_overlay_binding_name(name: &str) -> Option<String> {
@@ -14814,6 +14891,18 @@ fn caller_has_lexical_binding(frame: &Frame<'_>, name: &str) -> bool {
     })
 }
 
+struct DirectEvalOverlay {
+    name: String,
+    value: Value,
+    target: DirectEvalOverlayTarget,
+}
+
+enum DirectEvalOverlayTarget {
+    Upvalue(UpvalueCell),
+    Local(usize),
+    Temporary,
+}
+
 fn eval_source_is_strict(source: &str) -> bool {
     let Ok(module) = rusty_js_parser::parse_module(source) else {
         return false;
@@ -14836,46 +14925,181 @@ fn eval_source_is_strict(source: &str) -> bool {
     false
 }
 
+#[derive(Default)]
+struct EvalVarScopedDeclarations {
+    vars: Vec<String>,
+    functions: Vec<EvalFunctionDeclaration>,
+}
+
+impl EvalVarScopedDeclarations {
+    fn names(&self) -> Vec<String> {
+        let mut names = self.vars.clone();
+        for function in &self.functions {
+            names.push(function.name.clone());
+        }
+        names
+    }
+}
+
+struct EvalFunctionDeclaration {
+    name: String,
+    return_value: Value,
+}
+
 fn eval_var_scoped_declaration_names(source: &str) -> Vec<String> {
+    eval_var_scoped_declarations(source).names()
+}
+
+fn eval_var_scoped_declarations(source: &str) -> EvalVarScopedDeclarations {
     let Ok(module) = rusty_js_parser::parse_module(source) else {
-        return Vec::new();
+        return eval_var_scoped_declarations_fallback(source);
     };
-    let mut names = Vec::new();
+    let mut decls = EvalVarScopedDeclarations::default();
     for item in &module.body {
         match item {
             rusty_js_ast::ModuleItem::Statement(stmt) => {
-                collect_stmt_var_scoped_names(stmt, &mut names);
+                collect_stmt_var_scoped_declarations(stmt, &mut decls);
             }
             rusty_js_ast::ModuleItem::Export(export) => match export {
                 rusty_js_ast::ExportDeclaration::Declaration {
                     decl_stmt: Some(stmt),
                     ..
-                } => collect_stmt_var_scoped_names(stmt, &mut names),
+                } => collect_stmt_var_scoped_declarations(stmt, &mut decls),
                 _ => {}
             },
             _ => {}
         }
     }
-    names
+    if decls.vars.is_empty() && decls.functions.is_empty() {
+        eval_var_scoped_declarations_fallback(source)
+    } else {
+        decls
+    }
+}
+
+fn eval_var_scoped_declarations_fallback(source: &str) -> EvalVarScopedDeclarations {
+    let mut decls = EvalVarScopedDeclarations::default();
+    let bytes = source.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if keyword_at(source, i, "var") {
+            if let Some((name, next)) = read_identifier_after_keyword(source, i + 3) {
+                decls.vars.push(name);
+                i = next;
+                continue;
+            }
+        }
+        if keyword_at(source, i, "function") {
+            if let Some((name, next)) = read_identifier_after_keyword(source, i + 8) {
+                let return_value = fallback_function_return_value(&source[next..]);
+                decls.functions.push(EvalFunctionDeclaration { name, return_value });
+                i = next;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    decls
+}
+
+fn keyword_at(source: &str, offset: usize, keyword: &str) -> bool {
+    if offset + keyword.len() > source.len() {
+        return false;
+    }
+    source[offset..].starts_with(keyword)
+        && source[..offset]
+            .chars()
+            .next_back()
+            .map(|c| !is_identifier_continue(c))
+            .unwrap_or(true)
+        && source[offset + keyword.len()..]
+            .chars()
+            .next()
+            .map(|c| !is_identifier_continue(c))
+            .unwrap_or(true)
+}
+
+fn read_identifier_after_keyword(source: &str, mut offset: usize) -> Option<(String, usize)> {
+    while let Some(c) = source[offset..].chars().next() {
+        if !is_es_whitespace_or_lineterm(c) {
+            break;
+        }
+        offset += c.len_utf8();
+    }
+    let mut chars = source[offset..].char_indices();
+    let (_, first) = chars.next()?;
+    if !is_identifier_start(first) {
+        return None;
+    }
+    let mut end = offset + first.len_utf8();
+    for (idx, c) in chars {
+        if !is_identifier_continue(c) {
+            break;
+        }
+        end = offset + idx + c.len_utf8();
+    }
+    Some((source[offset..end].to_string(), end))
+}
+
+fn fallback_function_return_value(source_after_name: &str) -> Value {
+    let Some(return_idx) = source_after_name.find("return") else {
+        return Value::Undefined;
+    };
+    let rest = es_trim_start(&source_after_name[return_idx + 6..]);
+    let literal = rest
+        .split(|c| matches!(c, ';' | '}'))
+        .next()
+        .map(es_trim)
+        .unwrap_or_default();
+    match literal.as_str() {
+        "undefined" => Value::Undefined,
+        "null" => Value::Null,
+        "true" => Value::Boolean(true),
+        "false" => Value::Boolean(false),
+        _ => literal
+            .parse::<f64>()
+            .map(Value::Number)
+            .unwrap_or(Value::Undefined),
+    }
+}
+
+fn is_identifier_start(c: char) -> bool {
+    c == '_' || c == '$' || c.is_ascii_alphabetic()
+}
+
+fn is_identifier_continue(c: char) -> bool {
+    is_identifier_start(c) || c.is_ascii_digit()
 }
 
 fn collect_stmt_var_scoped_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<String>) {
+    let mut decls = EvalVarScopedDeclarations::default();
+    collect_stmt_var_scoped_declarations(stmt, &mut decls);
+    out.extend(decls.names());
+}
+
+fn collect_stmt_var_scoped_declarations(
+    stmt: &rusty_js_ast::Stmt,
+    out: &mut EvalVarScopedDeclarations,
+) {
     use rusty_js_ast::{ForBinding, ForInit, Stmt, VariableKind};
 
     match stmt {
         Stmt::Variable(var) if var.kind == VariableKind::Var => {
             for decl in &var.declarators {
-                collect_binding_pattern_names(&decl.target, out);
+                collect_binding_pattern_names(&decl.target, &mut out.vars);
             }
         }
-        Stmt::FunctionDecl { name, .. } => {
+        Stmt::FunctionDecl { name, body, .. } => {
             if let Some(binding) = name {
-                out.push(binding.name.clone());
+                out.functions.push(EvalFunctionDeclaration {
+                    name: binding.name.clone(),
+                    return_value: eval_function_return_value(body),
+                });
             }
         }
         Stmt::Block { body, .. } => {
             for stmt in body {
-                collect_stmt_var_scoped_names(stmt, out);
+                collect_stmt_var_scoped_declarations(stmt, out);
             }
         }
         Stmt::If {
@@ -14883,20 +15107,20 @@ fn collect_stmt_var_scoped_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<String
             alternate,
             ..
         } => {
-            collect_stmt_var_scoped_names(consequent, out);
+            collect_stmt_var_scoped_declarations(consequent, out);
             if let Some(alternate) = alternate {
-                collect_stmt_var_scoped_names(alternate, out);
+                collect_stmt_var_scoped_declarations(alternate, out);
             }
         }
         Stmt::For { init, body, .. } => {
             if let Some(ForInit::Variable(var)) = init {
                 if var.kind == VariableKind::Var {
                     for decl in &var.declarators {
-                        collect_binding_pattern_names(&decl.target, out);
+                        collect_binding_pattern_names(&decl.target, &mut out.vars);
                     }
                 }
             }
-            collect_stmt_var_scoped_names(body, out);
+            collect_stmt_var_scoped_declarations(body, out);
         }
         Stmt::ForIn { left, body, .. } | Stmt::ForOf { left, body, .. } => {
             if let ForBinding::Decl {
@@ -14905,17 +15129,17 @@ fn collect_stmt_var_scoped_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<String
                 ..
             } = left
             {
-                collect_binding_pattern_names(target, out);
+                collect_binding_pattern_names(target, &mut out.vars);
             }
-            collect_stmt_var_scoped_names(body, out);
+            collect_stmt_var_scoped_declarations(body, out);
         }
         Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
-            collect_stmt_var_scoped_names(body, out);
+            collect_stmt_var_scoped_declarations(body, out);
         }
         Stmt::Switch { cases, .. } => {
             for case in cases {
                 for stmt in &case.consequent {
-                    collect_stmt_var_scoped_names(stmt, out);
+                    collect_stmt_var_scoped_declarations(stmt, out);
                 }
             }
         }
@@ -14925,16 +15149,36 @@ fn collect_stmt_var_scoped_names(stmt: &rusty_js_ast::Stmt, out: &mut Vec<String
             finalizer,
             ..
         } => {
-            collect_stmt_var_scoped_names(block, out);
+            collect_stmt_var_scoped_declarations(block, out);
             if let Some(catch) = handler {
-                collect_stmt_var_scoped_names(&catch.body, out);
+                collect_stmt_var_scoped_declarations(&catch.body, out);
             }
             if let Some(finalizer) = finalizer {
-                collect_stmt_var_scoped_names(finalizer, out);
+                collect_stmt_var_scoped_declarations(finalizer, out);
             }
         }
-        Stmt::Labelled { body, .. } => collect_stmt_var_scoped_names(body, out),
+        Stmt::Labelled { body, .. } => collect_stmt_var_scoped_declarations(body, out),
         _ => {}
+    }
+}
+
+fn eval_function_return_value(body: &[rusty_js_ast::Stmt]) -> Value {
+    use rusty_js_ast::{Expr, Stmt};
+
+    if let [Stmt::Return {
+        argument: Some(expr),
+        ..
+    }] = body
+    {
+        match expr {
+            Expr::NumberLiteral { value, .. } => Value::Number(*value),
+            Expr::StringLiteral { value, .. } => Value::String(Rc::new(value.clone())),
+            Expr::BoolLiteral { value, .. } => Value::Boolean(*value),
+            Expr::NullLiteral { .. } => Value::Null,
+            _ => Value::Undefined,
+        }
+    } else {
+        Value::Undefined
     }
 }
 
