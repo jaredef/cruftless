@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# .githooks/pre-push
+# Triumvirate operational protocol §II.3 — pre-push gating on push to main.
+# Blocks pushes whose commits are not covered by an APPROVED arbiter decision
+# at apparatus/proposals/decided/. See apparatus/docs/triumvirate-operational-protocol.md.
+#
+# Activation: this hook is dormant until the repo's core.hooksPath is set to
+# .githooks (run `git config core.hooksPath .githooks` after pulling Stage 2).
+#
+# Carve-outs (no proposal required):
+#   - pushes to non-main branches
+#   - commits whose files are entirely within docs/engagement/prospective/,
+#     docs/deprecated/, or apparatus/proposals/{pending,decided,archived}/
+#   - commit deletions (refs/heads/main being deleted)
+#
+# Emergency keeper override: set CRUFTLESS_HOOK_BYPASS=<reason> to allow
+# the push under explicit keeper authority. The reason is logged to stderr
+# so the override is visible in the push transcript.
+
+set -euo pipefail
+
+remote="${1:-}"
+url="${2:-}"
+
+zero_sha="0000000000000000000000000000000000000000"
+exit_code=0
+all_uncovered=()
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Gate only refs/heads/main
+    if [[ "$remote_ref" != "refs/heads/main" ]]; then
+        continue
+    fi
+
+    # Branch delete — skip
+    if [[ "$local_sha" == "$zero_sha" ]]; then
+        continue
+    fi
+
+    # New branch (no remote yet) — gate all commits reachable from local_sha
+    if [[ "$remote_sha" == "$zero_sha" ]]; then
+        commits=$(git rev-list "$local_sha" --not --remotes 2>/dev/null || git rev-list "$local_sha")
+    else
+        commits=$(git rev-list "$remote_sha..$local_sha")
+    fi
+
+    for sha in $commits; do
+        # Carve-out: docs/proposals/deprecated-only commits
+        files=$(git diff-tree --no-commit-id --name-only -r "$sha")
+        if [[ -z "$files" ]]; then
+            continue
+        fi
+        nondoc=$(echo "$files" | grep -vE '^(docs/engagement/prospective/|docs/deprecated/|apparatus/proposals/)' || true)
+        if [[ -z "$nondoc" ]]; then
+            continue
+        fi
+
+        # Check for an APPROVED decision artifact covering this commit.
+        # Decision files at apparatus/proposals/decided/*.md MUST have
+        # `decision: APPROVED` in frontmatter and list the SHA in
+        # `covers_commits:`.
+        covered=0
+        if [[ -d apparatus/proposals/decided ]]; then
+            for decision in apparatus/proposals/decided/*.md; do
+                [[ -f "$decision" ]] || continue
+                if grep -q "^decision: APPROVED" "$decision" 2>/dev/null && \
+                   grep -qE "(^| |\")$sha([\" ,]|$)" "$decision" 2>/dev/null; then
+                    covered=1
+                    break
+                fi
+            done
+        fi
+
+        if [[ "$covered" -eq 0 ]]; then
+            all_uncovered+=("$sha")
+        fi
+    done
+done
+
+if [[ ${#all_uncovered[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "[pre-push] ❌ Push blocked: ${#all_uncovered[@]} commit(s) lack APPROVED arbiter decision:" >&2
+    for sha in "${all_uncovered[@]}"; do
+        subject=$(git log -1 --format="%s" "$sha" 2>/dev/null || echo "<unknown>")
+        echo "  - ${sha:0:12}  $subject" >&2
+    done
+    echo "" >&2
+    echo "Per triumvirate operational protocol §II.3:" >&2
+    echo "  1. Write proposal at apparatus/proposals/pending/<slug>.md per §II.1." >&2
+    echo "  2. Send **[HELMSMAN] CONSULTATION** Telegram requesting arbiter sign-off." >&2
+    echo "  3. Arbiter writes APPROVED decision at apparatus/proposals/decided/<slug>.md" >&2
+    echo "     with the covers_commits list including each SHA above." >&2
+    echo "  4. Retry the push." >&2
+    echo "" >&2
+    echo "Emergency keeper override: CRUFTLESS_HOOK_BYPASS=<reason> git push ..." >&2
+
+    if [[ -n "${CRUFTLESS_HOOK_BYPASS:-}" ]]; then
+        echo "" >&2
+        echo "[pre-push] ⚠️  CRUFTLESS_HOOK_BYPASS set:" >&2
+        echo "[pre-push] ⚠️  reason: ${CRUFTLESS_HOOK_BYPASS}" >&2
+        echo "[pre-push] ⚠️  Allowing push under explicit keeper override." >&2
+        exit 0
+    fi
+
+    exit 1
+fi
+
+exit 0

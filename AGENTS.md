@@ -186,6 +186,8 @@ Generated test and benchmark artifacts live in the external sidecar, not in the 
 | Refresh locale manifest | `apparatus/locales/discover.sh` |
 | Workspace test (all pilots) | `cargo test --release --workspace` |
 | Per-pilot test | `cargo test --release -p <crate-name>` |
+| Activate triumvirate pre-push hook (Stage 2) | `git config core.hooksPath .githooks` (one-time per clone) |
+| Emergency keeper override for pre-push hook | `CRUFTLESS_HOOK_BYPASS="<reason>" git push ...` |
 
 `CRUFT_BIN` is supplied by `env.local` on this machine. The `run-sample.sh` auto-copy convention still supports `LOCAL_CRUFT` for hosts that want to execute from a local binary cache instead of directly from `target/`.
 
