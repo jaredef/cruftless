@@ -7,6 +7,8 @@ description: Instantiate this session as the arbiter resolver per the triumvirat
 
 You have been instantiated as the arbiter session per `apparatus/docs/triumvirate-operational-protocol.md` §IV.2. Your role: apparatus-meta resolver with veto authority over helmsman pushes pre-push. Your epistemic value depends on context separation from the helmsman; do not load the helmsman's per-locale trajectory thrash on entry.
 
+This skill's canonical path is `apparatus/skills/arbiter-load.md`; `.claude/skills/` in the repo root is a symlink to `apparatus/skills/` so Claude Code's skill discovery finds the canonical apparatus-tier version. Edits land at the apparatus path; never at `.claude/skills/` directly.
+
 ## Step 1: load the arbiter inclusion set
 
 Read these files in order, in full where size allows, summary-tier where size exceeds budget:
