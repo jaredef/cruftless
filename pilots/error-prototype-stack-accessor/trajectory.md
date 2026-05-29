@@ -84,3 +84,87 @@ C4 passes for a coherent Phase 3 substrate move. Recommended move is an Error pr
 - keep human-readable trace formatting out of the first rung, returning the existing empty string stack payload until a later formatting probe justifies deeper capture work.
 
 Estimated closure: two substrate rungs. Rung 1 should install the prototype accessor descriptor and same-realm getter/setter behavior, expected to close most or all of the 20/22 missing-accessor rows. Rung 2 may be needed for setter edge behavior against non-extensible receivers, own accessors/non-writable data properties, or Proxy/Reflect adjacent rows after the basic accessor is present.
+
+## 2026-05-29 - EPSA-EXT 1 - Error.prototype.stack accessor
+
+### Directive
+
+Helmsman directed R2 via CAACP message `b6cdf81c-772f-4b0d-a420-3ab1a318e716` to implement the Phase 3 move proposed by EPSA-EXT 0: install the `Error.prototype.stack` accessor substrate, keep trace-format content out of scope, and target closure of the 22-cell `feat:error-stack-accessor` cluster.
+
+### Substrate Move
+
+`install_error_globals` now installs a non-enumerable configurable own accessor descriptor on `%Error.prototype%.stack`. NativeError prototypes inherit this accessor through their existing prototype chain; they do not receive their own `stack` descriptor, matching the test262 shape that checks `Object.getOwnPropertyDescriptor(Object.getPrototypeOf(new TypeError()), "stack") === undefined`.
+
+The getter:
+
+- is a non-constructor native function named `get stack`;
+- throws TypeError for non-object receivers;
+- returns `undefined` for objects without cruftless's `InternalKind::Error` marker, including plain objects and objects inheriting from `Error.prototype`;
+- returns the receiver's own string-valued `stack` data property when one exists;
+- otherwise returns the current implementation-defined empty string for ErrorData-bearing instances.
+
+The setter:
+
+- is a non-constructor native function named `set stack`;
+- throws TypeError for non-object receivers and non-string values;
+- throws TypeError when called on `%Error.prototype%` itself;
+- creates a default own data property `{value, writable:true, enumerable:true, configurable:true}` when the receiver lacks an own `stack`;
+- preserves existing own data-property attributes when writable;
+- throws on non-writable own data properties;
+- invokes an own stack accessor setter when present and throws when an own accessor lacks a setter.
+
+Fresh Error-family constructor instances and internal `make_error_instance` objects are now marked with `InternalKind::Error` and no longer eagerly install an own `stack` data property. That change is required by the current test262 `sec-properties-of-error-instances` rows: fresh instances reach `stack` via the inherited accessor; user assignment, direct setter calls, and `Error.captureStackTrace` can still create own `stack` data properties.
+
+### Measurement
+
+Build:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+
+Targeted test262 harness run over `/home/jaredef/test262/test/built-ins/Error/prototype/stack/*.js`:
+
+| Probe | EPSA-EXT 0 baseline | EPSA-EXT 1 |
+|---|---:|---:|
+| Exact matrix cell: `Error.prototype.stack` / `feat:error-stack-accessor` | 0 PASS / 22 FAIL | 22 PASS / 0 FAIL |
+| Whole `Error.prototype.stack` directory | 0 PASS / 35 FAIL | 28 PASS / 7 FAIL |
+
+Exact 22-cell rows now passing:
+
+- `getter-data-property-shadows.js`
+- `getter-error-instance.js`
+- `getter-error-prototype.js`
+- `getter-no-error-data.js`
+- `getter-this-not-object.js`
+- `instance-no-own-stack.js`
+- `instance-not-enumerable.js`
+- `prop-desc.js`
+- `setter-creates-own-property.js`
+- `setter-delete-round-trip.js`
+- `setter-empty-string.js`
+- `setter-existing-own-property.js`
+- `setter-no-argument.js`
+- `setter-non-error-receiver.js`
+- `setter-non-extensible-receiver.js`
+- `setter-non-string-value.js`
+- `setter-non-writable-stack.js`
+- `setter-own-accessor.js`
+- `setter-receiver-is-other-prototype.js`
+- `setter-receiver-is-prototype.js`
+- `setter-this-not-object.js`
+- `setter-via-assignment.js`
+
+Residual wider-directory rows:
+
+- `getter-cross-realm.js` and `setter-cross-realm.js`: realm cloning does not yet provide the foreign `Error` constructor/prototype surface expected by `$262.createRealm()`.
+- `getter-receiver-is-proxy.js`: proxy receiver lacks ErrorData but currently forwards the target's ErrorData shape through property access.
+- `setter-proxy-trap-rejects.js`, `setter-proxy-trap-throws.js`, `setter-proxy-wrapping-prototype.js`, `setter-receiver-is-proxy.js`: setter Proxy `[[GetOwnProperty]]` / `[[DefineOwnProperty]]` / `[[Set]]` edge routing is deferred to EPSA-EXT 2 as requested.
+
+### Findings
+
+**Finding EPSA.1 (prototype accessor requires explicit ErrorData marker)**: the Phase 2 probe treated the existing own `stack` data property as usable substrate, but the current test262 accessor surface requires fresh instances to have no own `stack` property. A prototype accessor that returns strings for real Error instances and `undefined` for `Object.create(Error.prototype)` therefore needs a runtime ErrorData marker. Cruftless already had `InternalKind::Error`; EPSA-EXT 1 wires Error construction and internal error creation to that marker.
+
+**Finding EPSA.2 (NativeError prototypes inherit, not own, stack)**: installing the accessor on each NativeError prototype would fail the instance-shape checks. The durable coordinate is `%Error.prototype%` plus the existing NativeError-prototype chain.
+
+### Status
+
+EPSA-EXT 1 closes the exact 22-cell post-EPSUA cluster. EPSA remains open only for wider-directory cross-realm and Proxy residuals.
