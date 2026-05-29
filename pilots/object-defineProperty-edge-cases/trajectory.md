@@ -222,3 +222,90 @@ Full-surface residuals additionally include ODP-EXT 2 array non-writable length 
 ### Finding
 
 **Finding ODP.2**: Symbol-key correctness required both write-side and reflection-side property-key discipline. Fixing only `Object.defineProperty` storage left `Object.getOwnPropertyDescriptor(obj, sym)` invisible and strict computed writes to non-writable Symbol data properties silent; the coherent substrate boundary is `ToPropertyKey` through define, reflect, and computed strict-write enforcement.
+
+## ODP-EXT 2 - array exotic length/index boundaries (2026-05-29)
+
+**Status**: LANDED. Phase-3 rung 2, approved by Helmsman CAACP `odp-ext-2-array-exotic-length-index-r4`.
+
+### Move
+
+`Object.defineProperty` now routes Array exotic string-index keys through the Array `[[DefineOwnProperty]]` branch:
+
+- canonical array-index detection now respects the ECMA boundary: only integer strings in `[0, 2^32 - 2]` are array indices; `"4294967295"` and larger numeric strings are ordinary property keys;
+- defining an array index at or beyond current length rejects when the existing length descriptor is non-writable;
+- successful index definitions at or beyond current length update Array length to `index + 1`;
+- Array length derivation ignores non-array-index numeric strings;
+- property-key getter lookup stops at own data descriptors, so an own array-index data property correctly shadows an inherited accessor;
+- Object.defineProperty converts TypedArray integer-index false outcomes into TypeError, closing the resizable-buffer shrink-during-key-coercion exemplar without taking broader TypedArray/Reflect substrate.
+
+Out of scope remains ODP-EXT 3 arguments mapped-parameter rows and prototype-shadow rows, plus full Reflect.defineProperty boolean-return alignment.
+
+### Gates
+
+Build:
+
+```
+cargo build --release --bin cruft -p cruftless
+PASS
+```
+
+Targeted exemplars:
+
+```
+15.2.3.6-4-184.js     PASS
+15.2.3.6-4-185.js     PASS
+15.2.3.6-4-186.js     PASS
+15.2.3.6-4-188.js     PASS
+15.2.3.6-4-189.js     PASS
+15.2.3.6-4-193.js     PASS
+15.2.3.6-4-275.js     PASS
+coerced-P-shrink.js   PASS
+```
+
+43-row descriptor-shape/property-semantics bucket:
+
+```
+expected=43
+outputs=42
+PASS=31
+FAIL=11
+NO_JSON_OUTPUT_OR_PANIC=1
+```
+
+ODP-EXT 1 measured the same bucket at `26 PASS / 16 FAIL / 1 no-output`; ODP-EXT 2 therefore adds +5 PASS on the descriptor bucket.
+
+Full 54-row `surface == "Object.defineProperty"` sweep:
+
+```
+expected=54
+outputs=53
+PASS=42
+FAIL=11
+NO_JSON_OUTPUT_OR_PANIC=1
+```
+
+ODP-EXT 1 measured the same surface at `33 PASS / 20 FAIL / 1 no-output`; ODP-EXT 2 therefore adds +9 PASS on the full Object.defineProperty surface.
+
+Adjacent regression sample:
+
+```
+built-ins/Object/defineProperty first 80 files
+PASS=80
+FAIL=0
+```
+
+### Residuals
+
+Remaining descriptor-bucket failures now match the next roadmap rungs:
+
+- arguments mapped-parameter and arguments-index descriptor rows: `4-289-1`, `4-292-1`, `4-293-2`, `4-293-3`, `4-294-1`, `4-295-1`, `4-296-1`, `4-301-1`;
+- prototype-chain own shadow rows: `4-410`, `4-415`, `4-625gs`;
+- one remaining no-output row: `4-116`.
+
+### Tag
+
+`array-exotic-define-own-property`
+
+### Finding
+
+**Finding ODP.3**: Array-index correctness was split across three helpers, not only `ArraySetLength`. The same boundary predicate must be shared by length derivation, defineProperty index classification, and ordinary numeric-key reads; otherwise non-index strings such as `"4294967295"` inflate length even when the define path stores them as ordinary properties.

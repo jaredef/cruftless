@@ -474,7 +474,12 @@ impl Runtime {
         if key.is_empty() || (key.len() > 1 && key.starts_with('0')) {
             return None;
         }
-        key.parse::<usize>().ok()
+        let idx = key.parse::<usize>().ok()?;
+        if idx <= (u32::MAX as usize - 1) {
+            Some(idx)
+        } else {
+            None
+        }
     }
 
     /// TAWR-EXT 2: classify a property-key string per §7.1.21
@@ -3366,13 +3371,17 @@ impl Runtime {
                     NumericIndexClass::ValidArrayIndex(idx) => {
                         let len = self.typed_array_view_len(target).unwrap_or(0);
                         if idx >= len {
-                            return Ok(Value::Boolean(false));
+                            return Err(RuntimeError::TypeError(
+                                "Cannot define out-of-bounds TypedArray index".into(),
+                            ));
                         }
                         if configurable == Some(false)
                             || enumerable == Some(false)
                             || writable == Some(false)
                         {
-                            return Ok(Value::Boolean(false));
+                            return Err(RuntimeError::TypeError(
+                                "Invalid TypedArray index property descriptor".into(),
+                            ));
                         }
                         let value = if has_value {
                             self.read_property(desc_id, "value")?
@@ -3384,7 +3393,9 @@ impl Runtime {
                         return Ok(Value::Boolean(true));
                     }
                     NumericIndexClass::InvalidNumericIndex => {
-                        return Ok(Value::Boolean(false));
+                        return Err(RuntimeError::TypeError(
+                            "Invalid TypedArray numeric index".into(),
+                        ));
                     }
                 }
             }
@@ -3402,6 +3413,55 @@ impl Runtime {
             getter: if has_get_key { Some(getter) } else { None },
             setter: if has_set_key { Some(setter) } else { None },
         };
+
+        if matches!(
+            self.obj(target).internal_kind,
+            crate::value::InternalKind::Array
+        ) {
+            if let Some(idx) = Self::canonical_array_index_key(&key) {
+                let old_len = self.try_array_length(target)?;
+                let length_writable = self
+                    .obj(target)
+                    .get_own("length")
+                    .map(|d| d.writable)
+                    .unwrap_or(true);
+                if idx >= old_len && !length_writable {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot define array index '{}': length is non-writable",
+                        key
+                    )));
+                }
+
+                if let Some(value) = desc.value.clone() {
+                    let mapped_cell = {
+                        let o = self.obj(target);
+                        if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                            parameter_map.get(&key).cloned()
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(cell) = mapped_cell {
+                        *cell.borrow_mut() = value;
+                    }
+                }
+
+                if !self.validate_and_apply_property_descriptor(target, key_pk.clone(), desc)? {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Cannot define property '{}'",
+                        key
+                    )));
+                }
+                if idx >= old_len {
+                    self.array_length_set_internal_via(
+                        &Value::Object(target),
+                        &Value::Number((idx + 1) as f64),
+                        &Value::Boolean(length_writable),
+                    )?;
+                }
+                return Ok(Value::Object(target));
+            }
+        }
 
         if let Some(value) = desc.value.clone() {
             if let crate::value::PropertyKey::String(s) = &key_pk {
@@ -10490,8 +10550,8 @@ impl Runtime {
                     if !matches!(g, Value::Undefined) {
                         return Some(g.clone());
                     }
-                    return None;
                 }
+                return None;
             }
             if let crate::value::PropertyKey::Symbol(rc) = key {
                 if let Some(d) = o.get_own(rc.as_str()) {
@@ -10499,8 +10559,8 @@ impl Runtime {
                         if !matches!(g, Value::Undefined) {
                             return Some(g.clone());
                         }
-                        return None;
                     }
+                    return None;
                 }
             }
             cur = o.proto;
@@ -11137,7 +11197,8 @@ impl Runtime {
                 }
                 let mut max: i64 = -1;
                 for k in o.properties.keys() {
-                    if let Ok(i) = k.as_str().parse::<i64>() {
+                    if let Some(i) = Self::canonical_array_index_key(k.as_str()) {
+                        let i = i as i64;
                         if i > max {
                             max = i;
                         }
