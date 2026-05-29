@@ -105,7 +105,7 @@ Per the agent init protocol at `apparatus/docs/agent-init-protocol.md`. As an ap
 
 ```sh
 curl -sX POST -H "Content-Type: application/json" \
-  -d "{\"role\":\"arbiter\",\"existing_token\":\"${CAACP_TOKEN_ARBITER}\"}" \
+  -d "{\"role\":\"arbiter\",\"instance_id\":\"${ARBITER_INSTANCE_ID:-arbiter-$(hostname -s)-$(date -u +%Y%m%dt%H%M%S)}\",\"existing_token\":\"${CAACP_TOKEN_ARBITER}\"}" \
   http://127.0.0.1:7777/local/register
 ```
 

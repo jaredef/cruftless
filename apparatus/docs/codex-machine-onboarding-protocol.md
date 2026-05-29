@@ -160,6 +160,12 @@ Expected:
 - The target Codex thread receives a `**CAACP NEW**` turn.
 - The agent reads `/local/inbox`, acts per role policy, and acks if appropriate.
 
+### Standing instruction on wake (mandatory)
+
+Per `apparatus/docs/agent-init-protocol.md` §V.3 (added per watcher's 10298 reflection): wake is not handling. When a `**CAACP NEW** ...` turn arrives via this bridge, the Codex agent's standing rule is: (1) immediately poll the inbox via `curl /local/inbox?role=<my-role>[&instance_id=<my-instance>]`; (2) summarize each PENDING message; (3) ack or respond per the intent + policy in §V.3; (4) only then resume prior work. The `Check sidecar inbox before continuing` text in the wake string is the operationalization of this rule — preemption, not suggestion.
+
+If the agent's session is interrupted by a keeper directive between wake-arrival and inbox-poll, the inbox-poll still takes priority and runs before the keeper directive's substantive work. (Acknowledge the keeper's directive context separately; do not let the new keeper input displace the standing on-wake duty.)
+
 ## VII. Fallbacks
 
 If Codex Desktop app-server is unavailable, but the target agent runs in a terminal pane, use the tmux fallback:

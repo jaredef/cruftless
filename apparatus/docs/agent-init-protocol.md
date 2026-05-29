@@ -6,15 +6,17 @@ Per keeper directive Telegram 10252–10257: substrate resolvers register indivi
 
 ## I. Roles + initialization paths
 
-| Role                | Default? | Init path                              | Token                                                                                  |
-|---|---|---|---|
-| Substrate resolver  | Yes      | This doc (§II below)                   | Per-instance, registered on session entry via the local CAACP sidecar                  |
-| Helmsman            | No       | `apparatus/skills/helmsman-load.md`    | Singleton `CAACP_TOKEN_HELMSMAN` env var (registered once by keeper)                   |
-| Arbiter             | No       | `apparatus/skills/arbiter-load.md`     | Singleton `CAACP_TOKEN_ARBITER`                                                        |
-| Watcher             | No       | `apparatus/skills/watcher-load.md`     | Singleton `CAACP_TOKEN_WATCHER`                                                        |
-| Deputy              | No       | `apparatus/skills/deputy-load.md`      | Singleton `CAACP_TOKEN_DEPUTY`                                                         |
+| Role                | Default? | Init path                              | Token                                                                                                                                 | Instance-id requirement                  |
+|---|---|---|---|---|
+| Substrate resolver  | Yes      | This doc (§II below)                   | Per-instance, registered on session entry via the local CAACP sidecar                                                                  | Required at registration                  |
+| Helmsman            | No       | `apparatus/skills/helmsman-load.md`    | Singleton `CAACP_TOKEN_HELMSMAN` env var; **also** pass an instance-id to sidecar registration so the physical session is distinguishable | Required at registration (per directive 10296) |
+| Arbiter             | No       | `apparatus/skills/arbiter-load.md`     | Singleton `CAACP_TOKEN_ARBITER`; same instance-id convention                                                                            | Required at registration                  |
+| Watcher             | No       | `apparatus/skills/watcher-load.md`     | Singleton `CAACP_TOKEN_WATCHER`; same instance-id convention                                                                            | Required at registration                  |
+| Deputy              | No       | `apparatus/skills/deputy-load.md`      | Singleton `CAACP_TOKEN_DEPUTY`; same instance-id convention                                                                             | Required at registration                  |
 
 If you have NOT been appointed to a non-default role via keeper Rung-2 intervention (e.g., "You are the Helmsman."), you are a substrate resolver. Proceed with §II.
+
+**Instance-id discipline (all roles, per keeper directive Telegram 10296)**: every CAACP registration MUST include an `instance_id`, even for the singleton governance/service roles. Rationale: lets the apparatus distinguish physical instantiations of the same logical role over time (e.g., the helmsman appointment moved from session A on machine X to session B on machine Y); keeps the registered-agents view at `GET /api/caacp/v1/tokens?role=<role>` legible. Convention: `<runtime>-<short-hostname>-<short-ts>` (e.g., `claude-code-clawd-20260529t0344`, `codex-pop-os-20260529t040618`). The sidecar's `/local/register` accepts `instance_id` for any role; pass it always.
 
 ## II. Substrate-resolver init (six steps)
 
@@ -194,7 +196,23 @@ Same operator-started discipline + same `**CAACP NEW**` directive format + same 
 **CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
 ```
 
-The session interprets the `**CAACP NEW**` prefix as a directive to (a) drop its current micro-step, (b) `curl /local/inbox?role=<role>` to fetch full message metadata + body, (c) decide whether to act on the incoming message or defer per its own discipline.
+### V.3 On-wake standing instruction (mandatory; per watcher's 10298 reflection)
+
+Bridge injection wakes the thread; **a wake is not handling**. The agent must follow this standing instruction whenever a `**CAACP NEW** ...` directive arrives via any bridge:
+
+1. **Immediately poll the inbox**: `curl http://127.0.0.1:7777/local/inbox?role=<my-role>[&instance_id=<my-instance>]` and read the full PENDING message set, not just the latest summarized in the directive.
+2. **Summarize each PENDING message**: for each, note sender + intent + slug + a one-line distillation of the body (or `body=null` if pre-body-transmission).
+3. **Ack or respond per policy** before resuming any other work:
+   - `notification` intent: ack RESOLVED with a short acknowledgment body, or ACKNOWLEDGED if the agent intends to action later.
+   - `request` intent: respond with the requested artifact + ack RESOLVED (or DEFER-TO-KEEPER if the request is outside the agent's role-scope).
+   - `response` intent: if it closes a prior outbound request, file the resolution + ack RESOLVED.
+   - `broadcast` intent: integrate the announcement into working context; no ack required.
+   - `veto-pending` intent: escalate to keeper immediately.
+4. **Resume prior work** only after step 3 completes for every PENDING message in the inbox.
+
+**Failure mode this rule prevents** (per watcher 10298): wake fires, the agent's turn starts, but the agent gets distracted by the keeper's next directive or its own in-flight micro-step and never inspects the CAACP inbox. The standing rule moves "poll-and-act" to the agent's #1 priority on every wake.
+
+The directive `Check sidecar inbox before continuing` in the wake string is the **operationalization** of this standing rule, not a soft suggestion. Treat it as a preemption signal that displaces whatever the agent was about to do until the inbox is drained.
 
 ## VI. Failure modes
 

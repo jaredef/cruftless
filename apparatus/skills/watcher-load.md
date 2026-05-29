@@ -106,7 +106,7 @@ Per the agent init protocol at `apparatus/docs/agent-init-protocol.md`. As an ap
 
 ```sh
 curl -sX POST -H "Content-Type: application/json" \
-  -d "{\"role\":\"watcher\",\"existing_token\":\"${CAACP_TOKEN_WATCHER}\"}" \
+  -d "{\"role\":\"watcher\",\"instance_id\":\"${WATCHER_INSTANCE_ID:-watcher-$(hostname -s)-$(date -u +%Y%m%dt%H%M%S)}\",\"existing_token\":\"${CAACP_TOKEN_WATCHER}\"}" \
   http://127.0.0.1:7777/local/register
 ```
 

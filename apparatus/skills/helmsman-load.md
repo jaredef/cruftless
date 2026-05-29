@@ -117,7 +117,7 @@ Per the agent init protocol at `apparatus/docs/agent-init-protocol.md`. As an ap
 
 ```sh
 curl -sX POST -H "Content-Type: application/json" \
-  -d "{\"role\":\"helmsman\",\"existing_token\":\"${CAACP_TOKEN_HELMSMAN}\"}" \
+  -d "{\"role\":\"helmsman\",\"instance_id\":\"${HELMSMAN_INSTANCE_ID:-helmsman-$(hostname -s)-$(date -u +%Y%m%dt%H%M%S)}\",\"existing_token\":\"${CAACP_TOKEN_HELMSMAN}\"}" \
   http://127.0.0.1:7777/local/register
 ```
 
