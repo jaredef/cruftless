@@ -217,6 +217,15 @@
       "status": null
     },
     {
+      "coord": "assignment-to-constant-variable-loader",
+      "tag": "L.assignment-to-constant-variable-loader",
+      "parent": null,
+      "scope": "assignment-to-constant-variable-loader",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "ast-bytecode-missing-method",
       "tag": "L.ast-bytecode-missing-method",
       "parent": null,
