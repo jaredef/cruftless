@@ -521,12 +521,13 @@ function runOne(path) {
 
   // Run via indirect eval (cruftless's P59.E4). globalThis.eval matches
   // ECMA §19.2 indirect-eval semantics: script evaluated in global scope.
+  const t262AsyncDrainResolve = Promise.resolve.bind(Promise);
   let thrown = null;
   try {
     (0, eval)(assembled);
     if (meta.flags.async && !thrown) {
       try {
-        let t262Drain = Promise.resolve();
+        let t262Drain = t262AsyncDrainResolve();
         for (let i = 0; i < 8; i++) {
           t262Drain = t262Drain.then(function () {});
         }

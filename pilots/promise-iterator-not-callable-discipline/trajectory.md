@@ -154,3 +154,52 @@ Adjacent regression smoke:
 ### Finding
 
 PIND-EXT 2 confirmed the Phase 3 factoring but widened its observed yield: `iter-assigned-symbol` and `iter-arg-is-*` rows were not separate enough to require a third cleanup rung. The remaining actionable coordinate is the Promise constructor resolve/callability bucket: route spec-required abrupt completions from `C.resolve` lookup/callability through capability rejection without changing static-method callsite errors that should remain synchronous.
+
+## 2026-05-29 - PIND-EXT 3 - Rung 4b C.resolve closure
+
+### Directive
+
+Helmsman directed R3 to close the remaining `C.resolve` not-callable/getter-abrupt residuals in `Promise.all`, `Promise.allSettled`, and `Promise.race`. Constraint: preserve Rung 4a's `promise_collect_iterable_or_reject` helper and leave global `crate::intrinsics::collect_iterable` unchanged.
+
+### Substrate Move
+
+Updated only the combinator-local `C.resolve` retrieval and callability checks:
+
+- `Promise.all`, `Promise.allSettled`, and `Promise.race` now retrieve `resolve` with accessor-aware `spec_get`.
+- If the `resolve` getter throws a JS value, the combinator calls the capability reject function with that exact value and returns the capability promise.
+- If the retrieved `resolve` value is not callable, the combinator constructs a TypeError rejection reason, calls capability reject, and returns the capability promise.
+
+Rung 4a's `Runtime::promise_collect_iterable_or_reject` is unchanged, and `crate::intrinsics::collect_iterable` is unchanged.
+
+The test262 runner's async drain also received a narrow apparatus fix: it captures `Promise.resolve.bind(Promise)` before evaluating the test body and uses the captured resolver for post-test microtask draining. Without that, C.resolve tests that intentionally poison global `Promise.resolve` pass at the runtime level but fail the runner after the test body has completed.
+
+### Measurement
+
+Build gate:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS
+
+Targeted test262 measurement against `/home/jaredef/test262`:
+
+- Named 40-row PIND cluster after Rung 4b: 39 PASS / 1 FAIL.
+- Bucket A C.resolve residual rows: 6/6 PASS after this rung, +6 against the Rung 4a targeted result.
+- Remaining named residual: `built-ins/Promise/allSettled/iter-arg-is-poisoned.js`, which expects an abrupt completion from an accessor on `@@iterator` itself. Current shared `collect_iterable` reads `@@iterator` with raw `object_get`, so the accessor is not invoked. This is not a C.resolve residual and was deliberately left outside Rung 4b's allowed edit surface.
+
+Adjacent regression smoke:
+
+- PASS: `Promise.all/resolve-non-thenable.js`
+- PASS: `Promise.all/iter-arg-is-string-resolve.js`
+- PASS: `Promise.allSettled/resolves-to-array.js`
+- PASS: `Promise.allSettled/resolved-all-fulfilled.js`
+- PASS: `Promise.allSettled/resolved-all-mixed.js`
+- PASS: `Promise.race/S25.4.4.3_A4.1_T1.js`
+- PASS: `Promise.race/iter-arg-is-string-resolve.js`
+
+Two broader thenable-value smoke rows remain pre-existing failures and were not regressions from this rung:
+
+- `Promise.all/resolve-thenable.js`
+- `Promise.race/resolve-non-thenable.js`
+
+### Finding
+
+PIND-EXT 3 closes the C.resolve bucket but surfaces one final non-C.resolve Promise iterator-acquisition residual. A follow-up Rung 4c is warranted only if Helmsman widens scope to the `@@iterator` accessor-getter path: either Promise-local acquisition must call `spec_get(..., "@@iterator")`, or global `collect_iterable` must be lifted to accessor-aware GetIterator semantics after auditing non-Promise consumers.

@@ -4150,14 +4150,22 @@ impl Runtime {
             default_promise.clone()
         };
         let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let promise_resolve = match &ctor {
-            Value::Object(cid) => self.object_get(*cid, "resolve"),
-            _ => Value::Undefined,
+        let promise_resolve = match self.spec_get(&ctor, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject, Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
         };
         if !self.is_callable(&promise_resolve) {
-            return Err(RuntimeError::TypeError(
-                "Promise.all: C.resolve is not callable".into(),
-            ));
+            let msg = "Promise.all: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject, Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
         }
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
@@ -4238,14 +4246,22 @@ impl Runtime {
             default_promise.clone()
         };
         let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let promise_resolve = match &ctor {
-            Value::Object(cid) => self.object_get(*cid, "resolve"),
-            _ => Value::Undefined,
+        let promise_resolve = match self.spec_get(&ctor, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
         };
         if !self.is_callable(&promise_resolve) {
-            return Err(RuntimeError::TypeError(
-                "Promise.allSettled: C.resolve is not callable".into(),
-            ));
+            let msg = "Promise.allSettled: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
         }
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
@@ -4409,14 +4425,22 @@ impl Runtime {
             default_promise.clone()
         };
         let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let promise_resolve = match &ctor {
-            Value::Object(cid) => self.object_get(*cid, "resolve"),
-            _ => Value::Undefined,
+        let promise_resolve = match self.spec_get(&ctor, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
         };
         if !self.is_callable(&promise_resolve) {
-            return Err(RuntimeError::TypeError(
-                "Promise.race: C.resolve is not callable".into(),
-            ));
+            let msg = "Promise.race: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
         }
         let iter = args.first().cloned().unwrap_or(Value::Undefined);
         let entries = match self.promise_collect_iterable_or_reject(iter, &cap_reject)? {
