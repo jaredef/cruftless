@@ -71,6 +71,29 @@ const CODEX_APP_TOKEN_FILE =
 const BRIDGE_ID = INSTANCE_ID ? `${ROLE}-${INSTANCE_ID}` : ROLE;
 const SEEN_FILE = path.join(DATA_DIR, `bridge-${BRIDGE_ID}-codex-app-seen.json`);
 const LOG_FILE = path.join(DATA_DIR, `bridge-${BRIDGE_ID}-codex-app.log`);
+const ACTIVE_FILE = path.join(DATA_DIR, `bridge-${BRIDGE_ID}-codex-app-active.json`);
+
+// Codex stop-continue wake primitive (per watcher 2026-05-29 design
+// `apparatus/docs/codex-stop-continue-bridge-design.md` + keeper Telegram
+// 10446/10449). The bridge tracks injected directives in an active-
+// directive ledger; on each poll, if a tracked directive is still PENDING
+// in the role/instance inbox AND the Codex thread status indicates the
+// session has stopped before reaching quiescence, the bridge re-injects
+// a **CAACP CONTINUE** turn to wake the session back into the loop.
+//
+// Throttles prevent runaway re-injection: a continue is eligible after
+// CONTINUE_AFTER_MS since the original directive injection (or last
+// continue attempt), interval CONTINUE_INTERVAL_MS between continues,
+// max CONTINUE_MAX_ATTEMPTS per directive.
+const CONTINUE_AFTER_MS = 60 * 1000;
+const CONTINUE_INTERVAL_MS = 120 * 1000;
+const CONTINUE_MAX_ATTEMPTS = 3;
+// Status values observed across this codex app-server build:
+// `active`, `idle`, `notLoaded`, `systemError`. The first two states
+// where the session has stopped consuming turns are the targets for
+// re-injection; `active` means turns are running, `systemError` is a
+// terminal failure we log+skip instead of looping into.
+const STOP_STATUSES = new Set(["idle", "notLoaded"]);
 
 async function log(message) {
   const line = `[caacp-codex-app-bridge] ${new Date().toISOString()} role=${ROLE} ${message}\n`;
@@ -90,6 +113,19 @@ async function readJsonArray(file) {
 async function writeSeen(ids) {
   const capped = [...new Set(ids)].slice(-1000);
   await fs.writeFile(SEEN_FILE, `${JSON.stringify(capped, null, 2)}\n`, "utf8");
+}
+
+async function readActive() {
+  try {
+    const parsed = JSON.parse(await fs.readFile(ACTIVE_FILE, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeActive(ledger) {
+  await fs.writeFile(ACTIVE_FILE, `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
 }
 
 async function fetchInbox() {
@@ -293,24 +329,118 @@ async function wakeCodex(directive) {
   });
 }
 
+async function codexThreadStatus() {
+  // Per watcher 2026-05-29 investigation: thread/read returns the thread
+  // record including status (one of: active, idle, notLoaded, systemError).
+  // Used by the stop-continue mechanism to decide whether to re-inject.
+  try {
+    const result = await codexRequest("thread/read", { threadId: THREAD_ID });
+    if (result && typeof result === "object") {
+      const status =
+        (result.thread && result.thread.status) ||
+        result.status ||
+        null;
+      return status;
+    }
+    return null;
+  } catch (err) {
+    await log(`WARN: thread/read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
 async function cycle() {
   const inbox = await fetchInbox();
   const messages = (inbox.messages ?? []).filter((msg) => msg.state === "PENDING");
-  if (messages.length === 0) return;
+  const pendingIds = new Set(messages.map((m) => m.message_id));
 
   const seen = await readJsonArray(SEEN_FILE);
   const seenSet = new Set(seen);
   const fresh = messages.filter((msg) => !seenSet.has(msg.message_id));
-  if (fresh.length === 0) return;
 
-  const latest = fresh[fresh.length - 1];
-  const latestTag = `${latest.sender}/${latest.intent}/${latest.slug}`;
-  const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
-  const directive = `**CAACP NEW** role=${ROLE}${instance} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.`;
+  // Active-directive ledger maintenance: retire any tracked directives
+  // that are no longer PENDING (resolver has acked or remote endpoint
+  // transitioned them). v1 retirement check is inbox-absence; v2 follow-
+  // up will use sidecar GET /local/messages/<id> for exact remote state
+  // (per watcher's design recommendation).
+  const active = await readActive();
+  let activeChanged = false;
+  for (const id of Object.keys(active)) {
+    if (!pendingIds.has(id)) {
+      delete active[id];
+      activeChanged = true;
+    }
+  }
 
-  await wakeCodex(directive);
-  await writeSeen([...seen, ...fresh.map((msg) => msg.message_id)]);
-  await log(`woke thread=${THREAD_ID} directive="${directive}" new_ids=${fresh.map((msg) => msg.message_id).join(",")}`);
+  if (fresh.length > 0) {
+    const latest = fresh[fresh.length - 1];
+    const latestTag = `${latest.sender}/${latest.intent}/${latest.slug}`;
+    const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
+    const directive = `**CAACP NEW** role=${ROLE}${instance} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.`;
+
+    await wakeCodex(directive);
+    await writeSeen([...seen, ...fresh.map((msg) => msg.message_id)]);
+
+    // Record each fresh injected directive in the active ledger so the
+    // stop-continue check can re-inject if the session stops before the
+    // directive is RESOLVED.
+    const nowIso = new Date().toISOString();
+    for (const msg of fresh) {
+      active[msg.message_id] = {
+        injected_at: nowIso,
+        last_continue_at: null,
+        continue_attempts: 0,
+        directive_tag: `${msg.sender}/${msg.intent}/${msg.slug}`,
+      };
+    }
+    activeChanged = true;
+
+    await log(`woke thread=${THREAD_ID} directive="${directive}" new_ids=${fresh.map((msg) => msg.message_id).join(",")}`);
+  }
+
+  // Stop-continue check: if any tracked directive is still PENDING and
+  // the Codex thread has stopped (idle/notLoaded) past the throttle
+  // window, re-inject a CONTINUE turn. Only runs when there's at least
+  // one tracked-pending directive — saves a thread/read call per cycle
+  // when nothing is in flight.
+  const tracked = Object.entries(active).filter(([id]) => pendingIds.has(id));
+  if (tracked.length > 0) {
+    const status = await codexThreadStatus();
+    if (status === "systemError") {
+      await log(`ALERT: thread status=systemError; skipping stop-continue check (operator review required)`);
+    } else if (status && STOP_STATUSES.has(status)) {
+      const now = Date.now();
+      for (const [id, entry] of tracked) {
+        if (entry.continue_attempts >= CONTINUE_MAX_ATTEMPTS) continue;
+        const injectedAt = Date.parse(entry.injected_at) || now;
+        const lastContinueAt = entry.last_continue_at
+          ? Date.parse(entry.last_continue_at) || 0
+          : 0;
+        const sinceInject = now - injectedAt;
+        const sinceContinue = now - lastContinueAt;
+        const eligibleByInject = sinceInject >= CONTINUE_AFTER_MS;
+        const eligibleByInterval =
+          lastContinueAt === 0 || sinceContinue >= CONTINUE_INTERVAL_MS;
+        if (!eligibleByInject || !eligibleByInterval) continue;
+
+        const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
+        const continueDirective = `**CAACP CONTINUE** role=${ROLE}${instance} target_directive_id=${id} attempt=${entry.continue_attempts + 1}/${CONTINUE_MAX_ATTEMPTS} reason=stop-before-telos. Resume directive per §V.4 same-turn imperative; the original directive (${entry.directive_tag}) is still PENDING in your inbox.`;
+        try {
+          await wakeCodex(continueDirective);
+          entry.continue_attempts += 1;
+          entry.last_continue_at = new Date().toISOString();
+          activeChanged = true;
+          await log(`CONTINUE injected thread=${THREAD_ID} target=${id} attempt=${entry.continue_attempts}/${CONTINUE_MAX_ATTEMPTS} status=${status}`);
+        } catch (err) {
+          await log(`WARN: CONTINUE injection failed for ${id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  }
+
+  if (activeChanged) {
+    await writeActive(active);
+  }
 }
 
 await fs.mkdir(DATA_DIR, { recursive: true });
@@ -319,7 +449,12 @@ try {
 } catch {
   await fs.writeFile(SEEN_FILE, "[]\n", "utf8");
 }
-await log(`starting; thread=${THREAD_ID} instance_id=${INSTANCE_ID ?? ""} interval=${INTERVAL_MS / 1000}s seen-cache=${SEEN_FILE}`);
+try {
+  await fs.access(ACTIVE_FILE);
+} catch {
+  await fs.writeFile(ACTIVE_FILE, "{}\n", "utf8");
+}
+await log(`starting; thread=${THREAD_ID} instance_id=${INSTANCE_ID ?? ""} interval=${INTERVAL_MS / 1000}s seen-cache=${SEEN_FILE} active-cache=${ACTIVE_FILE} stop-continue=enabled(after=${CONTINUE_AFTER_MS / 1000}s,interval=${CONTINUE_INTERVAL_MS / 1000}s,max=${CONTINUE_MAX_ATTEMPTS})`);
 
 while (true) {
   try {

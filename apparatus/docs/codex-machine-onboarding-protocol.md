@@ -127,15 +127,31 @@ setsid apparatus/scripts/caacp-codex-app-bridge.mjs watcher "$CODEX_APP_THREAD_W
 What it does:
 
 - Polls `/local/inbox?role=<role>`.
-- Maintains `apparatus/caacp-server/data/bridge-<role>-codex-app-seen.json`.
+- Maintains `apparatus/caacp-server/data/bridge-<role>-codex-app-seen.json` (seen-message ledger).
+- Maintains `apparatus/caacp-server/data/bridge-<role>-codex-app-active.json` (active-directive ledger, per-message: injected_at, last_continue_at, continue_attempts, directive_tag).
 - Calls Codex app-server `thread/resume`, then `turn/start`.
-- Injects a real user turn into the target thread:
+- Injects a real user turn into the target thread on new-PENDING:
 
 ```text
 **CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
 ```
 
 The receiving agent treats that prefix as a directive to check its CAACP inbox before continuing.
+
+**Stop-continue wake primitive** (per watcher's 2026-05-29 design + keeper Telegrams 10446/10449): when the bridge has injected a directive but the Codex thread enters `idle` or `notLoaded` status (per `thread/read`'s `thread.status`) before the directive is RESOLVED, the bridge re-injects a CONTINUE turn:
+
+```text
+**CAACP CONTINUE** role=<role> instance_id=<id> target_directive_id=<id> attempt=<N>/<MAX> reason=stop-before-telos. Resume directive per §V.4 same-turn imperative; the original directive (<sender>/<intent>/<slug>) is still PENDING in your inbox.
+```
+
+Throttles prevent runaway re-injection:
+- `CONTINUE_AFTER_MS` = 60s (minimum wait after initial injection before first continue)
+- `CONTINUE_INTERVAL_MS` = 120s (minimum gap between continue attempts on the same directive)
+- `CONTINUE_MAX_ATTEMPTS` = 3 (per directive; beyond this the bridge stops trying and the directive needs operator intervention)
+
+If `thread.status` is `systemError`, the bridge logs an ALERT and does NOT inject — operator review required, blind looping into a failed session would compound the failure mode.
+
+V1 retirement: a directive is removed from the active ledger when it disappears from `/local/inbox` PENDING state (resolver acked or remote endpoint transitioned). V2 follow-up (deferred): sidecar `GET /local/messages/<id>` forwarding to remote so the bridge can retire by exact remote state instead of inbox-absence.
 
 ## VI. Validate Wake Path
 
