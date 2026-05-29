@@ -2942,3 +2942,39 @@ diff-prod: 62/50 (parity preserved)
 **Finding IR.41 (class_stack inheritance is a Phase-3 implicit-constraint trap)**: compile_function_proto_with_name_hint clones the parent's class_stack into the sub-compiler. This inheritance is correct for resolving super-call references in nested methods (the parent class's super_ctor_name must be findable) but WRONG for ctor-body-only emits (SetThisTDZ should fire only at the outermost ctor body, not at nested arrows). Implicit constraint surfaced: "class_stack semantics differ between resolution-tier consumers (super-call) and emit-tier consumers (SetThisTDZ)." The fix pattern: use a per-compile flag on the Compiler (read+cleared at compile_function_proto entry) for emit-tier signals; reserve class_stack for resolution-tier signals. Standing rec for future Compiler fields that signal emit-tier behavior at compile boundaries.
 
 **Status**: IR-EXT 40 CLOSED locally. Cumulative IR rungs: 40. **12 of 13 TDZ enforcement sub-shapes closed** (i, ii, iii.for-head, iii.compound-assign, iii.class-name-extends, iii.block-scope, iii.switch-case, iii.closure-capture, iii.optional-chain, iii.module-top, iii.param-expression, iii.class-this). Only iii.unscopables remains (needs Symbol.unscopables + with substrate, structurally distinct from existing patterns). The class-this trajectory closes the resolution pipeline keeper named — the deeper substrate work (next_compile_is_derived_ctor + derived_initial_this stash + PushThisRaw + symmetric Load/Store TDZ checks) is fully wired and validates the spec-shared `this` chain across base/derived ctors + arrows.
+
+---
+
+## Rung-cluster-41 — ODP-EXT 3 mapped arguments + prototype assignment shadow partial closure (2026-05-29)
+
+Helmsman directive `odp-ext-3-arguments-mapped-prototype-shadow-r4` targeted the Object.defineProperty residual cells after ODP-EXT 2: mapped arguments exotic `[[DefineOwnProperty]]`, prototype non-writable own-shadow assignment, and the `4-116` no-output cell.
+
+**Substrate landed**:
+- `object_define_property_via` now applies mapped-arguments parameter-map effects after successful `ValidateAndApplyPropertyDescriptor`: data descriptor writes update the mapped cell; accessor descriptors and `writable:false` transitions disconnect the mapping.
+- `delete arguments[index]` now removes the corresponding mapped-arguments parameter-map entry after a successful delete.
+- `object_set_pk` now preserves shaped fast-path updates only for existing shape slots, then checks inherited non-writable data properties before creating a new own property. This closes the ordinary assignment shadow case where a prototype non-writable row must reject silent own creation.
+- Array length assignment now reuses the bounded Rust `ArraySetLength` helper used by Object.defineProperty. This avoids the generated helper path for length writes, though the `4-116` no-output cell remains a timeout and needs its own hang trace.
+- Global `StoreGlobal` now defines an own global property when no own binding exists, instead of routing that first write through ordinary `[[Set]]` against inherited non-writable prototype rows.
+
+**Measured yield**:
+```text
+ODP-EXT 3 targeted residuals:
+PASS 4-289-1, 4-292-1, 4-293-2, 4-293-3, 4-294-1, 4-295-1, 4-296-1, 4-301-1, 4-410, 4-415
+FAIL 4-625gs: this.prop and prop both resolve to 1002 in a focused probe, but this.hasOwnProperty("prop") is still false.
+NO OUTPUT 4-116: timeout status 124 after 10s, zero stdout/stderr.
+
+descriptor-shape/property-semantics bucket: 41 PASS / 1 FAIL / 1 no-output
+Object.defineProperty surface bucket: 52 PASS / 1 FAIL / 1 no-output
+Adjacent first-80 Object.defineProperty sample: 80 PASS / 0 FAIL
+```
+
+**Residual blockers**:
+- `4-625gs` is no longer an ordinary prototype-shadow value failure. Focused probe shows `this.prop === 1002` and `prop === 1002`, while `this.hasOwnProperty("prop")` returns false. The remaining coordinate is global binding own-property reflection across the script-global environment alias.
+- `4-116` remains a no-output timeout under the runner (`timeout 10s`, status 124, empty stdout/stderr). The bounded ArraySetLength path did not close the hang, so this needs a separate no-output trace rather than more ODP descriptor semantics.
+
+**Gates**:
+```text
+cargo build --release --bin cruft -p cruftless: PASS
+```
+
+**Status**: IR-EXT 41 landed as a partial closure with two documented residuals. Cumulative IR rungs: 41.
