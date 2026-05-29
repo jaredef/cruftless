@@ -107,6 +107,9 @@ impl rusty_js_gc::Trace for Object {
                 if let Some(snapshot) = &g.continuation {
                     snapshot.trace_object_refs(ids);
                 }
+                if let Some(Value::Object(id)) = &g.pending_return {
+                    ids.push(*id);
+                }
             }
             _ => {}
         }
@@ -885,6 +888,7 @@ pub struct GeneratorObject {
     pub state: GeneratorState,
     pub continuation: Option<Box<crate::interp::FrameSnapshot>>,
     pub yielded_value: Option<Value>,
+    pub pending_return: Option<Value>,
 }
 
 #[derive(Debug)]

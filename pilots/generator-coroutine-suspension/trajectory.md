@@ -217,3 +217,46 @@ Also added an uncaught throw exemplar proving `gen.throw("boom")` propagates to 
 ### Finding
 
 **Finding GCS.6**: throw-resume can reuse the interpreter's existing try-stack substrate by entering the catch handler before the restored frame is run. The measured for-of/generator residual is not primarily blocked on catch-resume; the next expected walls are `return(value)`, `yield*`, IteratorClose forwarding, and destructuring interactions.
+
+## GCS-EXT 5 - return early termination (2026-05-29)
+
+**Directive**: implement `Generator.prototype.return(value)` for SuspendedYield generators, including the `try/finally` cleanup-yield shape where `return()` first yields the finally value and the following `next()` completes with the requested return value.
+
+### Substrate
+
+`GeneratorObject` now carries an optional `pending_return` value. `Generator.prototype.return` stores that value when resuming a SuspendedYield continuation through an active try/finally handler, and the normal `.next()` resume path preserves it across a cleanup `yield`.
+
+The return-resume path restores the saved `FrameSnapshot`, enters the active try handler without pushing a thrown value, and runs the frame under `active_generator_for_yield`. If the handler yields, `return()` returns `{ value, done:false }`. When execution later completes without another yield, the pending return value supersedes the fallthrough completion and the generator is marked completed. If no active try frame is present, `return(value)` completes immediately with `{ value, done:true }`.
+
+`pending_return` is traced when it contains an object so GC keeps object-valued return payloads live while the finally block is suspended.
+
+### Exemplar
+
+Added runtime-library coverage for:
+
+```js
+function* g() {
+  try {
+    yield 1;
+  } finally {
+    yield "cleanup";
+  }
+}
+const it = g();
+it.next();          // { value:1, done:false }
+it.return("done"); // { value:"cleanup", done:false }
+it.next();          // { value:"done", done:true }
+```
+
+Also added the no-finally terminal path proving a suspended generator without a handler completes immediately and remains completed on the following `.next()`.
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 8 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 61 passed, 1 ignored.
+- `built-ins/GeneratorPrototype/return/*` slice measurement: 13 PASS / 10 FAIL from 23 tests. Baseline from `/home/jaredef/Developer/cruftless-sidecar/results/test262-full-2026-05-28-123833-p2/results.jsonl` was 4 PASS / 19 FAIL on the same paths, for +9 PASS. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext5-generator-return-20260529T154741Z/summary.json`.
+
+### Finding
+
+**Finding GCS.7**: early `return(value)` needs a distinct pending-completion slot on the generator object because cleanup `yield`s split the return completion across two external calls. The residual return slice is now concentrated in descriptor metadata, nested try/catch/finally discrimination, and finally-return override semantics; those require a richer abrupt-completion record than the current try-stack-only handler entry.
