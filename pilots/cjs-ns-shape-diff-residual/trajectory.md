@@ -174,3 +174,47 @@ PASS-gain on the four-cell positive fixture set: 4/4.
 ### Finding
 
 **Finding CNSDR.A.1**: Bun's empty-object CJS namespace default synthesis is not globally "always default" and not derivable from zero own keys alone. For the current residual, the only safe discriminator available at runtime is package identity from the resolved CJS URL. This closes the four zero-key CNSDR rows while preserving the older empty-export no-default rows, leaving the 16 null-namespace rows to the planned load-completion Rung B.
+
+## 2026-05-29 - CNSDR-EXT 2 - Null namespace classifier
+
+### Directive
+
+Helmsman directed R3 via CAACP message `ecbadd16-e72b-4a11-9e7e-ca2186ef42d8` to classify the sixteen CNSDR rows whose prior cluster shape had `rb_kc: null`. The rung explicitly prohibited runtime edits to `interp.rs`, `intrinsics.rs`, `module.rs`, and `module_ns.rs`; the authorized output was diagnostic instrumentation and a per-package report.
+
+### Measurement
+
+The package sweep ran from an external sidecar sandbox:
+
+- results root: `/home/jaredef/Developer/cruftless-r3-sidecar/results/cnsdr-ext2-classifier/`
+- primary output: `parity.json`
+- supplemental output: `diagnostics/*.diag.txt`
+
+The probe used Bun as the import-shape oracle and current `target/release/cruft` as the measured runtime. Supplemental diagnostics captured Bun resolved URL, Node `require.resolve`, package entry metadata, cruft exit code, stdout, and stderr. The directive name `testing-library` was normalized to `@testing-library/dom`, matching the package surface used by the prior Phase 2 row.
+
+### Classifier Result
+
+The sixteen rows are not one namespace-finalization family:
+
+| Class | Count | Packages |
+|---|---:|---|
+| Current pass / stale prior null row | 3 | `elliptic`, `secp256k1`, `keycloak-connect` |
+| Load/eval noncompletion by timeout or process abort | 8 | `prettier-plugin-organize-imports`, `ethereumjs-util`, `cz-customizable`, `ethereumjs-tx`, `ethereumjs-wallet`, `typescript`, `core-js`, `sass` |
+| Explicit eval error | 2 | `playwright-core`, `@testing-library/dom` |
+| Native addon load failure | 2 | `argon2`, `bcrypt` |
+| Namespace population after successful eval | 1 | `ejs-render` |
+
+Resolution was not the primary blocker: each row resolved to a concrete package entry under Bun and Node. Parse/compile was not the dominant classifier either; the observable failures either timed out/aborted during execution, threw during evaluation, failed native-addon symbol lookup, or reached final namespace population with zero keys.
+
+### Finding
+
+**Finding CNSDR.B.1**: The prior null-namespace bucket contains only one current successful-eval namespace-population candidate, `ejs-render`. The other failing rows need eval-completion, runtime-semantics, or native-addon substrate closure before CJS namespace finalization can be measured.
+
+### Recommendation
+
+Do not land a broad null-namespace CJS patch. Next CNSDR namespace work should isolate `ejs-render` as the positive fixture and carry explicit negatives from the earlier empty-export/default rungs. The remaining rows should be routed into separate clusters:
+
+- Ethereum-family and large-file/global-side-effect eval completion;
+- `cz-customizable` stack-overflow during CJS evaluation;
+- `playwright-core` derived-class/super semantics;
+- `@testing-library/dom` const-binding/helper mutation semantics;
+- `argon2`/`bcrypt` Node-API native-addon loading.
