@@ -170,3 +170,48 @@ Residual wider-directory rows:
 ### Status
 
 EPSA-EXT 1 closes the exact 22-cell post-EPSUA cluster. EPSA remains open only for wider-directory cross-realm and Proxy residuals.
+
+## 2026-05-29 - EPSA-EXT 2 - cross-realm and Proxy residuals
+
+### Directive
+
+Helmsman directed R2 via CAACP message `de078d25-8d88-412c-876d-73c5b22bf162` to close the seven wider-directory residuals left after EPSA-EXT 1: cross-realm getter/setter behavior and Proxy/Reflect getter/setter edge rows.
+
+### Substrate Move
+
+The Error stack accessor installer is now a reusable runtime helper, `install_error_stack_accessor`, so newly allocated realms can install realm-local getter/setter functions on their cloned `%Error.prototype%`.
+
+Realm allocation now clones `%Error.prototype%`, installs the realm-local stack accessor, and exposes a test262 realm global helper through `__cruftless_create_realm_global`. The test262 runner uses that helper for cross-realm tests so `$262.createRealm().global` exposes realm-local `Error`, `TypeError`, and sibling constructors instead of only `eval`.
+
+Proxy closure landed in two layers:
+
+- the stack setter's Proxy receiver path now consults `getOwnPropertyDescriptor`, `set`, and `defineProperty` traps through existing Proxy invariant helpers and property-definition substrate;
+- Proxy `[[Get]]` no-trap fallbacks and `Reflect.get(target, key, receiver)` now invoke inherited accessors with the specified receiver rather than the target, so a Proxy wrapping an Error instance does not inherit the target's `[[ErrorData]]` when the receiver is the Proxy.
+
+### Measurement
+
+Build:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+
+Runtime lib gate:
+
+- `cargo test --release -p rusty-js-runtime --lib`: PASS, 63 passed / 1 ignored.
+
+Targeted test262 harness run over `/home/jaredef/test262/test/built-ins/Error/prototype/stack/*.js`:
+
+| Probe | EPSA-EXT 1 | EPSA-EXT 2 |
+|---|---:|---:|
+| Whole `Error.prototype.stack` directory | 28 PASS / 7 FAIL | 35 PASS / 0 FAIL |
+
+Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/epsa-ext2-final-20260529T164342Z/`.
+
+### Findings
+
+**Finding EPSA.3 (realm-local accessor requires visible realm global)**: cloning realm intrinsics inside the runtime was not sufficient for cross-realm test262 rows because the local `$262.createRealm()` shim exposed only `eval`. A realm global object that exposes the cloned Error-family constructors is the minimal harness bridge needed for the cross-realm accessor tests.
+
+**Finding EPSA.4 (Proxy `[[Get]]` receiver, not target, carries ErrorData semantics)**: accessor dispatch through a Proxy must call inherited getters with the Proxy receiver when no `get` trap overrides the path. Calling the getter with the target leaked target `InternalKind::Error` into the receiver check and made `new Proxy(new Error(), handler).stack` incorrectly return a string.
+
+### Status
+
+EPSA-EXT 2 closes the whole current `built-ins/Error/prototype/stack/*.js` directory: 35 PASS / 0 FAIL. Trace-format content remains intentionally out of scope.

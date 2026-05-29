@@ -2922,8 +2922,10 @@ pub fn reflect_get(rt: &mut Runtime, this: Value, args: &[Value])
     let mut target = args.get(0).cloned().unwrap_or(Value::Undefined);
     // step param.key (§param.key step param.key)
     let mut key = args.get(1).cloned().unwrap_or(Value::Undefined);
+    // step param.receiver (§param.receiver step param.receiver)
+    let mut receiver = args.get(2).cloned().unwrap_or(target.clone());
     // step 1 (§1 step 1)
-    return Ok(rt.reflect_get_via(&target.clone(), &key.clone())?);
+    return Ok(rt.reflect_get_via_receiver(&target.clone(), &key.clone(), &receiver.clone())?);
 }
 
 /// ECMA-262 §28.1.13 — Reflect.set ( target, propertyKey, V [ , receiver ] )

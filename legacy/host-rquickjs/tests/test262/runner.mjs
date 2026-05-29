@@ -476,6 +476,9 @@ function runOne(path) {
     assembled += [
       'var $262 = {',
       '  createRealm: function() {',
+      '    if (typeof __cruftless_create_realm_global === "function") {',
+      '      return { global: __cruftless_create_realm_global() };',
+      '    }',
       '    return {',
       '      global: {',
       '        eval: function(source) {',

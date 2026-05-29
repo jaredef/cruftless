@@ -18,6 +18,136 @@ use crate::value::{
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub(crate) fn install_error_stack_accessor(rt: &mut Runtime, proto_id: ObjectRef) {
+    let stack_home = proto_id;
+    let stack_getter = make_native_non_ctor("get stack", 0, |rt, _args| {
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Error.prototype.stack getter: receiver must be an Object".into(),
+                ))
+            }
+        };
+        if !matches!(rt.obj(this).internal_kind, InternalKind::Error) {
+            return Ok(Value::Undefined);
+        }
+        if let Some(desc) = rt.obj(this).get_own("stack") {
+            if desc.getter.is_none() && desc.setter.is_none() {
+                if let Value::String(s) = &desc.value {
+                    return Ok(Value::String(s.clone()));
+                }
+            }
+        }
+        Ok(Value::String(Rc::new(String::new())))
+    });
+    let stack_getter_id = rt.alloc_object(stack_getter);
+    let stack_setter = make_native_non_ctor("set stack", 1, move |rt, args| {
+        let this = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Error.prototype.stack setter: receiver must be an Object".into(),
+                ))
+            }
+        };
+        let value = match args.first().cloned().unwrap_or(Value::Undefined) {
+            Value::String(s) => Value::String(s),
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Error.prototype.stack setter: value must be a string".into(),
+                ))
+            }
+        };
+        if this == stack_home {
+            return Err(RuntimeError::TypeError(
+                "Error.prototype.stack setter: cannot set stack on Error.prototype".into(),
+            ));
+        }
+        if let Some((target, handler)) = rt.proxy_target_handler_checked(this)? {
+            let trap = rt.object_get(handler, "getOwnPropertyDescriptor");
+            let has_own_stack = if matches!(trap, Value::Object(_)) {
+                let trap_result = rt.call_function(
+                    trap,
+                    Value::Object(handler),
+                    vec![
+                        Value::Object(target),
+                        Value::String(Rc::new("stack".into())),
+                    ],
+                )?;
+                rt.apply_proxy_get_own_property_descriptor_invariant(
+                    target,
+                    "stack",
+                    &trap_result,
+                )?;
+                !matches!(trap_result, Value::Undefined)
+            } else {
+                rt.obj(target).has_own_str("stack")
+            };
+            if has_own_stack {
+                match rt.reflect_set_via(
+                    &Value::Object(this),
+                    &Value::String(Rc::new("stack".into())),
+                    &value,
+                )? {
+                    Value::Boolean(true) => {}
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "Error.prototype.stack setter: proxy set rejected".into(),
+                        ))
+                    }
+                }
+            } else {
+                rt.create_data_property_or_throw(&Value::Object(this), "stack", value)?;
+            }
+            return Ok(Value::Undefined);
+        }
+        match rt.obj(this).get_own("stack").cloned() {
+            None => {
+                rt.create_data_property_or_throw(&Value::Object(this), "stack", value)?;
+            }
+            Some(desc) if desc.getter.is_some() || desc.setter.is_some() => {
+                if let Some(setter) = desc.setter {
+                    if matches!(setter, Value::Undefined) {
+                        return Err(RuntimeError::TypeError(
+                            "Error.prototype.stack setter: own stack accessor has no setter".into(),
+                        ));
+                    }
+                    rt.call_function(setter, Value::Object(this), vec![value])?;
+                } else {
+                    return Err(RuntimeError::TypeError(
+                        "Error.prototype.stack setter: own stack accessor has no setter".into(),
+                    ));
+                }
+            }
+            Some(desc) => {
+                if !desc.writable {
+                    return Err(RuntimeError::TypeError(
+                        "Error.prototype.stack setter: own stack data property is not writable"
+                            .into(),
+                    ));
+                }
+                let mut next = desc;
+                next.value = value;
+                rt.obj_mut(this).insert_str("stack", next);
+            }
+        }
+        Ok(Value::Undefined)
+    });
+    let stack_setter_id = rt.alloc_object(stack_setter);
+    rt.obj_mut(proto_id).dict_mut().insert(
+        crate::value::PropertyKey::String("stack".into()),
+        crate::value::PropertyDescriptor {
+            value: Value::Undefined,
+            writable: false,
+            enumerable: false,
+            configurable: true,
+            getter: Some(Value::Object(stack_getter_id)),
+            setter: Some(Value::Object(stack_setter_id)),
+        },
+    );
+}
+
 /// CAPS-EXT 10: gate a stdio operation through the capability dispatcher.
 /// Same shape as host-v2's check_fs / check_process / check_env helpers.
 /// Lives in the runtime crate because the console intrinsic is installed
@@ -5128,6 +5258,46 @@ impl Runtime {
                 Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
                 Err(e) => Err(e),
             }
+        });
+        register_engine_helper(self, "__cruftless_create_realm_global", |rt, _args| {
+            let realm_idx = rt.allocate_realm();
+            let prior = rt.enter_realm(realm_idx);
+            let realm_global = rt.alloc_object(Object::new_ordinary());
+            for name in [
+                "Object",
+                "Error",
+                "TypeError",
+                "RangeError",
+                "SyntaxError",
+                "ReferenceError",
+                "URIError",
+                "EvalError",
+                "AggregateError",
+            ] {
+                let v = rt.global_get(name);
+                if !matches!(v, Value::Undefined) {
+                    rt.object_set(realm_global, name.into(), v);
+                }
+            }
+            let eval_fn = make_native("eval", move |rt, args| {
+                let source = match args.first() {
+                    Some(Value::String(s)) => s.as_str().to_string(),
+                    _ => return Ok(Value::Undefined),
+                };
+                let prior = rt.enter_realm(realm_idx);
+                let url = format!("file://<realm-eval:{}>", realm_idx);
+                let result = rt.evaluate_module(&source, &url);
+                rt.exit_realm(prior);
+                match result {
+                    Ok(_) => Ok(Value::Undefined),
+                    Err(RuntimeError::CompileError(msg)) => Err(RuntimeError::SyntaxError(msg)),
+                    Err(e) => Err(e),
+                }
+            });
+            let eval_id = rt.alloc_object(eval_fn);
+            rt.object_set(realm_global, "eval".into(), Value::Object(eval_id));
+            rt.exit_realm(prior);
+            Ok(Value::Object(realm_global))
         });
         register_engine_helper(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
@@ -20353,104 +20523,7 @@ impl Runtime {
             self.obj_mut(proto_id)
                 .set_own_internal("message".into(), Value::String(Rc::new("".to_string())));
             if *name == "Error" {
-                let stack_home = proto_id;
-                let stack_getter = make_native_non_ctor("get stack", 0, |rt, _args| {
-                    let this = match rt.current_this() {
-                        Value::Object(id) => id,
-                        _ => {
-                            return Err(RuntimeError::TypeError(
-                                "Error.prototype.stack getter: receiver must be an Object".into(),
-                            ))
-                        }
-                    };
-                    if !matches!(rt.obj(this).internal_kind, InternalKind::Error) {
-                        return Ok(Value::Undefined);
-                    }
-                    if let Some(desc) = rt.obj(this).get_own("stack") {
-                        if desc.getter.is_none() && desc.setter.is_none() {
-                            if let Value::String(s) = &desc.value {
-                                return Ok(Value::String(s.clone()));
-                            }
-                        }
-                    }
-                    Ok(Value::String(Rc::new(String::new())))
-                });
-                let stack_getter_id = self.alloc_object(stack_getter);
-                let stack_setter =
-                    make_native_non_ctor("set stack", 1, move |rt, args| {
-                        let this = match rt.current_this() {
-                            Value::Object(id) => id,
-                            _ => {
-                                return Err(RuntimeError::TypeError(
-                                    "Error.prototype.stack setter: receiver must be an Object"
-                                        .into(),
-                                ))
-                            }
-                        };
-                        let value = match args.first().cloned().unwrap_or(Value::Undefined) {
-                            Value::String(s) => Value::String(s),
-                            _ => {
-                                return Err(RuntimeError::TypeError(
-                                    "Error.prototype.stack setter: value must be a string".into(),
-                                ))
-                            }
-                        };
-                        if this == stack_home {
-                            return Err(RuntimeError::TypeError(
-                                "Error.prototype.stack setter: cannot set stack on Error.prototype"
-                                    .into(),
-                            ));
-                        }
-                        match rt.obj(this).get_own("stack").cloned() {
-                            None => {
-                                rt.create_data_property_or_throw(
-                                    &Value::Object(this),
-                                    "stack",
-                                    value,
-                                )?;
-                            }
-                            Some(desc) if desc.getter.is_some() || desc.setter.is_some() => {
-                                if let Some(setter) = desc.setter {
-                                    if matches!(setter, Value::Undefined) {
-                                        return Err(RuntimeError::TypeError(
-                                            "Error.prototype.stack setter: own stack accessor has no setter"
-                                                .into(),
-                                        ));
-                                    }
-                                    rt.call_function(setter, Value::Object(this), vec![value])?;
-                                } else {
-                                    return Err(RuntimeError::TypeError(
-                                        "Error.prototype.stack setter: own stack accessor has no setter"
-                                            .into(),
-                                    ));
-                                }
-                            }
-                            Some(desc) => {
-                                if !desc.writable {
-                                    return Err(RuntimeError::TypeError(
-                                        "Error.prototype.stack setter: own stack data property is not writable"
-                                            .into(),
-                                    ));
-                                }
-                                let mut next = desc;
-                                next.value = value;
-                                rt.obj_mut(this).insert_str("stack", next);
-                            }
-                        }
-                        Ok(Value::Undefined)
-                    });
-                let stack_setter_id = self.alloc_object(stack_setter);
-                self.obj_mut(proto_id).dict_mut().insert(
-                    crate::value::PropertyKey::String("stack".into()),
-                    crate::value::PropertyDescriptor {
-                        value: Value::Undefined,
-                        writable: false,
-                        enumerable: false,
-                        configurable: true,
-                        getter: Some(Value::Object(stack_getter_id)),
-                        setter: Some(Value::Object(stack_setter_id)),
-                    },
-                );
+                install_error_stack_accessor(self, proto_id);
             }
             register_intrinsic_method(self, proto_id, "toString", 0, |rt, args| {
                 crate::generated::error_prototype_to_string(rt, rt.current_this(), args)

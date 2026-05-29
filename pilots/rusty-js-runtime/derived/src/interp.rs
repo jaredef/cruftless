@@ -2071,7 +2071,10 @@ impl Runtime {
                     ],
                 );
             }
-            return self.spec_get(&Value::Object(tgt), key);
+            if let Some(getter) = self.find_getter(tgt, key) {
+                return self.call_function(getter, Value::Object(id), Vec::new());
+            }
+            return Ok(self.object_get(tgt, key));
         }
         self.read_property(id, key)
     }
@@ -9367,6 +9370,17 @@ impl Runtime {
 
     /// Reflect.get(target, key) per ECMA §28.1.8 — dispatches accessor getters.
     pub fn reflect_get_via(&mut self, target: &Value, key: &Value) -> Result<Value, RuntimeError> {
+        self.reflect_get_via_receiver(target, key, target)
+    }
+
+    /// Reflect.get(target, key, receiver) per ECMA §28.1.8. The receiver
+    /// matters for inherited accessors reached through Proxy get traps.
+    pub fn reflect_get_via_receiver(
+        &mut self,
+        target: &Value,
+        key: &Value,
+        receiver: &Value,
+    ) -> Result<Value, RuntimeError> {
         let id = match target {
             Value::Object(id) => *id,
             _ => {
@@ -9384,6 +9398,10 @@ impl Runtime {
         };
         // EXT 79: ECMA §28.1.8 routes [[Get]] to the Proxy `get` trap.
         let key_str = key_pk.as_str().to_string();
+        let receiver_this = match receiver {
+            Value::Object(id) => Value::Object(*id),
+            _ => Value::Object(id),
+        };
         if let Some((tgt, handler)) = self.proxy_target_handler_checked(id)? {
             let trap = self.object_get(handler, "get");
             if matches!(trap, Value::Object(_)) {
@@ -9393,7 +9411,7 @@ impl Runtime {
                     vec![
                         Value::Object(tgt),
                         Value::String(std::rc::Rc::new(key_str.clone())),
-                        Value::Object(id),
+                        receiver_this.clone(),
                     ],
                 )?;
                 // EXT 88 / Pass C: §10.5.8 step 10 — trap-vs-target
@@ -9421,12 +9439,12 @@ impl Runtime {
                 return Ok(trap_result);
             }
             if let Some(getter) = self.find_getter_pk(tgt, &key_pk) {
-                return self.call_function(getter, Value::Object(tgt), Vec::new());
+                return self.call_function(getter, receiver_this, Vec::new());
             }
             return Ok(self.object_get_pk(tgt, &key_pk));
         }
         if let Some(getter) = self.find_getter_pk(id, &key_pk) {
-            return self.call_function(getter, Value::Object(id), Vec::new());
+            return self.call_function(getter, receiver_this, Vec::new());
         }
         Ok(self.object_get_pk(id, &key_pk))
     }
@@ -10594,6 +10612,16 @@ impl Runtime {
         let string_p = self
             .string_prototype
             .map(|id| self.clone_intrinsic_proto(id));
+        let error_p = match self.global_get("Error") {
+            Value::Object(error_ctor) => match self.object_get(error_ctor, "prototype") {
+                Value::Object(error_proto) => Some(self.clone_intrinsic_proto(error_proto)),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(error_proto) = error_p {
+            crate::intrinsics::install_error_stack_accessor(self, error_proto);
+        }
         let mut overrides = std::collections::HashMap::new();
         for (name, new_proto) in [
             ("Array", array_p),
@@ -10601,6 +10629,7 @@ impl Runtime {
             ("Function", function_p),
             ("Promise", promise_p),
             ("String", string_p),
+            ("Error", error_p),
         ] {
             // GBSU-EXT 7f.3: canonical lookup via unified globalThis.
             let global_ctor = self.global_get(name);
@@ -11128,9 +11157,9 @@ impl Runtime {
                 return Ok(result);
             }
             if let Some(getter) = self.find_getter_pk(target, key) {
-                return self.call_function(getter, Value::Object(target), Vec::new());
+                return self.call_function(getter, Value::Object(id), Vec::new());
             }
-            return self.spec_get_pk(target, key);
+            return Ok(self.object_get_pk(target, key));
         }
         if let Some(getter) = self.find_getter_pk(id, key) {
             return self.call_function(getter, Value::Object(id), Vec::new());
