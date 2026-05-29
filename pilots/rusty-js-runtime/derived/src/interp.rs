@@ -14182,7 +14182,7 @@ impl Runtime {
             }
         }
 
-        let direct_eval_super_context = self.direct_eval_super_context_from_frame(caller);
+        let frame_direct_eval_super_context = self.direct_eval_super_context_from_frame(caller);
 
         let mut overlay: Vec<DirectEvalOverlay> = Vec::new();
         for (slot, desc) in caller.upvalue_names.iter().enumerate() {
@@ -14205,7 +14205,7 @@ impl Runtime {
                 });
             }
         }
-        if let Some(ctx) = &direct_eval_super_context {
+        if let Some(ctx) = &frame_direct_eval_super_context {
             for name in [
                 ctx.super_ctor_name.as_deref(),
                 ctx.super_proto_name.as_deref(),
@@ -14686,15 +14686,15 @@ impl Runtime {
         // Extract proto-or-native by inspecting the heap object once.
         // BoundFunction: rewrite to its target, prepending bound args.
         let mut frame_is_arrow = false;
-                    let (
-                        proto_opt,
-                        native_opt,
-                        effective_this,
-                        effective_args,
-                        private_home,
-                        bound_derived_initial_this,
-                        bound_new_target,
-                    ) = {
+        let (
+            proto_opt,
+            native_opt,
+            effective_this,
+            effective_args,
+            private_home,
+            bound_derived_initial_this,
+            bound_new_target,
+        ) = {
             let o = self.obj(id);
             let private_home = o.private_home;
             match &o.internal_kind {
@@ -14891,17 +14891,15 @@ impl Runtime {
                         )
                     }
                 }
-                crate::value::InternalKind::Function(f) => {
-                    (
-                        None,
-                        Some(f.native.clone()),
-                        this,
-                        args,
-                        private_home,
-                        None,
-                        None,
-                    )
-                }
+                crate::value::InternalKind::Function(f) => (
+                    None,
+                    Some(f.native.clone()),
+                    this,
+                    args,
+                    private_home,
+                    None,
+                    None,
+                ),
                 crate::value::InternalKind::Proxy(p) => {
                     // EXT 84: revoked-proxy guard per §10.5.{12,13}.
                     if p.revoked {

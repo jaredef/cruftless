@@ -2927,65 +2927,64 @@ impl Compiler {
                     Option<rusty_js_ast::BindingPattern>,
                     bool,
                     Option<rusty_js_ast::Expr>,
-                ) =
-                    match left {
-                        rusty_js_ast::ForBinding::Decl { kind, target, .. } => match target {
-                            rusty_js_ast::BindingPattern::Identifier(id) => {
-                                let s = self.alloc_local(LocalDescriptor {
+                ) = match left {
+                    rusty_js_ast::ForBinding::Decl { kind, target, .. } => match target {
+                        rusty_js_ast::BindingPattern::Identifier(id) => {
+                            let s = self.alloc_local(LocalDescriptor {
+                                name: id.name.clone(),
+                                kind: *kind,
+                                depth: 0,
+                            });
+                            let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
+                            (s, None, fresh, None)
+                        }
+                        pat @ (rusty_js_ast::BindingPattern::Array(_)
+                        | rusty_js_ast::BindingPattern::Object(_)) => {
+                            // FIDH-EXT 1: Decl with destructure head.
+                            // Pre-allocate every bound name as a local
+                            // under kind; allocate hidden source slot
+                            // for the per-iter key string.
+                            for id in pat.collect_names() {
+                                self.alloc_local(LocalDescriptor {
                                     name: id.name.clone(),
                                     kind: *kind,
                                     depth: 0,
                                 });
-                                let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, None, fresh, None)
                             }
-                            pat @ (rusty_js_ast::BindingPattern::Array(_)
-                            | rusty_js_ast::BindingPattern::Object(_)) => {
-                                // FIDH-EXT 1: Decl with destructure head.
-                                // Pre-allocate every bound name as a local
-                                // under kind; allocate hidden source slot
-                                // for the per-iter key string.
-                                for id in pat.collect_names() {
-                                    self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(),
-                                        kind: *kind,
-                                        depth: 0,
-                                    });
-                                }
-                                let s = self.alloc_temp("<forin.src>");
-                                let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
-                                (s, Some(pat.clone()), fresh, None)
-                            }
-                        },
-                        rusty_js_ast::ForBinding::Pattern(pat) => match pat {
-                            rusty_js_ast::BindingPattern::Identifier(id) => {
-                                if let Some(s) = self.resolve_local(&id.name) {
-                                    (s, None, false, None)
-                                } else {
-                                    let s = self.alloc_local(LocalDescriptor {
-                                        name: id.name.clone(),
-                                        kind: VariableKind::Let,
-                                        depth: 0,
-                                    });
-                                    (s, None, false, None)
-                                }
-                            }
-                            other => {
-                                // FIDH-EXT 1: Pattern (no var/let/const)
-                                // destructure head. Per SMDR-EXT 1
-                                // precedent (for-of), bound names are
-                                // assignment-target REFERENCES; route
-                                // through emit_destructure_assign at body
-                                // emission. Allocate hidden source slot.
-                                let s = self.alloc_temp("<forin.src>");
-                                (s, Some(other.clone()), false, None)
-                            }
-                        },
-                        rusty_js_ast::ForBinding::AssignmentTarget(target) => {
-                            let s = self.alloc_temp("<forin.assignment>");
-                            (s, None, false, Some(target.clone()))
+                            let s = self.alloc_temp("<forin.src>");
+                            let fresh = matches!(kind, VariableKind::Let | VariableKind::Const);
+                            (s, Some(pat.clone()), fresh, None)
                         }
-                    };
+                    },
+                    rusty_js_ast::ForBinding::Pattern(pat) => match pat {
+                        rusty_js_ast::BindingPattern::Identifier(id) => {
+                            if let Some(s) = self.resolve_local(&id.name) {
+                                (s, None, false, None)
+                            } else {
+                                let s = self.alloc_local(LocalDescriptor {
+                                    name: id.name.clone(),
+                                    kind: VariableKind::Let,
+                                    depth: 0,
+                                });
+                                (s, None, false, None)
+                            }
+                        }
+                        other => {
+                            // FIDH-EXT 1: Pattern (no var/let/const)
+                            // destructure head. Per SMDR-EXT 1
+                            // precedent (for-of), bound names are
+                            // assignment-target REFERENCES; route
+                            // through emit_destructure_assign at body
+                            // emission. Allocate hidden source slot.
+                            let s = self.alloc_temp("<forin.src>");
+                            (s, Some(other.clone()), false, None)
+                        }
+                    },
+                    rusty_js_ast::ForBinding::AssignmentTarget(target) => {
+                        let s = self.alloc_temp("<forin.assignment>");
+                        (s, None, false, Some(target.clone()))
+                    }
+                };
 
                 // IR-EXT 24 (TDZ candidate A.iii — for-in head): symmetric
                 // with for-of above; for-head let/const bindings are in TDZ
