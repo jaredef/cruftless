@@ -279,6 +279,32 @@ Why a carve-out instead of routing through helmsman/a resolver:
 
 Failure mode this rule prevents: apparatus artifacts (fleet-state snapshots, deputy retrospectives) authored by deputy but stranded as untracked files because no commit path exists. Observed in the 2026-05-29 topology round when deputy fleet-state files from 2026-05-28T21:08 + T21:47 had been waiting hours for a commit path that §V.6 (as originally written) didn't provide.
 
+### V.7 Bounce-ack must not consume directives addressed to other instances (mandatory; per keeper Telegram 10372, surfaced by watcher 2026-05-29 investigation)
+
+When a directive is sent to `recipient=<role>` with body-level `instance_id=<target>` targeting a specific instance, **non-target instances MUST NOT call `/local/ack` with `ack_state=RESOLVED`** on the original message. The CAACP endpoint currently tracks message state globally (not per-instance); a RESOLVED ack from a non-target instance transitions the message globally, consuming it for the target instance — whose `/local/inbox` poll then returns `{messages: []}`. The target never sees the directive.
+
+The correct discipline for non-target instances:
+
+1. **Observe the directive**: read the body, identify the target instance_id, identify yourself as non-target.
+2. **Do NOT ack the original message**. Leave it PENDING for the target.
+3. **Send a separate response message** (intent=response, recipient=helmsman) reporting your non-target observation. This is a fresh outbound CAACP message, not an ack on the original. The body should name the message_id observed, the target instance_id, and your instance_id confirming you are not the target.
+4. **Continue holding** until you receive a directive explicitly targeted to your own instance_id.
+
+The original directive remains in PENDING state until the actual target instance processes it, at which point the target's RESOLVED ack correctly transitions the global state.
+
+**Why this discipline (interim)**:
+
+The structural fix is `target_instance_id` on `/local/send` + `/local/inbox` + `/local/ack` so the endpoint can enforce that terminal state transitions on targeted messages are accepted only from matching role+instance. That fix is pending (per keeper 10372, item 1: keeper-authored endpoint schema change; item 2: substrate-resolver-led sidecar update once endpoint accepts the new field). Until both land, the discipline above prevents recurrence of the failure mode by keeping non-target acks out of the state-transition path.
+
+**Failure mode this rule prevents** (per 2026-05-29 R3 PIND Rung 4a delivery miss):
+- Helmsman dispatched directive `ac77efff` to substrate-resolver, body-targeted R3.
+- R1 + R4 sent RESOLVED bounce-acks; R2 sent a not-target response.
+- Endpoint marked `ac77efff` state=RESOLVED globally after the first RESOLVED bounce-ack.
+- R3's inbox poll returned `{messages: []}`. R3 inferred quiescence and stopped — exactly opposite of the intended outcome.
+- Helmsman had to resend the directive as `33b5a8d2` to deliver it to R3. R3 then executed normally.
+
+**Auxiliary mechanism (optional, recommended for in-flight cases)**: per watcher's recommendation, an `OBSERVED` or `NOT-FOR-ME` `ack_state` value can be added to the CAACP state machine for non-targets that prefer to log their bounce on the original message without globally consuming it. Until that lands, use the "separate response message" discipline above.
+
 ## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.
