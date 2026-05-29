@@ -6972,7 +6972,7 @@ impl Runtime {
             Value::BigInt(_) => "[object BigInt]".to_string(),
             Value::Symbol(_) => "[object Symbol]".to_string(),
             Value::Object(id) => {
-                let tag_val = self.object_get(id, "@@toStringTag");
+                let tag_val = self.spec_get(&Value::Object(id), "@@toStringTag")?;
                 let tag = if let Value::String(s) = &tag_val {
                     s.as_str().to_string()
                 } else {
