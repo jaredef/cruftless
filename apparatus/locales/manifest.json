@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless-r4/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless-r2/pilots",
   "totals": {
-    "locales": 222,
-    "top_level": 135,
+    "locales": 224,
+    "top_level": 137,
     "nested": 87,
     "warnings": 0
   },
@@ -304,7 +304,7 @@
       "scope": "class-inheritance-tdz-parser-tail",
       "depth": 1,
       "rung_count": 1,
-      "status": "**SPAWNED / PHASE-2 BLOCKED**. Phase 0 scaffold exists. Complete Phase 2 C4 is blocked because the directive's required source file is absent locally: `/media/jaredef/T7/rusty-bun/parity-results/parity-results-top500-20260529T111702-refined.json`."
+      "status": null
     },
     {
       "coord": "compartment-primitive",
@@ -791,6 +791,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at MPBC-EXT 1** (pending sweep-completion verification)."
+    },
+    {
+      "coord": "missing-intrinsic-loader-failures",
+      "tag": "L.missing-intrinsic-loader-failures",
+      "parent": null,
+      "scope": "missing-intrinsic-loader-failures",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "PHASE 2 PROBED WITH BLOCKED EXACT-SOURCE READ. Both the original `/media/jaredef/T7/...` path and the updated `/home/jaredef/Developer/cruftless-sidecar/parity-results/...` paths were unavailable on this host; fallback dynamic-import cluster evidence is recorded in `trajectory.md`. Phase 3 should begin from a fresh read of the directive JSON or the mounted sidecar/T7 parity sandbox."
     },
     {
       "coord": "non-ctor-registration-discipline",
