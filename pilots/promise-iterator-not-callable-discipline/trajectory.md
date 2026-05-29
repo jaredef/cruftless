@@ -108,3 +108,49 @@ Predicted yield:
 - Rung 4c: 0-3 PASS for symbol-assigned iterator residuals if they remain.
 
 Estimated closure: two substrate rungs, with a possible third cleanup rung for symbol residuals.
+
+## 2026-05-29 - PIND-EXT 2 - Rung 4a Promise-local iterable rejection
+
+### Directive
+
+Helmsman directed R3 to land the Phase 3 design's first substrate rung: add a Promise-local wrapper around `crate::intrinsics::collect_iterable` for `Promise.all`, `Promise.allSettled`, and `Promise.race`, preserving global `collect_iterable` behavior.
+
+### Substrate Move
+
+Added `Runtime::promise_collect_iterable_or_reject` in `pilots/rusty-js-runtime/derived/src/interp.rs`. The helper calls the existing eager `collect_iterable`; on JS-thrown values or catchable engine-side TypeError/RangeError/ReferenceError/SyntaxError it constructs the corresponding rejection value, calls the Promise capability reject function, and returns `None` so the combinator returns the capability promise rather than throwing synchronously.
+
+Wired the helper into:
+
+- `Runtime::promise_all_via`
+- `Runtime::promise_all_settled_via`
+- `Runtime::promise_race_via`
+
+`Promise.race` now reads and validates `C.resolve` before iterable collection, matching the order already used by `Promise.all` and `Promise.allSettled`. The shared `crate::intrinsics::collect_iterable` function is unchanged, so non-Promise consumers retain synchronous abrupt-completion behavior.
+
+### Measurement
+
+Build gate:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS
+
+Targeted test262 measurement against `/home/jaredef/test262`:
+
+- Named 40-row PIND cluster after the rung: 33 PASS / 7 FAIL.
+- Bucket B exact rows, `iter-assigned-{false,null,number,string,true,undefined}-reject.js` across `Promise.all`, `Promise.allSettled`, and `Promise.race`: 18/18 PASS, +18 against the Phase 2 failure matrix.
+- Symbol-assigned iterator residual rows: 3/3 PASS; the helper also routed this path through capability rejection, so the predicted Rung 4c is likely unnecessary.
+- Adjacent same-shape `iter-arg-is-{false,number,true}-reject.js` rows plus two static-callsite rows also PASS under the named matrix, giving broader named-cluster movement than the conservative design predicted.
+- Remaining named failures: 7/40, dominated by `C.resolve is not callable` plus `Promise.allSettled/iter-arg-is-poisoned.js`. These remain outside Rung 4a's iterator-acquisition wrapper and justify Rung 4b.
+
+Adjacent regression smoke:
+
+- PASS: `Promise.all/resolve-non-thenable.js`
+- PASS: `Promise.all/iter-arg-is-string-resolve.js`
+- PASS: `Promise.allSettled/resolves-to-array.js`
+- PASS: `Promise.allSettled/resolved-all-fulfilled.js`
+- PASS: `Promise.allSettled/resolved-all-mixed.js`
+- PASS: `Promise.race/S25.4.4.3_A4.1_T1.js`
+- PASS: `Promise.race/iter-arg-is-string-resolve.js`
+
+### Finding
+
+PIND-EXT 2 confirmed the Phase 3 factoring but widened its observed yield: `iter-assigned-symbol` and `iter-arg-is-*` rows were not separate enough to require a third cleanup rung. The remaining actionable coordinate is the Promise constructor resolve/callability bucket: route spec-required abrupt completions from `C.resolve` lookup/callability through capability rejection without changing static-method callsite errors that should remain synchronous.

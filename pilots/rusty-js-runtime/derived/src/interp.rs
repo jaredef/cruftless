@@ -4081,6 +4081,48 @@ impl Runtime {
 
     /// Promise.all(iterable) per ECMA §27.2.4.1 using NewPromiseCapability +
     /// per-element [[AlreadyCalled]] resolve functions.
+    fn promise_collect_iterable_or_reject(
+        &mut self,
+        iter_v: Value,
+        cap_reject: &Value,
+    ) -> Result<Option<Vec<Value>>, RuntimeError> {
+        match crate::intrinsics::collect_iterable(self, iter_v) {
+            Ok(entries) => Ok(Some(entries)),
+            Err(e) => {
+                let rejection = match e {
+                    RuntimeError::Thrown(v) => v,
+                    RuntimeError::TypeError(msg) => {
+                        match crate::intrinsics::make_error_instance(self, "TypeError", &msg) {
+                            Some(id) => Value::Object(id),
+                            None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+                        }
+                    }
+                    RuntimeError::RangeError(msg) => {
+                        match crate::intrinsics::make_error_instance(self, "RangeError", &msg) {
+                            Some(id) => Value::Object(id),
+                            None => Value::String(Rc::new(format!("RangeError({:?})", msg))),
+                        }
+                    }
+                    RuntimeError::ReferenceError(msg) => {
+                        match crate::intrinsics::make_error_instance(self, "ReferenceError", &msg) {
+                            Some(id) => Value::Object(id),
+                            None => Value::String(Rc::new(format!("ReferenceError({:?})", msg))),
+                        }
+                    }
+                    RuntimeError::SyntaxError(msg) => {
+                        match crate::intrinsics::make_error_instance(self, "SyntaxError", &msg) {
+                            Some(id) => Value::Object(id),
+                            None => Value::String(Rc::new(format!("SyntaxError({:?})", msg))),
+                        }
+                    }
+                    other => return Err(other),
+                };
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+                Ok(None)
+            }
+        }
+    }
+
     pub fn promise_all_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let c = self.current_this();
         let default_promise = self.global_get("Promise");
@@ -4100,7 +4142,10 @@ impl Runtime {
             ));
         }
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
+        let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
+            Some(entries) => entries,
+            None => return Ok(capability_promise),
+        };
         let n = entries.len();
         // Cells via IR-shaped helpers: values array preallocated, remaining cell at count=1.
         let values_arr = self.alloc_object(crate::value::Object::new_array());
@@ -4174,7 +4219,7 @@ impl Runtime {
         } else {
             default_promise.clone()
         };
-        let (capability_promise, cap_resolve, _cap_reject) = self.new_promise_capability(&ctor)?;
+        let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
         let promise_resolve = match &ctor {
             Value::Object(cid) => self.object_get(*cid, "resolve"),
             _ => Value::Undefined,
@@ -4185,7 +4230,10 @@ impl Runtime {
             ));
         }
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
+        let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
+            Some(entries) => entries,
+            None => return Ok(capability_promise),
+        };
         let n = entries.len();
         let values_arr = self.alloc_object(crate::value::Object::new_array());
         for j in 0..n {
@@ -4343,8 +4391,6 @@ impl Runtime {
             default_promise.clone()
         };
         let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let iter = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = crate::intrinsics::collect_iterable(self, iter)?;
         let promise_resolve = match &ctor {
             Value::Object(cid) => self.object_get(*cid, "resolve"),
             _ => Value::Undefined,
@@ -4354,6 +4400,11 @@ impl Runtime {
                 "Promise.race: C.resolve is not callable".into(),
             ));
         }
+        let iter = args.first().cloned().unwrap_or(Value::Undefined);
+        let entries = match self.promise_collect_iterable_or_reject(iter, &cap_reject)? {
+            Some(entries) => entries,
+            None => return Ok(capability_promise),
+        };
         for v in entries {
             let next_promise =
                 self.call_function(promise_resolve.clone(), ctor.clone(), vec![v])?;
