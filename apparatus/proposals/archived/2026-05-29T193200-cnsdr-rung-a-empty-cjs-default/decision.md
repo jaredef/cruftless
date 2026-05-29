@@ -1,7 +1,7 @@
 ---
 decision: approved
 covers_commits:
-  - 4e4fe38f4dd170f1866b67664f878e8e90f9560c
+  - 337e3797aad32b73914b0a6f18a11d2c2abd55b8
 directive: 8abfaa9f-a813-4ac6-aa55-e1f782f4f1b3
 approved_by: substrate-resolver-r1
 ---
