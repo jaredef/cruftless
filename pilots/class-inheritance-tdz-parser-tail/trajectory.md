@@ -78,6 +78,123 @@ Those tiers are not a single C4 root unless the missing refined data proves an i
 
 Complete Phase 2 deliverable is blocked by missing source artifact. Concrete blocker is the absent refined JSON, not the dirty worktree.
 
+**Source-update attempt**
+
+After the initial spawn, helmsman sent `class-tdz-parser-source-update` naming replacement files under:
+
+```text
+/home/jaredef/Developer/cruftless-sidecar/parity-results/
+```
+
+Expected files:
+
+```text
+cluster-super-constructor.json
+cluster-tdz-cannot-access.json
+cluster-parser-syntax-error.json
+parity-results-top500-20260529T111702-refined.json
+```
+
+Local verification also failed for these replacement files:
+
+```text
+ls /home/jaredef/Developer/cruftless-sidecar/parity-results/{cluster-super-constructor.json,cluster-tdz-cannot-access.json,cluster-parser-syntax-error.json,parity-results-top500-20260529T111702-refined.json}: No such file or directory
+find /home/jaredef -path '*parity-results*' -type f -name cluster-super-constructor.json -o ...: no matches
+```
+
+Updated blocker: complete Phase 2 remains blocked because both the original `/media/jaredef/T7/...` source and the replacement sidecar cluster files are absent from this session filesystem.
+
 **Worktree note**
 
 Per §V.8, an unstaged `pilots/rusty-js-runtime/derived/src/interp.rs` global/eval diff existed at session start and was not touched or staged by this probe-only spawn.
+
+## CITPT-EXT 0a — replacement source path audit (2026-05-29)
+
+Helmsman sent `class-tdz-parser-source-update` with replacement paths under:
+
+```text
+/home/jaredef/Developer/cruftless-sidecar/parity-results/
+```
+
+Requested replacement files:
+
+```text
+cluster-super-constructor.json
+cluster-tdz-cannot-access.json
+cluster-parser-syntax-error.json
+parity-results-top500-20260529T111702-refined.json
+```
+
+Local verification:
+
+```text
+ls: cannot access '/home/jaredef/Developer/cruftless-sidecar/parity-results': No such file or directory
+find /home /tmp /media -name cluster-super-constructor.json \
+  -o -name cluster-tdz-cannot-access.json \
+  -o -name cluster-parser-syntax-error.json \
+  -o -name parity-results-top500-20260529T111702-refined.json: no matches
+```
+
+Adjacent sidecar root exists at `/home/jaredef/Developer/cruftless-sidecar`, with a `results/` directory, but no matching replacement files were found there or elsewhere in `/home`, `/tmp`, or `/media`.
+
+**Disposition**: Phase 2 remains blocked on missing authoritative source JSON. The blocker has shifted from "original `/media/...` path unavailable" to "both original and replacement sidecar cluster paths unavailable in this session filesystem."
+
+## CITPT-EXT 1 — inline source Phase 2 segmentation (2026-05-29)
+
+Directive: `helmsman/request/class-tdz-tail-inline-resend-r4`.
+
+Helmsman resent the source data inline because both filesystem source paths were unavailable to this R4 session. The inline data supersedes the prior blocker for Phase 2.
+
+**Inline source cells**
+
+Super-constructor cluster (`8`):
+
+- `got` -> `http2-wrapper/source/agent.js:150:3`
+- `commander` -> `commander/lib/command.js:24:5`
+- `cheerio` -> `undici/lib/dispatcher/dispatcher-base.js:18:3`
+- `@actions/http-client` -> `undici/lib/dispatcher/dispatcher-base...` (path truncated in inline resend)
+- `got-fetch` -> `http2-wrapper/source/agent.js:150:3`
+- `webpack-cli` -> `commander/lib/command.js:24:5`
+- `ngrok` -> `http2-wrapper/source/agent.js:146:3`
+- `discord.js` -> `undici/lib/dispatcher/dispatcher-base.js:20:5`
+
+TDZ cluster (`9`):
+
+- `arktype` -> `innerSchema`, optional-chain call, `@ark/schema/out/parse.js:59:50`
+- `prettier` -> `<scoped@14>printerName`, `prettier/index.mjs:18193:5`
+- `csso` -> `<scoped@29>name`, `css-tree/lib/syntax/config/mix.js:112:17`
+- `rehype` -> `settings`, `rehype-parse/lib/index.js:41:72`
+- `redis` -> `NON_STICKY_COMMANDS`, `@redis/client/dist/lib/commands/index.js:1160:264`
+- `stylelint` -> `<scoped@33>descriptorName`, `css-tree/lib/syntax/config/mix.js:78:21`
+- `puppeteer-core` -> `commonSettings`, `puppeteer-core/lib/puppeteer/node/PuppeteerNode.js:52:54`
+- `svgo` -> `<scoped@33>descriptorName`, `css-tree/lib/syntax/config/mix.js:78:21`
+- `config` -> `<scoped@9>prop`, `config/lib/util.js:735:7`
+
+Parser-syntax cluster: `0` rows in the inline source; no parser C4 remains for this directive.
+
+**Segmentation**
+
+| Sub-cluster | Cells | C4 | Phase-3 move shape |
+|---|---:|---|---|
+| super-constructor/class inheritance | 8 | One class-constructor binding/evaluation-order root. The repeated packages collapse to three upstream libraries: `http2-wrapper`, `commander`, and `undici`. Every row throws the derived-constructor `this`-before-`super()` ReferenceError at class constructor entry, not a parser fault and not a `super.method()` member-call fault. | Inspect emitted bytecode for derived constructors in the three upstream libraries, then fix constructor body ordering around `SetThisTDZ`, `PushThisRaw`, `compile_super_call`, synthetic field initialization, and constructor return handling. The likely closure is ensuring `this` reads and derived-constructor returns are guarded until `super(...)` has bound this, while synthetic field initializers remain after successful super binding. |
+| TDZ before initialization | 9 | One lexical/module TDZ/evaluation-order root, with two repeated upstream shapes: css-tree config mix recursion (`csso`, `stylelint`, `svgo`) and package-level module cyclic or early-read declarations (`arktype`, `prettier`, `rehype`, `redis`, `puppeteer-core`, `config`). The errors are ordinary lexical TDZ slots or scoped compiler names, not class-this TDZ. | Inspect declaration-instantiation and local-slot initialization ordering across module evaluation, function/block scopes, optional-chain calls, and destructuring/rest paths. Cross-reference prior `rusty-js-ir` TDZ work and `destructure.rs::t11_object_rest`, but do not merge this with the class-this/super rung. |
+| parser-syntax-error | 0 | Empty in the authoritative inline source. Prior older-baseline parser examples remain historical context only. | No Phase-3 parser rung from this directive. Re-open only if a fresh refined parser cluster with rows is supplied. |
+
+**Common-root decision**
+
+Do **not** treat the inline set as one common root. Split into two independent Phase-3 sub-rungs:
+
+1. Super-constructor/class-inheritance `this` binding and derived-constructor evaluation order.
+2. Lexical/module TDZ before-initialization ordering.
+
+The two clusters both surface as `ReferenceError`, but they are different sentinels and different coordinates:
+
+- Super-constructor rows are class-this TDZ (`this` unbound until `super(...)`) with likely compiler/runtime sites at `compile_super_call`, `SetThisTDZ`, `PushThisRaw`, and constructor return/field-init handling.
+- TDZ rows are lexical binding TDZ (`let`/`const`/scoped compiler bindings) with likely sites in module declaration instantiation, local slot seeding, optional-chain evaluation, and destructuring/object-rest lowering.
+
+**C4**
+
+- **C**ause: current cruft is observing derived-constructor `this` before super binding in common inheritance-heavy packages, and observing lexical TDZ reads during package/module initialization in a separate set of packages.
+- **C**oordinate: class/super constructor lowering is bytecode/runtime class binding; TDZ is module/function/block lexical declaration initialization. Parser coordinate is empty for the inline source.
+- **C**onstraint: no substrate land in this locale. Phase 3 must preserve prior IR TDZ closures and avoid collapsing class-this TDZ with ordinary lexical TDZ.
+- **C**losure: two Phase-3 rungs, measured independently against the named top500 cells plus existing TDZ/class probes. Parser rung deferred.
