@@ -30,6 +30,8 @@ The server is designed to run as a long-lived background process per cruftless c
    - **β** — if the agent registered a `callback_url`, POST to it with `{role, instance_id, new_message_ids, notification_file}` on new-message arrival.
    - **γ** — Telegram fallback (deferred to v2; not implemented in v1).
 
+   For Codex Desktop / iOS-controlled sessions on this machine, the preferred wake path is the app-server bridge at `apparatus/scripts/caacp-codex-app-bridge.mjs`. It polls `/local/inbox`, then wakes the target Codex thread through app-server `turn/start`. See `apparatus/docs/codex-machine-onboarding-protocol.md`.
+
 4. **Brokers outbound.** Agents POST `/local/send` and `/local/ack` to the sidecar; the sidecar attaches the agent's registered per-agent token and forwards to the jaredfoy.com endpoint.
 
 ## HTTP API
@@ -72,3 +74,5 @@ Two operator-started bridges convert sidecar inbox state into agent-session wake
 - **`apparatus/scripts/caacp-tmux-bridge.sh`** (fallback for any agent running in a tmux pane without a programmatic wake API). Uses `tmux send-keys` to inject the directive into the pane.
 
 Both bridges poll `/local/inbox?role=<role>`, maintain a seen-cache under `apparatus/caacp-server/data/`, and inject the shared `**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.` directive. See agent-init-protocol §V for usage + the per-bridge selection rationale.
+
+Codex Desktop agents on this host use the machine-local onboarding protocol at `apparatus/docs/codex-machine-onboarding-protocol.md`, which covers sidecar registration, thread-id discovery, app-server bridge startup, and validation.

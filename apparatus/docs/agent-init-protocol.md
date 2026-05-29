@@ -84,7 +84,9 @@ Save the `token` to your session's working memory (do not commit to git; do not 
 
 For Claude Code sessions, set up a `Monitor` tool watch on the notification file from Step 4. The Monitor delivers `<task-notification>` events to your prompt when the file changes; you read the file's `new_message_ids` array, then GET each message body via `curl http://127.0.0.1:7777/local/inbox?role=substrate-resolver&instance_id=<your-instance>` (or directly from `apparatus/caacp-server/data/inbound-substrate-resolver-<instance>.json`).
 
-For Codex sessions: register a `callback_url` in Step 4 pointing at your local HTTP listener; the sidecar will POST `{role, instance_id, new_message_ids, notification_file}` on every new-message arrival. If you cannot host a listener, fall back to periodic polling of the notification file from your tool's primitive.
+For Codex Desktop sessions on this machine: use `apparatus/docs/codex-machine-onboarding-protocol.md` to wire the role's CAACP inbox to the Codex app-server bridge. That bridge calls `turn/start` on the target Codex thread, which is the canonical wake primitive for Desktop/iOS-controlled Codex agents.
+
+For Codex CLI or other Codex runtimes without Desktop app-server access: register a `callback_url` in Step 4 pointing at your local HTTP listener if available. If you cannot host a listener, use the tmux bridge in §V or heartbeat-discipline polling in §IV.5.
 
 ### Step 6 — Report session-ready
 
@@ -155,6 +157,8 @@ When the agent runtime does NOT support a file-watch / task-notification primiti
 
 When the agent runtime lacks native file-watch / task-notification (OpenAI Codex CLI, etc.; inotify/fswatch may not be installed; Claude Code's Monitor is not available), the apparatus provides two operator-started bridges. Choose by the runtime: prefer V.1 when the session is controlled by Codex Desktop or any runtime exposing a programmatic wake primitive; fall back to V.2 when only a terminal pane is available.
 
+For Codex Desktop / iOS-controlled sessions on this machine, use the machine-local onboarding procedure at `apparatus/docs/codex-machine-onboarding-protocol.md`.
+
 ### V.1 Codex Desktop app-server bridge — primary
 
 `apparatus/scripts/caacp-codex-app-bridge.mjs` (Node ESM). Uses the Codex Desktop local app-server's WebSocket `turn/start` method (preceded by `thread/resume` to attach to the target thread) to **wake the same thread** the operator is controlling from Codex Desktop / iOS. This is the canonical wake primitive on Codex Desktop: `turn/start` opens a real user turn (vs. `thread/inject_items` which only appends history). The thread receives the `**CAACP NEW** ...` directive as if the operator had submitted it, processes per the agent's normal turn loop, and reads the inbox before continuing.
@@ -203,6 +207,7 @@ The session interprets the `**CAACP NEW**` prefix as a directive to (a) drop its
 
 - `apparatus/docs/cybernetic-agentic-communication-protocol.md` — full CAACP articulation (§VI for endpoint surface, §IV for state machine).
 - `apparatus/caacp-server/README.md` — sidecar HTTP API + operational notes.
+- `apparatus/docs/codex-machine-onboarding-protocol.md` — machine-local Codex Desktop onboarding + app-server bridge setup.
 - `apparatus/docs/agent-engagement.md` — substrate-disciplined LLM resolver directions (the broader discipline this init protocol nests within).
 - `apparatus/docs/engagement-doc-substrate-resolver.md` — substrate-resolver role frame (what you may and may not do once initialized).
 - `apparatus/scripts/caacp.sh` — thin wrapper for direct-to-jaredfoy.com CAACP ops (legacy direct path; the sidecar is the preferred path going forward).
