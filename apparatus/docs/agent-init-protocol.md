@@ -305,6 +305,28 @@ The structural fix is `target_instance_id` on `/local/send` + `/local/inbox` + `
 
 **Auxiliary mechanism (optional, recommended for in-flight cases)**: per watcher's recommendation, an `OBSERVED` or `NOT-FOR-ME` `ack_state` value can be added to the CAACP state machine for non-targets that prefer to log their bounce on the original message without globally consuming it. Until that lands, use the "separate response message" discipline above.
 
+### V.8 Pre-existing worktree diffs are expected; categorize before yielding (mandatory; per keeper Telegram 10397)
+
+When a substrate-resolver enters its per-instance worktree at session start (per §V.6), `git status` will frequently show unstaged or untracked files. **This is expected, not a blocker.** Resolvers that yield on the presence of pre-existing diffs without categorizing them stop progress unnecessarily.
+
+The expected sources of pre-existing diffs:
+1. **Your own prior-rung leftovers** — files you edited in a prior session that weren't committed (e.g. measurement artifacts, scratch test files, partial WIP). Categorize: is this work I started? If yes, decide commit-or-discard based on relevance to the current directive.
+2. **Deputy apparatus artifacts** (per §V.6 carve-out) — `apparatus/deputy/fleet-state/*.md` and similar. Deputy owns these; leave them alone (do NOT commit, do NOT discard).
+3. **Cross-resolver leakage that predates the §V.6 per-instance worktree split** — historical artifacts from when fleet shared a single worktree (`/home/jaredef/Developer/cruftless`). May still be present in older clones. Categorize: not your work, not deputy's; leave alone or surface to helmsman as cleanup candidate.
+4. **Build artifacts under untracked paths** that .gitignore doesn't cover — categorize: ephemeral, ignorable.
+5. **Sidecar/CAACP scratch state** under `apparatus/caacp-server/data/` — gitignored; ignore.
+
+**Standing rule on observed diffs**:
+- Run `git status` at session start and inventory.
+- Cross-reference each unstaged/untracked file against the five categories above.
+- Proceed with your directive's substrate work. **The presence of unrelated diffs is not a blocker.**
+- When you commit your substrate work, enumerate ONLY the files your directive's edits touched (per "Git Add Scope" discipline + §V.6 worktree-hygiene rules) — never `git add -A` or `git add .`.
+- Surface unexplained diffs in your landing summary (one-line "observed unstaged: X, Y, Z; not touched in this commit"), so helmsman has visibility for follow-up.
+
+**Failure mode this rule prevents** (per keeper Telegram 10397): resolver enters worktree, sees `git status` showing unrelated unstaged files (from prior sessions, deputy authoring, or sidecar scratch), interprets the dirty state as a blocker, yields back with "worktree has dirty state, need clarification before proceeding." The dirty state is almost never blocking; the resolver's own edits + commit scope are what matter.
+
+**When unstaged diffs ARE a blocker**: only when (a) they conflict with the file the current directive needs to edit, (b) they prevent `git rebase origin/main` from completing cleanly, or (c) they prevent the pre-push hook from accepting the proposal+decision pair. In those cases name the specific blocker in the yield, don't generalize to "dirty worktree."
+
 ## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.
