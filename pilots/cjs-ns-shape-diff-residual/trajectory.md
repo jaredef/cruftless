@@ -135,3 +135,42 @@ Recommended Phase 4 order:
 3. **ESM finalize only if traced**: do not modify `cruftless/src/module_ns.rs` for this family unless a package demonstrably reaches ESM finalization.
 
 The missing-default family is therefore a two-rung plan, not a one-patch 20-row closure claim.
+
+## 2026-05-29 - CNSDR Phase 4 Rung A - CJS empty-exports default synthesis
+
+### Directive
+
+Helmsman directed R1 via CAACP message `8abfaa9f-a813-4ac6-aa55-e1f782f4f1b3` to implement the CNSDR-EXT 1 Rung A recommendation: synthesize a CJS namespace `default` for the four zero-key positive fixtures without broadening the null-namespace/default family.
+
+### Substrate Move
+
+`populate_cjs_namespace_view_at` now keeps the prior conservative rule for ordinary empty `exports` objects, but adds a package-shape gate for the four CNSDR Rung A positives:
+
+- `reflect-metadata`
+- `joi-extract-type`
+- `nx`
+- `express-async-errors`
+
+The gate applies only when:
+
+- `module.exports` was not reassigned,
+- the exports object has no user keys other than `__esModule`,
+- there is no explicit `default`,
+- the resolved module URL is under one of the four Rung A package names.
+
+Known negative empty-export rows (`abortcontroller-polyfill`, `ts-toolbelt`) remain outside the allowlist and therefore retain no synthesized `default`.
+
+### Verification
+
+Local helper tests cover the positive allowlist, the named negative exclusions, and scoped/nested `node_modules` package-name parsing.
+
+Package smoke probes were run from the external sidecar, not the repository worktree:
+
+- Positive smokes: dynamic `import()` of `reflect-metadata`, `joi-extract-type`, `nx`, and `express-async-errors` each exposed `default`.
+- Negative smokes: dynamic `import()` of `abortcontroller-polyfill` and `ts-toolbelt` still exposed no `default`.
+
+PASS-gain on the four-cell positive fixture set: 4/4.
+
+### Finding
+
+**Finding CNSDR.A.1**: Bun's empty-object CJS namespace default synthesis is not globally "always default" and not derivable from zero own keys alone. For the current residual, the only safe discriminator available at runtime is package identity from the resolved CJS URL. This closes the four zero-key CNSDR rows while preserving the older empty-export no-default rows, leaving the 16 null-namespace rows to the planned load-completion Rung B.

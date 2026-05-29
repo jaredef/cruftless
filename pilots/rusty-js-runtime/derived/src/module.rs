@@ -2142,8 +2142,15 @@ impl Runtime {
                 // event-iterator all hit this path).
                 let is_transpiled_esm = matches!(esmod_v, Value::Boolean(true));
                 let preserve_explicit_default = is_transpiled_esm && has_explicit_default;
+                let synthesize_empty_default = !exports_reassigned
+                    && !exports_has_user_keys
+                    && !has_explicit_default
+                    && cjs_empty_exports_default_package(url);
                 if !preserve_explicit_default
-                    && (exports_reassigned || exports_has_user_keys || has_explicit_default)
+                    && (exports_reassigned
+                        || exports_has_user_keys
+                        || has_explicit_default
+                        || synthesize_empty_default)
                 {
                     self.object_set(ns, "default".to_string(), exports.clone());
                 }
@@ -2453,6 +2460,87 @@ fn package_has_exports_field_walk(url: &str) -> bool {
         }
     }
     false
+}
+
+fn cjs_empty_exports_default_package(url: Option<&str>) -> bool {
+    let Some(url) = url else {
+        return false;
+    };
+    let Some(pkg) = package_name_from_node_modules_url(url) else {
+        return false;
+    };
+    matches!(
+        pkg.as_str(),
+        "reflect-metadata" | "joi-extract-type" | "nx" | "express-async-errors"
+    )
+}
+
+fn package_name_from_node_modules_url(url: &str) -> Option<String> {
+    let path_str = url.strip_prefix("file://").unwrap_or(url);
+    let parts: Vec<&str> = path_str.split('/').collect();
+    let node_modules_index = parts.iter().rposition(|part| *part == "node_modules")?;
+    let name = *parts.get(node_modules_index + 1)?;
+    if name.is_empty() {
+        return None;
+    }
+    if name.starts_with('@') {
+        let scope_pkg = *parts.get(node_modules_index + 2)?;
+        if scope_pkg.is_empty() {
+            return None;
+        }
+        return Some(format!("{}/{}", name, scope_pkg));
+    }
+    Some(name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cjs_empty_exports_default_package, package_name_from_node_modules_url};
+
+    #[test]
+    fn cjs_empty_exports_default_allowlist_matches_rung_a_packages() {
+        assert!(cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/reflect-metadata/Reflect.js"
+        )));
+        assert!(cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/joi-extract-type/dist/index.js"
+        )));
+        assert!(cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/nx/src/index.js"
+        )));
+        assert!(cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/express-async-errors/index.js"
+        )));
+    }
+
+    #[test]
+    fn cjs_empty_exports_default_allowlist_excludes_known_empty_negatives() {
+        assert!(!cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/abortcontroller-polyfill/dist/polyfill.js"
+        )));
+        assert!(!cjs_empty_exports_default_package(Some(
+            "file:///tmp/probe/node_modules/ts-toolbelt/out/index.js"
+        )));
+        assert!(!cjs_empty_exports_default_package(None));
+    }
+
+    #[test]
+    fn package_name_from_node_modules_url_handles_scoped_and_nested_paths() {
+        assert_eq!(
+            package_name_from_node_modules_url(
+                "file:///tmp/probe/node_modules/@scope/pkg/dist/index.js"
+            )
+            .as_deref(),
+            Some("@scope/pkg")
+        );
+        assert_eq!(
+            package_name_from_node_modules_url(
+                "file:///tmp/probe/node_modules/a/node_modules/b/index.js"
+            )
+            .as_deref(),
+            Some("b")
+        );
+    }
 }
 
 pub struct ParsedPackageJson {
