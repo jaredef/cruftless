@@ -183,6 +183,7 @@ async function handleSend(req: Request): Promise<Response> {
     slug,
     related_to: related_to ?? null,
     content_sha,
+    body: msgBody ?? null,
   }, agent.token);
   if (!remoteResp.ok) {
     const errBody = await remoteResp.text();
@@ -211,6 +212,7 @@ async function handleAck(req: Request): Promise<Response> {
     ack_intent: ack_state,
     ack_slug,
     content_sha,
+    body: msgBody ?? null,
   }, agent.token);
   if (!remoteResp.ok) {
     const errBody = await remoteResp.text();
