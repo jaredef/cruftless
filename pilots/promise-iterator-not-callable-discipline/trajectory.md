@@ -73,3 +73,38 @@ C4 passes for the narrowed named 40-row matrix scope, but it passes with two com
 The Phase 3 substrate move should therefore be a Pin-Art probe over the shared Promise combinator helper shape before implementation. Recommended move: factor the common Promise.all/allSettled/race iterable acquisition path so abrupt completions from `GetIterator` / non-callable `@@iterator` are captured and routed through `cap_reject`, while preserving the separate `C.resolve` and `.then` callability checks. Do not assume a single line IsCallable fix closes the whole 40-row cluster.
 
 Estimated closure: 1 probe/design rung plus 1 substrate rung for the iterator-method rejection path; a second substrate rung may be needed for the Promise static/callsite `C.resolve`/method-call rows if they remain after the iterator path lands.
+
+## 2026-05-29 - PIND-EXT 1 - Phase 3 design rung
+
+### Directive
+
+Helmsman directed R3 to land a design-only Phase 3 rung before runtime substrate. Constraint: no `interp.rs` or `intrinsics.rs` modifications in this round. Output is `design.md` plus this trajectory entry.
+
+### Design Result
+
+Authored `design.md` to discriminate the two adjacent buckets surfaced in PIND-EXT 0:
+
+- 19/40 (47.5%) Promise combinator callsite / `C.resolve` not-callable.
+- 18/40 (45.0%) `@@iterator` method not-callable.
+- 3/40 (7.5%) symbol-assigned iterator noise.
+
+The design chooses a staged Promise-local helper rather than changing global `collect_iterable` behavior. The proposed helper catches abrupt completions from `crate::intrinsics::collect_iterable`, rejects the Promise capability through `cap_reject`, and lets the combinator return `capability_promise` instead of throwing synchronously.
+
+### Edit Sites For Next Rung
+
+- `pilots/rusty-js-runtime/derived/src/interp.rs::promise_all_via`
+- `pilots/rusty-js-runtime/derived/src/interp.rs::promise_all_settled_via`
+- `pilots/rusty-js-runtime/derived/src/interp.rs::promise_race_via`
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs::collect_iterable` remains unchanged for the first substrate rung; wrap it from Promise code instead.
+
+### Rung Plan
+
+Recommended next substrate rung: close the `@@iterator` method not-callable rejection path first. It has the clearest Promise-combinator spec shape and should cover the 18 exact `iter-assigned-{false,null,number,string,true,undefined}` rows across `Promise.all`, `Promise.allSettled`, and `Promise.race`.
+
+Predicted yield:
+
+- Rung 4a: up to +18 PASS on the named 40-row cluster by routing iterator-acquisition abrupt completions through `cap_reject`.
+- Rung 4b: up to +19 PASS if the static/`C.resolve` bucket proves to require the same reject-through-capability treatment.
+- Rung 4c: 0-3 PASS for symbol-assigned iterator residuals if they remain.
+
+Estimated closure: two substrate rungs, with a possible third cleanup rung for symbol residuals.
