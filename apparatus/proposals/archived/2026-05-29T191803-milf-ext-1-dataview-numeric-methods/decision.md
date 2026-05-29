@@ -25,8 +25,11 @@ Verification:
 2. Runtime lib tests: `cargo test --release -p rusty-js-runtime --lib` PASS,
    66 passed and 1 ignored.
 3. Direct smoke PASS for Array indexed helpers and DataView numeric get/set.
-4. Inline 30-cell first-coordinate accounting: `file-type` and `pdfkit` close
-   at the DataView coordinate; 28 residual rows remain in non-DataView
-   sub-coordinates.
+4. Inline 30-cell package measurement:
+   `/home/jaredef/Developer/cruftless-r2-sidecar/results/milf-ext1-inline30-20260529T191754Z.json`
+   reports 1 PASS / 29 FAIL / 0 SKIP.
+5. Inline 30-cell first-coordinate accounting: `file-type` reaches package
+   PASS, and `pdfkit` advances past the DataView coordinate but remains
+   non-parity on package output shape.
 
 **APPROVED for push.**

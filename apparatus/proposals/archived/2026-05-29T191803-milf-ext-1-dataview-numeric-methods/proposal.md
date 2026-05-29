@@ -11,7 +11,8 @@ gates_post:
   build: cargo build --release --bin cruft -p cruftless PASS
   runtime_lib_tests: cargo test --release -p rusty-js-runtime --lib PASS
   direct_smoke: DataView ordinary numeric methods PASS
-  inline_30_cell_projected_first_coordinate: 2 PASS / 28 FAIL
+  inline_30_cell_package_run: 1 PASS / 29 FAIL / 0 SKIP
+  inline_30_cell_first_coordinate: 2 rows advanced past DataView
 ---
 
 ## Substrate Moves
@@ -25,8 +26,9 @@ missing-intrinsic-loader-failures locale.
 - **I** = shared DataView receiver validation, byte offset coercion, endian byte
   read/write helpers, and methods for Uint8/Int8/Uint16/Int16/Uint32/Int32/
   Float32/Float64.
-- **R** = inline first-error list gains the two DataView rows: `file-type`
-  (`setUint32`) and `pdfkit` (`getUint32`).
+- **R** = inline first-error list advances the two DataView rows: `file-type`
+  (`setUint32`) reaches package PASS, while `pdfkit` (`getUint32`) advances past
+  the DataView coordinate and remains non-parity on output shape.
 
 ## Verification
 
@@ -35,15 +37,19 @@ missing-intrinsic-loader-failures locale.
 - Direct cruft smoke PASS for:
   - `Array.prototype.findIndex/findLast/findLastIndex/map/filter`;
   - `DataView.prototype.{get,set}{Uint8,Int8,Uint16,Int16,Uint32,Int32,Float32,Float64}`.
-- Inline 30-cell classification measurement: 2 projected first-coordinate
-  closures, 28 residuals.
+- Inline 30-cell package measurement:
+  `/home/jaredef/Developer/cruftless-r2-sidecar/results/milf-ext1-inline30-20260529T191754Z.json`
+  reports 1 PASS / 29 FAIL / 0 SKIP.
+- Inline 30-cell first-coordinate accounting: 2 rows advance past DataView;
+  package PASS gain is 1 row (`file-type`).
 
 ## Risk Assessment
 
 The change is scoped to `%DataView.prototype%` and the existing ArrayBuffer
 record storage. It does not alter Array, TypedArray, Buffer, namespace, or host
 shim behavior. Remaining MILF rows are explicitly outside this substrate move:
-Buffer writer methods, CJS/ESM namespace shape, Node shims, web globals, and
+Buffer writer methods, CJS/ESM namespace shape, Node shims, web globals,
+safe-stable-stringify `Symbol.toStringTag` access, output shape mismatch, and
 the `brotli` null-flow outlier.
 
 ## Composes-With

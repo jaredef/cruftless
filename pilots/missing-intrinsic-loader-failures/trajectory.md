@@ -193,16 +193,20 @@ artifacts.
 ### Inline 30-Cell Measurement
 
 Helmsman later resent the 30-cell source inline in CAACP message
-`07e97eeb-7040-47ac-aa8b-01825c4bdc38`. With no package sandbox present, this
-measurement is classification-based against the inline first-error coordinate
-plus direct runtime smoke probes of the fixed methods.
+`07e97eeb-7040-47ac-aa8b-01825c4bdc38`. The inline package list was run through
+the local parity harness after adding the scoped DataView methods.
 
-Projected first-error closure from this DataView rung:
+Artifact:
+`/home/jaredef/Developer/cruftless-r2-sidecar/results/milf-ext1-inline30-20260529T191754Z.json`.
+
+Package-level result after this rung: 1 PASS / 29 FAIL / 0 SKIP.
+
+First-coordinate closure from this DataView rung:
 
 | Package | Prior first error | Rung result |
 |---|---|---|
-| `file-type` | `DataView.prototype.setUint32` missing | closed at first coordinate |
-| `pdfkit` | `DataView.prototype.getUint32` missing | closed at first coordinate |
+| `file-type` | `DataView.prototype.setUint32` missing | package PASS |
+| `pdfkit` | `DataView.prototype.getUint32` missing | first coordinate closed; package still FAILS on output shape mismatch |
 
 Residuals in the 30-cell inline list:
 
@@ -223,7 +227,9 @@ Residuals in the 30-cell inline list:
 PASS-gain accounting for the inline 30 cells:
 
 - Prior: 0 PASS / 30 FAIL at first error.
-- MILF-EXT 1 projected first-coordinate gain: 2 PASS / 28 residual FAIL.
+- MILF-EXT 1 first-coordinate closures: 2 rows (`file-type`, `pdfkit`).
+- MILF-EXT 1 package PASS gain: 1 row (`file-type`); `pdfkit` advanced past
+  the DataView getter but remains non-parity on package output shape.
 - Direct substrate proof: cruft smoke confirmed
   `DataView.prototype.getUint32` and `setUint32` are callable and correctly
   read/write values after this rung.
