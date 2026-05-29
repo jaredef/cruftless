@@ -86,3 +86,148 @@ Start with a narrow **wrong-prototype / namespace-shape Phase 3**, not a blanket
 ### Status
 
 Phase 0 locale spawned and Phase 2 fallback segmentation complete. Exact-source inspection is blocked by the missing T7 mount/source JSON and by the absent replacement sidecar parity-results directory.
+
+## 2026-05-29 — MILF-EXT 1 core prototype intrinsic audit
+
+### Trigger
+
+CAACP directive `4250d53d-83c7-4c9e-b560-7a01bb981046` requested the first
+substrate rung against the core prototype intrinsic segment from Phase 2:
+
+- audit Array.prototype, DataView.prototype, and broader indexed-collection
+  tables;
+- implement the highest-impact missing methods, with scope-down if the audit
+  reveals more than ten missing methods;
+- verify build, runtime tests, exemplar packages, and the 30-cell cluster.
+
+### Audit
+
+Array.prototype:
+
+- `map`, `filter`, `find`, `findIndex`, `findLast`, `findLastIndex`,
+  `some`, `every`, `reduce`, `reduceRight`, `lastIndexOf`, `at`, `flat`,
+  `flatMap`, `toReversed`, `toSorted`, `toSpliced`, `with`, iterator triplet,
+  and `sort` are already installed through
+  `pilots/rusty-js-runtime/derived/src/prototype.rs` and
+  `pilots/rusty-js-runtime/derived/src/generated.rs`.
+- The `log4js` first-coordinate offender, `Array.prototype.findIndex`, is
+  already present on current main. It is not the remaining blocker for this
+  rung's local runtime state.
+- The `.map` / `.filter` offender rows from Phase 2 point at wrong receiver
+  shape (`Object keys=[0,1,2,...]` or namespace object), not missing Array
+  prototype methods.
+
+TypedArray.prototype:
+
+- The shared typed-array prototype already carries `find`, `findIndex`,
+  `findLast`, `findLastIndex`, `map`, `filter`, `reduce`, `reduceRight`, and
+  related indexed-collection methods, mirrored onto the spec-level
+  `%TypedArray%.prototype` surface.
+
+DataView.prototype:
+
+- Before this rung, DataView had constructor/accessor shape
+  (`byteLength`, `byteOffset`, `buffer`) but no numeric read/write methods.
+- Full ECMA-262 §25.3 DataView method parity is larger than the conservative
+  rung budget: the complete table includes 8-, 16-, 32-, 64-bit integer,
+  float16/32/64, and BigInt get/set methods.
+- Scope-down applied to the cluster-cited numeric methods and the adjacent
+  ordinary Number-valued DataView table:
+  `getUint8`, `getInt8`, `getUint16`, `getInt16`, `getUint32`, `getInt32`,
+  `getFloat32`, `getFloat64`, `setUint8`, `setInt8`, `setUint16`,
+  `setInt16`, `setUint32`, `setInt32`, `setFloat32`, `setFloat64`.
+
+### Substrate Move
+
+`DataView.prototype` now installs the scoped ordinary Number-valued numeric
+methods through 64-bit float.
+The shared helper performs:
+
+- DataView receiver validation through the existing `__kind === "DataView"`
+  sentinel and `typed_array_views` record;
+- detached/missing ArrayBuffer rejection;
+- byte offset coercion and bounds checking against fixed or growable view
+  length;
+- little-endian argument handling;
+- read/write through the runtime's ArrayBuffer byte storage.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS, 66 passed, 1 ignored.
+- Direct cruft smoke probe: PASS for
+  `Array.prototype.findIndex/findLast/findLastIndex/map/filter` and
+  `DataView.prototype.{get,set}{Uint8,Int8,Uint16,Int16,Uint32,Int32,Float32,Float64}`.
+
+### Cluster Measurement Blocker
+
+The package exemplar and 30-cell PASS-gain measurement could not be completed
+in this filesystem:
+
+- `/media/jaredef/T7/rusty-bun/parity-results/parity-results-top500-20260529T111702-refined.json`
+  is absent.
+- `/home/jaredef/Developer/cruftless-sidecar/parity-results/cluster-callee-not-callable.json`
+  is absent.
+- `/home/jaredef/Developer/cruftless-sidecar/parity-results/cluster-cannot-read-property.json`
+  is absent.
+- `/home/jaredef/Developer/cruftless-sidecar/parity-results/parity-results-top500-20260529T111702-refined.json`
+  is absent.
+- Searches under `/home/jaredef/Developer`, `/home/jaredef/Developer/cruftless-sidecar`,
+  `/home/jaredef/Developer/cruftless-r2-sidecar`, `/media/jaredef`, and `/tmp`
+  did not locate those files.
+- No local `parity-sandbox` directory for the directive's package cells was
+  present.
+
+### C4 Status
+
+C4 holds for the scoped DataView intrinsic move: `file-type`'s first missing
+coordinate names `setUint32`, the runtime lacked the DataView numeric method
+surface, and the direct method-level probe passes after the change.
+
+C4 does not hold for claiming combined 30-cell closure from this rung. Array
+`map/filter` rows are wrong-receiver/namespace-shape rows, web/global rows are
+host-shim rows, and `brotli` remains a value-flow outlier. The exact package
+PASS-gain measurement remains blocked on the missing parity-result/sandbox
+artifacts.
+
+### Inline 30-Cell Measurement
+
+Helmsman later resent the 30-cell source inline in CAACP message
+`07e97eeb-7040-47ac-aa8b-01825c4bdc38`. With no package sandbox present, this
+measurement is classification-based against the inline first-error coordinate
+plus direct runtime smoke probes of the fixed methods.
+
+Projected first-error closure from this DataView rung:
+
+| Package | Prior first error | Rung result |
+|---|---|---|
+| `file-type` | `DataView.prototype.setUint32` missing | closed at first coordinate |
+| `pdfkit` | `DataView.prototype.getUint32` missing | closed at first coordinate |
+
+Residuals in the 30-cell inline list:
+
+- Buffer writer methods: `exceljs` (`writeUInt32LE`), `pg` (`offset`),
+  `postgres` (`i`) remain Buffer/byte-writer shim work.
+- Event/web globals: `chai` (`dispatchEvent`), `fake-indexeddb`,
+  `twitter-api-v2`, and `agentkeepalive` remain host/web or class-surface work.
+- Namespace/export shape: `@octokit/request`, `rollup-plugin-node-resolve`,
+  `mnemonist`, `csurf`, and several callable-object rows remain namespace or
+  wrong-prototype work.
+- Node shims/globals: `gulp` (`TextDecoder`), `forever` (`process.umask`),
+  `release-it` (`util.debug`), `mocha` (`features.require_module`),
+  `aws-sdk` (`util.inherit`) remain Node compatibility work.
+- Safe-stable-stringify `toStringTag` rows (`mongoose`, `mongodb`, `pino`,
+  `pino-http`, `roarr`, `slonik`, `pino-debug`) are not DataView method rows.
+- `brotli` remains a null value-flow outlier.
+
+PASS-gain accounting for the inline 30 cells:
+
+- Prior: 0 PASS / 30 FAIL at first error.
+- MILF-EXT 1 projected first-coordinate gain: 2 PASS / 28 residual FAIL.
+- Direct substrate proof: cruft smoke confirmed
+  `DataView.prototype.getUint32` and `setUint32` are callable and correctly
+  read/write values after this rung.
+
+Status after inline measurement: scoped DataView intrinsic rung is landable, but
+the remaining MILF cluster should proceed by sub-coordinate rather than by
+error string.

@@ -19730,6 +19730,54 @@ impl Runtime {
                 None => Ok(Value::Undefined),
             }
         });
+        register_method(self, dv_proto, "getUint32", |rt, args| {
+            data_view_get_number(rt, args, "getUint32", 4, false, false, false)
+        });
+        register_method(self, dv_proto, "getInt32", |rt, args| {
+            data_view_get_number(rt, args, "getInt32", 4, true, false, false)
+        });
+        register_method(self, dv_proto, "getUint16", |rt, args| {
+            data_view_get_number(rt, args, "getUint16", 2, false, false, false)
+        });
+        register_method(self, dv_proto, "getInt16", |rt, args| {
+            data_view_get_number(rt, args, "getInt16", 2, true, false, false)
+        });
+        register_method(self, dv_proto, "getUint8", |rt, args| {
+            data_view_get_number(rt, args, "getUint8", 1, false, false, false)
+        });
+        register_method(self, dv_proto, "getInt8", |rt, args| {
+            data_view_get_number(rt, args, "getInt8", 1, true, false, false)
+        });
+        register_method(self, dv_proto, "getFloat32", |rt, args| {
+            data_view_get_number(rt, args, "getFloat32", 4, false, true, false)
+        });
+        register_method(self, dv_proto, "getFloat64", |rt, args| {
+            data_view_get_number(rt, args, "getFloat64", 8, false, true, false)
+        });
+        register_method(self, dv_proto, "setUint32", |rt, args| {
+            data_view_set_number(rt, args, "setUint32", 4, false, false, false)
+        });
+        register_method(self, dv_proto, "setInt32", |rt, args| {
+            data_view_set_number(rt, args, "setInt32", 4, true, false, false)
+        });
+        register_method(self, dv_proto, "setUint16", |rt, args| {
+            data_view_set_number(rt, args, "setUint16", 2, false, false, false)
+        });
+        register_method(self, dv_proto, "setInt16", |rt, args| {
+            data_view_set_number(rt, args, "setInt16", 2, true, false, false)
+        });
+        register_method(self, dv_proto, "setUint8", |rt, args| {
+            data_view_set_number(rt, args, "setUint8", 1, false, false, false)
+        });
+        register_method(self, dv_proto, "setInt8", |rt, args| {
+            data_view_set_number(rt, args, "setInt8", 1, true, false, false)
+        });
+        register_method(self, dv_proto, "setFloat32", |rt, args| {
+            data_view_set_number(rt, args, "setFloat32", 4, false, true, false)
+        });
+        register_method(self, dv_proto, "setFloat64", |rt, args| {
+            data_view_set_number(rt, args, "setFloat64", 8, false, true, false)
+        });
         // Suppress unused-variable warning for the helper that we inlined
         // each accessor body to avoid sharing.
         let _ = dv_receiver_check;
@@ -21613,6 +21661,204 @@ fn typed_array_integer_index(
     } else {
         n.min(len.max(0))
     })
+}
+
+fn validate_data_view_access(
+    rt: &mut Runtime,
+    method_name: &str,
+) -> Result<(ObjectRef, crate::interp::TypedArrayViewRecord), RuntimeError> {
+    let this_id = match rt.current_this() {
+        Value::Object(o) => o,
+        _ => {
+            return Err(RuntimeError::TypeError(format!(
+                "DataView.prototype.{method_name}: receiver must be a DataView"
+            )))
+        }
+    };
+    match rt.object_get(this_id, "__kind") {
+        Value::String(s) if s.as_str() == "DataView" => {}
+        _ => {
+            return Err(RuntimeError::TypeError(format!(
+                "DataView.prototype.{method_name}: receiver does not have [[DataView]] internal slot"
+            )))
+        }
+    }
+    let view = rt
+        .typed_array_views
+        .get(&this_id)
+        .cloned()
+        .ok_or_else(|| {
+            RuntimeError::TypeError(format!(
+                "DataView.prototype.{method_name}: receiver has no DataView record"
+            ))
+        })?;
+    match rt.array_buffers.get(&view.buffer) {
+        Some(buf) if buf.detached => Err(RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: buffer is detached"
+        ))),
+        Some(_) => Ok((this_id, view)),
+        None => Err(RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: buffer is missing"
+        ))),
+    }
+}
+
+fn data_view_byte_offset(rt: &mut Runtime, args: &[Value]) -> Result<usize, RuntimeError> {
+    let offset = match args.first() {
+        Some(v) => rt.coerce_to_number(v)?,
+        None => 0.0,
+    };
+    if !offset.is_finite() || offset < 0.0 {
+        return Err(RuntimeError::RangeError(
+            "DataView byteOffset out of range".into(),
+        ));
+    }
+    Ok(offset.trunc() as usize)
+}
+
+fn data_view_little_endian(args: &[Value], index: usize) -> bool {
+    args.get(index)
+        .map(crate::abstract_ops::to_boolean)
+        .unwrap_or(false)
+}
+
+fn data_view_read_bytes(
+    rt: &mut Runtime,
+    method_name: &str,
+    byte_count: usize,
+    little_endian_arg_index: usize,
+    args: &[Value],
+) -> Result<[u8; 8], RuntimeError> {
+    let (_, view) = validate_data_view_access(rt, method_name)?;
+    let offset = data_view_byte_offset(rt, args)?;
+    let view_len = match view.fixed_length {
+        Some(n) => n,
+        None => rt
+            .array_buffers
+            .get(&view.buffer)
+            .map(|buf| buf.byte_length.saturating_sub(view.byte_offset))
+            .unwrap_or(0),
+    };
+    if offset.saturating_add(byte_count) > view_len {
+        return Err(RuntimeError::RangeError(format!(
+            "DataView.prototype.{method_name}: byteOffset out of range"
+        )));
+    }
+    let abs = view.byte_offset.saturating_add(offset);
+    let little_endian = data_view_little_endian(args, little_endian_arg_index);
+    let buf = rt.array_buffers.get(&view.buffer).ok_or_else(|| {
+        RuntimeError::TypeError(format!("DataView.prototype.{method_name}: buffer is missing"))
+    })?;
+    let mut bytes = [0_u8; 8];
+    for i in 0..byte_count {
+        let b = match buf.data.get(abs + i) {
+            Some(Value::Number(n)) => *n as u8,
+            _ => 0,
+        };
+        if little_endian {
+            bytes[i] = b;
+        } else {
+            bytes[byte_count - 1 - i] = b;
+        }
+    }
+    Ok(bytes)
+}
+
+fn data_view_get_number(
+    rt: &mut Runtime,
+    args: &[Value],
+    method_name: &str,
+    byte_count: usize,
+    signed: bool,
+    float: bool,
+    _unused: bool,
+) -> Result<Value, RuntimeError> {
+    let bytes = data_view_read_bytes(rt, method_name, byte_count, 1, args)?;
+    let n = if float {
+        if byte_count == 4 {
+            f32::from_le_bytes(bytes[0..4].try_into().unwrap()) as f64
+        } else {
+            f64::from_le_bytes(bytes)
+        }
+    } else if signed {
+        match byte_count {
+            1 => i8::from_le_bytes([bytes[0]]) as f64,
+            2 => i16::from_le_bytes(bytes[0..2].try_into().unwrap()) as f64,
+            _ => i32::from_le_bytes(bytes[0..4].try_into().unwrap()) as f64,
+        }
+    } else {
+        match byte_count {
+            1 => bytes[0] as f64,
+            2 => u16::from_le_bytes(bytes[0..2].try_into().unwrap()) as f64,
+            _ => u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as f64,
+        }
+    };
+    Ok(Value::Number(n))
+}
+
+fn data_view_set_number(
+    rt: &mut Runtime,
+    args: &[Value],
+    method_name: &str,
+    byte_count: usize,
+    signed: bool,
+    float: bool,
+    _unused: bool,
+) -> Result<Value, RuntimeError> {
+    let (_, view) = validate_data_view_access(rt, method_name)?;
+    let offset = data_view_byte_offset(rt, args)?;
+    let view_len = match view.fixed_length {
+        Some(n) => n,
+        None => rt
+            .array_buffers
+            .get(&view.buffer)
+            .map(|buf| buf.byte_length.saturating_sub(view.byte_offset))
+            .unwrap_or(0),
+    };
+    if offset.saturating_add(byte_count) > view_len {
+        return Err(RuntimeError::RangeError(format!(
+            "DataView.prototype.{method_name}: byteOffset out of range"
+        )));
+    }
+    let value = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let n = rt.coerce_to_number(&value)?;
+    let mut bytes = [0_u8; 8];
+    if float {
+        if byte_count == 4 {
+            bytes[0..4].copy_from_slice(&(n as f32).to_le_bytes());
+        } else {
+            bytes.copy_from_slice(&n.to_le_bytes());
+        }
+    } else if signed {
+        match byte_count {
+            1 => bytes[0] = n as i8 as u8,
+            2 => bytes[0..2].copy_from_slice(&(n as i16).to_le_bytes()),
+            _ => bytes[0..4].copy_from_slice(&(n as i32).to_le_bytes()),
+        }
+    } else {
+        match byte_count {
+            1 => bytes[0] = n as u8,
+            2 => bytes[0..2].copy_from_slice(&(n as u16).to_le_bytes()),
+            _ => bytes[0..4].copy_from_slice(&(n as u32).to_le_bytes()),
+        }
+    }
+    let little_endian = data_view_little_endian(args, 2);
+    let abs = view.byte_offset.saturating_add(offset);
+    let buf = rt.array_buffers.get_mut(&view.buffer).ok_or_else(|| {
+        RuntimeError::TypeError(format!("DataView.prototype.{method_name}: buffer is missing"))
+    })?;
+    if buf.data.len() < abs + byte_count {
+        buf.data.resize(abs + byte_count, Value::Number(0.0));
+    }
+    for i in 0..byte_count {
+        let b = if little_endian {
+            bytes[i]
+        } else {
+            bytes[byte_count - 1 - i]
+        };
+        buf.data[abs + i] = Value::Number(b as f64);
+    }
+    Ok(Value::Undefined)
 }
 
 fn num_arg(args: &[Value], i: usize) -> f64 {
