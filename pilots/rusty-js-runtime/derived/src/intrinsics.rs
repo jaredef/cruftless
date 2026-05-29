@@ -19483,7 +19483,11 @@ impl Runtime {
                 )),
             };
             match rt.array_buffers.get(&this_id) {
-                Some(buf) => Ok(Value::Number(buf.max_byte_length as f64)),
+                Some(buf) => Ok(Value::Number(if buf.detached {
+                    0.0
+                } else {
+                    buf.max_byte_length as f64
+                })),
                 None => Err(RuntimeError::TypeError(
                     "ArrayBuffer.prototype.maxByteLength getter: receiver has no [[ArrayBufferData]] slot".into(),
                 )),
@@ -19499,7 +19503,9 @@ impl Runtime {
                     )),
                 };
             match rt.array_buffers.get(&this_id) {
-                Some(buf) => Ok(Value::Boolean(buf.max_byte_length > buf.byte_length)),
+                Some(buf) => Ok(Value::Boolean(
+                    !buf.detached && buf.max_byte_length > buf.byte_length,
+                )),
                 None => Err(RuntimeError::TypeError(
                     "ArrayBuffer.prototype.resizable getter: receiver has no [[ArrayBufferData]] slot".into(),
                 )),
@@ -19514,12 +19520,11 @@ impl Runtime {
                             .into(),
                     )),
                 };
-            if rt.array_buffers.contains_key(&this_id) {
-                Ok(Value::Boolean(false))
-            } else {
-                Err(RuntimeError::TypeError(
+            match rt.array_buffers.get(&this_id) {
+                Some(buf) => Ok(Value::Boolean(buf.detached)),
+                None => Err(RuntimeError::TypeError(
                     "ArrayBuffer.prototype.detached getter: receiver has no [[ArrayBufferData]] slot".into(),
-                ))
+                )),
             }
         });
         // TAMM-EXT 10: ArrayBuffer.prototype.immutable accessor per the
@@ -19589,6 +19594,7 @@ impl Runtime {
                     byte_length,
                     max_byte_length,
                     data: vec![Value::Number(0.0); byte_length],
+                    detached: false,
                 },
             );
             Ok(Value::Object(id))
@@ -19692,8 +19698,16 @@ impl Runtime {
             }
             match rt.typed_array_views.get(&id) {
                 Some(view) => match view.fixed_length {
-                    Some(n) => Ok(Value::Number(n as f64)),
+                    Some(n) => match rt.array_buffers.get(&view.buffer) {
+                        Some(buf) if buf.detached => Err(RuntimeError::TypeError(
+                            "DataView.prototype.byteLength getter: buffer is detached".into(),
+                        )),
+                        _ => Ok(Value::Number(n as f64)),
+                    },
                     None => match rt.array_buffers.get(&view.buffer) {
+                        Some(buf) if buf.detached => Err(RuntimeError::TypeError(
+                            "DataView.prototype.byteLength getter: buffer is detached".into(),
+                        )),
                         Some(buf) => Ok(Value::Number(
                             buf.byte_length.saturating_sub(view.byte_offset) as f64,
                         )),
@@ -19763,6 +19777,16 @@ impl Runtime {
                 Some(v) => rt.coerce_to_number(v)? as usize,
                 None => 0,
             };
+            if rt
+                .array_buffers
+                .get(&buf_id)
+                .map(|buf| buf.detached)
+                .unwrap_or(true)
+            {
+                return Err(RuntimeError::TypeError(
+                    "DataView constructor: buffer is detached".into(),
+                ));
+            }
             let fixed_length = match args.get(2) {
                 Some(Value::Number(n)) if *n >= 0.0 => Some(*n as usize),
                 Some(Value::Undefined) | None => None,
@@ -19947,6 +19971,7 @@ impl Runtime {
                         byte_length,
                         max_byte_length: byte_length,
                         data: vec![Value::Number(0.0); byte_length],
+                        detached: false,
                     },
                 );
                 let mut o = Object::new_ordinary();

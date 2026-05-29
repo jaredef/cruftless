@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.host-262-shim` (top-level; EPSUA reopened sub-locale #3).
 
-**Status**: FOUNDED at H262S-EXT 0. Phase-2 baseline probe complete; substrate landing not yet authorized.
+**Status**: H262S-EXT 1 landed for `$262.detachArrayBuffer` cheap shim. Remaining `$262` host-hook subclusters stay deferred unless keeper or helmsman reopens them.
 
 **Workstream**: test262 host-hook availability for `$262`-dependent tests. The current runner prepends the upstream harness, but Cruft does not expose the `$262` host object that several test262 subclusters use for detach-buffer probes, IsHTMLDDA emulation, realm construction, global-state helpers, and host GC/agent hooks.
 
@@ -69,4 +69,4 @@ Regression check after any approved substrate landing: adjacent previously-passi
 
 ## VI. Status
 
-H262S-EXT 0 founded the locale and completed the read-only baseline partition. Awaiting helmsman ack on the follow-up EXT 1 landing plan.
+H262S-EXT 1 installed a guarded test262 `$262.detachArrayBuffer` host shim and the runtime detached-buffer state needed by the approved ArrayBuffer/DataView exemplars. `IsHTMLDDA`, `createRealm`, agent hooks, GC hooks, and heterogeneous `$262` tail rows remain out of scope.

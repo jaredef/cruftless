@@ -424,6 +424,7 @@ pub struct ArrayBufferRecord {
     pub byte_length: usize,
     pub max_byte_length: usize,
     pub data: Vec<Value>,
+    pub detached: bool,
 }
 
 #[derive(Clone)]
@@ -491,6 +492,9 @@ impl Runtime {
     fn typed_array_view_len(&self, id: ObjectRef) -> Option<usize> {
         let view = self.typed_array_views.get(&id)?;
         let buf = self.array_buffers.get(&view.buffer)?;
+        if buf.detached {
+            return Some(0);
+        }
         if view.byte_offset > buf.byte_length {
             return Some(0);
         }
@@ -516,6 +520,9 @@ impl Runtime {
         let Some(buf) = self.array_buffers.get(&view.buffer) else {
             return true;
         };
+        if buf.detached {
+            return true;
+        }
         if view.byte_offset > buf.byte_length {
             return true;
         }
@@ -587,6 +594,11 @@ impl Runtime {
                 "ArrayBuffer.prototype.resize: incompatible receiver".into(),
             ));
         };
+        if buf.detached {
+            return Err(RuntimeError::TypeError(
+                "ArrayBuffer.prototype.resize: buffer is detached".into(),
+            ));
+        }
         if new_len > buf.max_byte_length {
             return Err(RuntimeError::RangeError(
                 "ArrayBuffer.prototype.resize: new length exceeds maxByteLength".into(),
@@ -594,6 +606,19 @@ impl Runtime {
         }
         buf.byte_length = new_len;
         buf.data.resize(new_len, Value::Number(0.0));
+        Ok(())
+    }
+
+    pub fn detach_array_buffer(&mut self, id: ObjectRef) -> Result<(), RuntimeError> {
+        let Some(buf) = self.array_buffers.get_mut(&id) else {
+            return Err(RuntimeError::TypeError(
+                "$262.detachArrayBuffer: argument must be an ArrayBuffer".into(),
+            ));
+        };
+        buf.detached = true;
+        buf.byte_length = 0;
+        buf.max_byte_length = 0;
+        buf.data.clear();
         Ok(())
     }
 
@@ -10599,7 +10624,11 @@ impl Runtime {
                 return Value::Number(len as f64);
             }
             if let Some(buf) = self.array_buffers.get(&id) {
-                return Value::Number(buf.byte_length as f64);
+                return Value::Number(if buf.detached {
+                    0.0
+                } else {
+                    buf.byte_length as f64
+                });
             }
         }
         // TAMM-EXT 1: ArrayBuffer.prototype.{maxByteLength, resizable,
@@ -10617,12 +10646,19 @@ impl Runtime {
         //   not implemented, always false.
         if key == "maxByteLength" {
             if let Some(buf) = self.array_buffers.get(&id) {
-                return Value::Number(buf.max_byte_length as f64);
+                return Value::Number(if buf.detached {
+                    0.0
+                } else {
+                    buf.max_byte_length as f64
+                });
             }
         }
         if key == "resizable" {
             if self.array_buffers.contains_key(&id) {
                 let buf = self.array_buffers.get(&id).unwrap();
+                if buf.detached {
+                    return Value::Boolean(false);
+                }
                 return Value::Boolean(
                     buf.max_byte_length > buf.byte_length
                         || self.obj(id).has_own_str("__cruft_was_resizable"),
@@ -10630,8 +10666,8 @@ impl Runtime {
             }
         }
         if key == "detached" {
-            if self.array_buffers.contains_key(&id) {
-                return Value::Boolean(false);
+            if let Some(buf) = self.array_buffers.get(&id) {
+                return Value::Boolean(buf.detached);
             }
         }
         if key == "immutable" {

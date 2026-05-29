@@ -19,6 +19,7 @@ pub mod path;
 pub mod process;
 pub mod register;
 pub mod stream;
+pub mod test262_host;
 pub mod timer;
 pub mod tty;
 pub mod url;
@@ -74,6 +75,7 @@ pub fn install_bun_host(rt: &mut Runtime, argv: Vec<String>) {
         );
     }
     node_stubs::install_all(rt);
+    test262_host::install(rt);
     install_builtin_module_resolver(rt);
     // Tier-Ω.5.t: re-snapshot globalThis so host-v2's added globals
     // (path/os/process/fs/...) become visible on globalThis. install_intrinsics

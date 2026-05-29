@@ -99,3 +99,95 @@ No ledger entry yet. `createRealm` remains deferred inside EPSUA by prior EPSUA-
 ### Status
 
 Awaiting helmsman ack for a follow-up EXT 1 landing plan. Proposed next plan: inspect representative `detachArrayBuffer` and `IsHTMLDDA` exemplars directly, then choose one cheap additive host hook for first substrate.
+
+## 2026-05-28 - H262S-EXT 1 - `$262.detachArrayBuffer` cheap shim
+
+### Directive
+
+Helmsman approved R1 landing for the cheap `$262.detachArrayBuffer` shim only. Scope excludes the broader `$262` host surface, `$262.createRealm`, IsHTMLDDA, agent hooks, and GC hooks.
+
+### Phase 1 - Coordinate
+
+Locale coordinate remains `L.host-262-shim` under EPSUA. The approved move binds the test262 host-hook surface to existing ArrayBuffer/DataView runtime records.
+
+Rule 11 check:
+
+- A1 component-A/B: test262 runner host object to runtime ArrayBuffer storage.
+- A2 op-set: install `$262`, expose `detachArrayBuffer`, mutate ArrayBuffer detached state.
+- A3 value-domain: ArrayBuffer, DataView, typed-array views backed by detached buffers.
+- A4 locals-marshaling: host method argument object reference to runtime object table.
+- A5 emission-shape: host global install plus runtime detached-buffer accessors and guards.
+
+### Phase 2 - Baseline Inspect
+
+Pre-land exemplar probe showed the intended failure cluster:
+
+```
+built-ins/ArrayBuffer/prototype/byteLength/detached-buffer.js: PASS
+built-ins/ArrayBuffer/prototype/detached/detached-buffer.js: FAIL (expected true, got false)
+built-ins/DataView/detached-buffer.js: FAIL (expected TypeError)
+built-ins/DataView/prototype/byteLength/detached-buffer.js: FAIL (expected TypeError)
+harness/detachArrayBuffer.js: PASS
+harness/detachArrayBuffer-host-detachArrayBuffer.js: PASS
+```
+
+Reading: `$262` availability alone was insufficient; the actual missing substrate was a runtime-level detached bit with ArrayBuffer/DataView observer semantics.
+
+### Phase 3 - Pin-Art Probe If Duplicated
+
+The prior EXT 0 partition already discriminated the duplicated `$262 is not defined` rows into hook-specific subclusters. EXT 1 therefore lands only the `detachArrayBuffer` subcluster rather than the whole runner-harness projection.
+
+### Phase 4 - Land
+
+Substrate landed:
+
+- `cruftless/src/test262_host.rs` installs `$262.detachArrayBuffer` only when `T262_TEST_PATH` is present.
+- `cruftless/src/lib.rs` wires the host shim into the Bun host install path before the globalThis refresh.
+- `pilots/rusty-js-runtime/derived/src/interp.rs` adds ArrayBuffer detached state, a `Runtime::detach_array_buffer` operation, typed-array out-of-bounds treatment for detached backing buffers, and detached accessor behavior.
+- `pilots/rusty-js-runtime/derived/src/intrinsics.rs` initializes the detached bit, reports `ArrayBuffer.prototype.detached`, and throws for DataView construction/access over detached buffers.
+
+### Phase 5 - Chapter-Close Inspect
+
+Post-land approved probes:
+
+```
+built-ins/ArrayBuffer/prototype/byteLength/detached-buffer.js: PASS
+built-ins/ArrayBuffer/prototype/detached/detached-buffer.js: PASS
+built-ins/DataView/detached-buffer.js: PASS
+built-ins/DataView/prototype/byteLength/detached-buffer.js: PASS
+harness/detachArrayBuffer.js: PASS
+harness/detachArrayBuffer-host-detachArrayBuffer.js: PASS
+```
+
+Adjacent regression sweep:
+
+```
+built-ins/ArrayBuffer/prototype/byteLength/return-bytelength.js: PASS
+built-ins/ArrayBuffer/prototype/byteLength/this-is-not-object.js: PASS
+built-ins/ArrayBuffer/prototype/detached/invoked-as-accessor.js: PASS
+built-ins/ArrayBuffer/prototype/detached/this-is-not-object.js: PASS
+built-ins/DataView/prototype/byteLength/return-bytelength.js: PASS
+built-ins/DataView/prototype/byteLength/this-is-not-object.js: PASS
+built-ins/DataView/prototype/byteLength/instance-has-detached-buffer.js: PASS
+```
+
+### Gates
+
+```
+cargo check -p cruftless -p rusty-js-runtime
+cargo build --release --bin cruft -p cruftless
+focused test262 host-hook probes listed above
+adjacent ArrayBuffer/DataView regression sweep listed above
+```
+
+### Tag
+
+`detach-arraybuffer-host-shim`
+
+### Finding
+
+**Finding H262S.2**: `detachArrayBuffer` is not a pure host-object availability gap. Even a cheap `$262` hook must terminate in runtime detached-buffer substrate, otherwise DataView and ArrayBuffer observers remain wrong after the host call.
+
+### Status
+
+H262S-EXT 1 complete for the approved detach subcluster. Remaining host-hook rows stay deferred for separate approval.
