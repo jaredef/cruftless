@@ -80,3 +80,56 @@ C4 passes for a coherent Phase 3 substrate move. Recommended move is not another
 - avoid writing `length` for non-Array array-like receivers unless the spec step actually mutates it.
 
 Estimated closure: two substrate rungs. Rung 1 should close the 19-row precise accessor/prototype side-effect bucket plus adjacent sparse deletion rows by replacing dense snapshot/writeback. Rung 2 may be needed for leftover primitive receiver and mixed ToString/comparator edge cases.
+
+## 2026-05-29 - APS-EXT 1 - SortRecord layer and precise bucket closure
+
+### Directive
+
+Helmsman directed R3 to implement the Phase 3 sort-record move proposed by APS-EXT 0: replace dense raw snapshot/writeback in `Runtime::array_proto_sort_via` with accessor-aware collection, present/undefined/absent separation, spec-shaped Set/Delete writeback, and no non-Array array-like length mutation.
+
+### Substrate Move
+
+`array_proto_sort_via` now:
+
+- coerces `this` through the existing Array-method `ToObject` path and captures `len` once;
+- collects only present indices using `has_property_with_proxy` plus `spec_get`, so inherited accessors, proxy `has`/`get`, and getter abrupts are observed during the collection phase;
+- separates present non-`undefined` values from explicit `undefined`, leaving absent holes out of the sortable item list;
+- sorts only present non-`undefined` values through the existing comparator/default string compare path;
+- writes sorted values first, then explicit `undefined`, through `reflect_set_via` so inherited/own setters and proxy `set` traps are visible;
+- deletes trailing absent slots through `reflect_delete_property_via`, avoiding the old materialization of holes as own `undefined` properties;
+- removes the old unconditional `length = len` write, preserving non-Array array-like receivers whose ToLength is zero;
+- adds an Array-only length floor after writeback when setter side effects shrink length below the highest written explicit value, mirroring the length growth an indexed Array `Set` should have performed without restoring non-Array length mutation.
+
+This is the intended APS-EXT 1 layer. It does not attempt the primitive BigInt/Symbol receiver gap.
+
+### Measurement
+
+Build:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+
+Targeted post-EPSUA `Array.prototype.sort` 26-row set:
+
+| Probe | Baseline | APS-EXT 1 |
+|---|---:|---:|
+| All current sort pipeline rows | 0 PASS / 26 FAIL | 25 PASS / 1 FAIL |
+| Precise accessor/prototype bucket | 0 PASS / 19 FAIL | 19 PASS / 0 FAIL |
+| Adjacent sparse deletion (`bug_596_2.js`) | FAIL | PASS |
+| Non-Array negative length (`S15.4.4.11_A4_T3.js`) | FAIL | PASS |
+
+Rule 14 mirror over `built-ins/Array/prototype/sort/*.js`:
+
+| Probe | Baseline `origin/main` | APS-EXT 1 |
+|---|---:|---:|
+| Full sort directory | 28 PASS / 26 FAIL | 49 PASS / 5 FAIL |
+
+No previously passing sort-directory rows regressed in the baseline comparison.
+
+### Residuals
+
+Five sort-directory rows remain after APS-EXT 1:
+
+- `call-with-primitive.js`: BigInt/Symbol primitive receiver `ToObject` behavior; defer to APS-EXT 2 or a generic primitive-wrapper rung.
+- `comparefn-grow.js`, `comparefn-shrink.js`, `comparefn-resizable-buffer.js`, `resizable-buffer-default-comparator.js`: resizable ArrayBuffer / typed-array-adjacent sort behavior outside this Array.prototype.sort precise sparse/accessor rung.
+
+The named 19-row precise bucket and adjacent sparse deletion bucket are closed.

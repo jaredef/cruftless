@@ -6723,6 +6723,7 @@ impl Runtime {
     /// Array.prototype.sort(comparefn) per ECMA §23.1.3.29.
     pub fn array_proto_sort_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let id = crate::prototype::to_array_this(self)?;
+        let target = Value::Object(id);
         let cmp_arg = args.first().cloned();
         let comparator = match cmp_arg {
             None | Some(Value::Undefined) => None,
@@ -6736,9 +6737,21 @@ impl Runtime {
             }
         };
         let len = self.try_array_length(id)?;
-        let mut items: Vec<Value> = (0..len)
-            .map(|i| self.object_get(id, &i.to_string()))
-            .collect();
+
+        let mut items: Vec<Value> = Vec::new();
+        let mut undefined_count = 0usize;
+        for i in 0..len {
+            let key = i.to_string();
+            if self.has_property_with_proxy(id, &key)? {
+                let value = self.spec_get(&target, &key)?;
+                if matches!(value, Value::Undefined) {
+                    undefined_count += 1;
+                } else {
+                    items.push(value);
+                }
+            }
+        }
+
         let mut err: Option<RuntimeError> = None;
         match comparator {
             None => {
@@ -6792,10 +6805,45 @@ impl Runtime {
         if let Some(e) = err {
             return Err(e);
         }
+
+        let sorted_count = items.len();
         for (i, v) in items.into_iter().enumerate() {
-            self.object_set(id, i.to_string(), v);
+            let key = Value::String(std::rc::Rc::new(i.to_string()));
+            let ok = self.reflect_set_via(&target, &key, &v)?;
+            if !crate::abstract_ops::to_boolean(&ok) {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.sort: failed to write sorted element".into(),
+                ));
+            }
         }
-        self.object_set(id, "length".into(), Value::Number(len as f64));
+        for i in sorted_count..(sorted_count + undefined_count) {
+            let key = Value::String(std::rc::Rc::new(i.to_string()));
+            let ok = self.reflect_set_via(&target, &key, &Value::Undefined)?;
+            if !crate::abstract_ops::to_boolean(&ok) {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.sort: failed to write undefined element".into(),
+                ));
+            }
+        }
+        let write_end = sorted_count + undefined_count;
+        if write_end > 0
+            && matches!(
+                self.obj(id).internal_kind,
+                crate::value::InternalKind::Array
+            )
+            && self.try_array_length(id)? < write_end
+        {
+            self.object_set(id, "length".into(), Value::Number(write_end as f64));
+        }
+        for i in (sorted_count + undefined_count)..len {
+            let key = Value::String(std::rc::Rc::new(i.to_string()));
+            let ok = self.reflect_delete_property_via(&target, &key)?;
+            if !crate::abstract_ops::to_boolean(&ok) {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.sort: failed to delete trailing hole".into(),
+                ));
+            }
+        }
         Ok(Value::Object(id))
     }
 
