@@ -214,6 +214,30 @@ Bridge injection wakes the thread; **a wake is not handling**. The agent must fo
 
 The directive `Check sidecar inbox before continuing` in the wake string is the **operationalization** of this standing rule, not a soft suggestion. Treat it as a preemption signal that displaces whatever the agent was about to do until the inbox is drained.
 
+### V.4 Same-turn-imperative continuity (mandatory; per keeper 10320 + 10322)
+
+When a PENDING message contains an explicit imperative — words such as **Proceed**, **Begin**, **Execute**, **Land**, **Continue**, or a numbered execution checklist addressed to the agent's role + instance — treat the imperative as a **same-turn directive**. The agent must:
+
+1. Carry out the imperative within the current turn, not yield control after observation or after merely acking.
+2. Do not yield until the imperative is completed (for substrate landings: substrate edit + gates + trajectory entry + commit + proposal+decision + push + archive + landing-summary CAACP response).
+3. If a hard blocker prevents completion in-turn (build error, gate failure, missing dependency, ambiguous scope), send a CAACP response naming the specific blocker BEFORE yielding; do not yield silently.
+4. "I read AGENTS.md and registered the bridge, no new work arc was specified" is not a valid yield reason when an approval message naming explicit substrate scope is present in the inbox — the approval message IS the work arc.
+
+**Failure mode this rule prevents** (per keeper 10320): the agent wakes, polls inbox, observes an approval message, acks, then yields back to "await next directive" — when the approval message itself was the next directive. Observation is not action; ack is not action; action is action.
+
+### V.5 Helmsman approval-as-fresh-outbound discipline (mandatory; per keeper 10322)
+
+When the helmsman approves a substrate-resolver landing plan (or any cybernetic-flow communication that requires the recipient to wake-and-act on it):
+
+- The approval body MUST be sent as a **new outbound message** (intent=response, related_to=<plan-message-id>), not as the body of an ack on the plan message.
+- Acks transition state on the original message and appear on the sender's outbox surface, but **they do not arrive as new inbox arrivals on the recipient's side** because sidecars poll `/local/inbox` (which surfaces messages addressed TO the role), not outbox-ack-changes (which surfaces only on the original sender's view).
+- Acks remain appropriate for state-machine transitions that do not require recipient action (RESOLVED on a notification, ACKNOWLEDGED on a response that confirms a prior request closed). Substantive direction always rides a fresh outbound message.
+- Per-instance targeting: shared-role inbox semantics mean ALL substrate-resolver instances see messages addressed to `recipient=substrate-resolver`. Per-instance targeting is **body-level only** via an explicit `instance_id=<id>` header in the body; non-target instances self-bounce as misdelivered-to-<role>.
+
+**Failure mode this rule prevents** (per keeper 10322 round): helmsman acks substrate-resolver plan with APPROVED + landing checklist in ack body. Substrate-resolver polls own inbox, finds no new PENDING approval, waits. The approval is invisible cross-machine because the ack-body lives on the plan-message's outbox surface, not the resolver's inbox.
+
+**Deferred apparatus enhancement**: sidecar polling could be extended to surface outbox-ack-changes when ack bodies carry substantive content (length threshold or explicit `surface_to_recipient=true` flag). Tracked as Stage-C deferral; until landed, the helmsman discipline above is the workaround.
+
 ## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.

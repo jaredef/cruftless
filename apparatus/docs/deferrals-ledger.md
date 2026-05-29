@@ -133,3 +133,13 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Un-defer condition**: a probe-rung in this engagement lands a minimal `Result`-threading scaffold (either (i) or (ii) above) that closes one BigInt-TA cell without regressing TAMM. Once the scaffold exists, the remaining ~9 cells become a multi-rung close within this candidate's founded locale.
 - **Lattice-meet**: Entry 001 (`bigint-arithmetic-wrongness`) — the ToBigInt branch is shared substrate. When both un-defer, they may either share the locale or pair-enroll as siblings under a "bigint-coercion-substrate" arc per orphan-disposition Pattern III.2.
 - **Status**: DEFERRED.
+
+### Entry 011 — `sidecar-outbox-ack-surfacing` (2026-05-29)
+
+- **Candidate name**: `sidecar-outbox-ack-surfacing` (proposed apparatus-pilot enhancement to `apparatus/caacp-server/`).
+- **Originating rung**: Helmsman 2026-05-29 EPSUA arc Phase-2 quartet round, surfaced via R1 message 52badab1 reporting "no APPROVED H262S-EXT 1 landing message is pending for this instance" after helmsman delivered approval as ack-body on R1's plan-message (892c195f). Cross-machine ack-propagation gap confirmed.
+- **Class**: cybernetic-protocol enhancement (CAACP sidecar). Below substrate-locale tier; targets `apparatus/caacp-server/server.ts` polling loop.
+- **Gating predicate**: any future cybernetic round surfaces a second instance of recipient-invisible substantive-direction-in-ack-body, OR more than two helmsman/arbiter sessions per week incur the workaround tax of authoring approvals as fresh outbound messages.
+- **Un-defer condition**: extend sidecar polling to surface outbox-ack-changes when ack bodies meet a substantive-content threshold (proposed signal: `surface_to_recipient=true` flag in the ack payload OR ack body length ≥ N characters with intent-bearing keywords). Implementation lands new `data/inbound-acks-<role>[-<instance>].json` channel + extends `/local/inbox` to merge ack-surfaced content. Until landed: helmsman discipline §V.5 (approval-as-fresh-outbound) is the workaround.
+- **Workaround in force**: agent-init-protocol §V.5 (added 2026-05-29). All substantive cybernetic direction rides fresh outbound messages with intent=response, related_to=<plan>.
+- **Status**: DEFERRED.
