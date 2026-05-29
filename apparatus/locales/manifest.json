@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless-r4/pilots",
   "totals": {
-    "locales": 225,
-    "top_level": 138,
+    "locales": 226,
+    "top_level": 139,
     "nested": 87,
     "warnings": 0
   },
@@ -222,7 +222,7 @@
       "parent": null,
       "scope": "assignment-to-constant-variable-loader",
       "depth": 1,
-      "rung_count": 2,
+      "rung_count": 3,
       "status": null
     },
     {
@@ -312,7 +312,7 @@
       "parent": null,
       "scope": "class-inheritance-tdz-parser-tail",
       "depth": 1,
-      "rung_count": 4,
+      "rung_count": 7,
       "status": "**SPAWNED / PHASE-2 COMPLETE**. Phase 0 scaffold exists. Phase 2 segmentation was completed from the inline resend data in `helmsman/request/class-tdz-tail-inline-resend-r4`; no runtime/parser substrate has landed from this locale."
     },
     {
@@ -1880,6 +1880,15 @@
       "depth": 1,
       "rung_count": 10,
       "status": null
+    },
+    {
+      "coord": "top500-fast-residual-survey",
+      "tag": "L.top500-fast-residual-survey",
+      "parent": null,
+      "scope": "top500-fast-residual-survey",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "FOUNDED at Round 13b. Measurement + clustering only; no substrate edit in this locale."
     },
     {
       "coord": "ts-resolve",
