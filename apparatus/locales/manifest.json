@@ -222,7 +222,7 @@
       "parent": null,
       "scope": "assignment-to-constant-variable-loader",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -312,7 +312,7 @@
       "parent": null,
       "scope": "class-inheritance-tdz-parser-tail",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": "**SPAWNED / PHASE-2 COMPLETE**. Phase 0 scaffold exists. Phase 2 segmentation was completed from the inline resend data in `helmsman/request/class-tdz-tail-inline-resend-r4`; no runtime/parser substrate has landed from this locale."
     },
     {

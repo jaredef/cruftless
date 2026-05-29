@@ -198,3 +198,59 @@ The two clusters both surface as `ReferenceError`, but they are different sentin
 - **C**oordinate: class/super constructor lowering is bytecode/runtime class binding; TDZ is module/function/block lexical declaration initialization. Parser coordinate is empty for the inline source.
 - **C**onstraint: no substrate land in this locale. Phase 3 must preserve prior IR TDZ closures and avoid collapsing class-this TDZ with ordinary lexical TDZ.
 - **C**losure: two Phase-3 rungs, measured independently against the named top500 cells plus existing TDZ/class probes. Parser rung deferred.
+
+## CITPT-EXT 2 — native super-constructor binding closure (2026-05-29)
+
+Directive: `helmsman/request/citpt-ext-1-super-constructor-binding-r4`.
+
+Phase-3 target: the super-constructor/class-inheritance sub-cluster from CITPT-EXT 1 (`got`, `commander`, `cheerio`, `@actions/http-client`, `got-fetch`, `webpack-cli`, `ngrok`, `discord.js`).
+
+**Structural diagnosis**
+
+The compiler-side class-this TDZ substrate was already present:
+
+- derived constructors emit `SetThisTDZ`;
+- `super(...)` lowers through `PushThisRaw` plus `PropagateNewTarget`;
+- `SetThis` binds the derived frame after the parent constructor returns an object.
+
+The missing case was the native-constructor branch in `Runtime::call_function_inner`. User closures invoked as constructors normalize `undefined` body completion to the active constructor `this`; native `InternalKind::Function` calls returned the native callback result verbatim. When a native parent constructor returned `undefined`, the derived `super(...)` sequence received `Undefined`, `SetThis` ignored it, and the frame kept the class-this TDZ sentinel. The next `this` read, or implicit derived-constructor return, threw:
+
+```text
+Must call super constructor in derived class before accessing 'this' or returning from derived constructor
+```
+
+**Closure**
+
+Normalize native constructor calls at the call-function boundary:
+
+- if `new.target` is present and the native callback returns an object, preserve that object;
+- if `new.target` is present and the native callback returns a primitive/`undefined`, return the active constructor receiver (`current_this`) so `super(...)` can bind it;
+- if `new.target` is absent, preserve plain-call behavior.
+
+This keeps the closure at the runtime call boundary rather than adding special cases to `compile_super_call` or `SetThis`.
+
+**Regression**
+
+Added `classes::t17_native_super_constructor_binds_this`:
+
+```js
+class B extends EventTarget {
+  constructor() {
+    super();
+    this.ok = 1;
+  }
+}
+return new B().ok;
+```
+
+The regression exercises the same native-parent-constructor shape as the package cluster while remaining independent of the package sandbox.
+
+**Measurements**
+
+- `cargo test -p rusty-js-runtime t17_native_super_constructor_binds_this --release` — PASS.
+- `cargo build --release --bin cruft -p cruftless` — PASS.
+- `cargo test -p rusty-js-runtime --lib --release` — PASS (66 passed, 1 ignored).
+- Fresh npm sandbox at `/home/jaredef/Developer/cruftless-sidecar/results/citpt-ext-1-super-constructor-sandbox`, current `target/release/cruft`, dynamic import probe over the eight inline cells:
+  - PASS: `got`, `commander`, `@actions/http-client`, `got-fetch`, `webpack-cli`, `ngrok` (`6/8`).
+  - residual non-super failures: `cheerio` -> `MessagePort is not defined`; `discord.js` -> `Assignment to constant variable 'd'`.
+  - super-constructor TDZ error cleared across all eight probed cells (`0/8` still show the target error).
