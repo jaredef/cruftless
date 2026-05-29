@@ -16161,9 +16161,14 @@ impl Runtime {
             let saved_nt =
                 std::mem::replace(&mut self.current_new_target, nt_for_this_call.clone());
             let result = native(self, &effective_args);
+            let construct_this = self.current_this.clone();
             self.current_this = saved;
             self.current_new_target = saved_nt;
-            return result;
+            return match (nt_for_this_call.is_some(), result?) {
+                (true, Value::Object(id)) => Ok(Value::Object(id)),
+                (true, _) => Ok(construct_this),
+                (false, value) => Ok(value),
+            };
         }
         let proto = proto_opt.expect("closure branch implies proto");
         let is_generator = proto.is_generator;
