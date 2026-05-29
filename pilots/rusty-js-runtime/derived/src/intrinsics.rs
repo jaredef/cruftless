@@ -18252,38 +18252,8 @@ impl Runtime {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
-            let start = args
-                .first()
-                .and_then(|v| {
-                    if let Value::Number(n) = v {
-                        Some(*n as i64)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
-            let end = args
-                .get(1)
-                .and_then(|v| {
-                    if let Value::Number(n) = v {
-                        Some(*n as i64)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(len as i64);
-            let start = (if start < 0 {
-                (len as i64 + start).max(0)
-            } else {
-                start
-            })
-            .min(len as i64) as usize;
-            let end = (if end < 0 {
-                (len as i64 + end).max(0)
-            } else {
-                end
-            })
-            .min(len as i64) as usize;
+            let start = typed_array_integer_index(rt, args.first(), len as i64, 0)? as usize;
+            let end = typed_array_integer_index(rt, args.get(1), len as i64, len as i64)? as usize;
             let slice_len = end.saturating_sub(start);
             let kind = match rt.object_get(this_id, "__kind") {
                 Value::String(s) => (*s).clone(),
@@ -18337,16 +18307,11 @@ impl Runtime {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            let offset = args
-                .get(1)
-                .and_then(|v| {
-                    if let Value::Number(n) = v {
-                        Some(*n as usize)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0);
+            let len = match rt.object_get(this_id, "length") {
+                Value::Number(n) => n as i64,
+                _ => 0,
+            };
+            let offset = typed_array_integer_index(rt, args.get(1), len, 0)? as usize;
             let src_len = match rt.object_get(src, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18364,7 +18329,9 @@ impl Runtime {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
-            for i in 0..len {
+            let start = typed_array_integer_index(rt, args.get(1), len as i64, 0)? as usize;
+            let end = typed_array_integer_index(rt, args.get(2), len as i64, len as i64)? as usize;
+            for i in start..end {
                 rt.object_set(this_id, i.to_string(), v.clone());
             }
             Ok(Value::Object(this_id))
@@ -18555,6 +18522,9 @@ impl Runtime {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
+            if len == 0 {
+                return Ok(Value::Number(-1.0));
+            }
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
@@ -18564,25 +18534,15 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "includes", |rt, args| {
-            // TAMM-EXT 8: ValidateTypedArray per §23.2.3.{14,16,17,…}.
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "includes: this must be a TypedArray".into(),
-                    ))
-                }
-            };
-            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError(
-                    "includes: this is not a TypedArray".into(),
-                ));
-            }
+            let this_id = validate_typed_array_this(rt, "includes")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
+            if len == 0 {
+                return Ok(Value::Boolean(false));
+            }
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
@@ -18593,10 +18553,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "forEach", |rt, args| {
             let this_id = validate_typed_array_this(rt, "forEach")?;
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("forEach: callback required".into()))?;
+            let cb = typed_array_callable_arg(rt, args.first(), "forEach")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18654,10 +18611,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "findIndex", |rt, args| {
             let this_id = validate_typed_array_this(rt, "findIndex")?;
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("findIndex: callback required".into()))?;
+            let cb = typed_array_callable_arg(rt, args.first(), "findIndex")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18677,10 +18631,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "every", |rt, args| {
             let this_id = validate_typed_array_this(rt, "every")?;
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("every: callback required".into()))?;
+            let cb = typed_array_callable_arg(rt, args.first(), "every")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18700,10 +18651,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "some", |rt, args| {
             let this_id = validate_typed_array_this(rt, "some")?;
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("some: callback required".into()))?;
+            let cb = typed_array_callable_arg(rt, args.first(), "some")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18755,14 +18703,7 @@ impl Runtime {
         // __kind sentinel (non-enumerable per P58.E1).
         register_method(self, ta_proto, "map", |rt, args| {
             let this_id = validate_typed_array_this(rt, "TypedArray.prototype.map")?;
-            let f = match args.first() {
-                Some(v @ Value::Object(_)) => v.clone(),
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.map: callback must be a function".into(),
-                    ))
-                }
-            };
+            let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.map")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18781,14 +18722,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "filter", |rt, args| {
             let this_id = validate_typed_array_this(rt, "TypedArray.prototype.filter")?;
-            let f = match args.first() {
-                Some(v @ Value::Object(_)) => v.clone(),
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.filter: callback must be a function".into(),
-                    ))
-                }
-            };
+            let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.filter")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18814,14 +18748,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "reduce", |rt, args| {
             let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduce")?;
-            let f = match args.first() {
-                Some(v @ Value::Object(_)) => v.clone(),
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.reduce: callback must be a function".into(),
-                    ))
-                }
-            };
+            let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduce")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18849,14 +18776,8 @@ impl Runtime {
         });
         register_method(self, ta_proto, "reduceRight", |rt, args| {
             let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduceRight")?;
-            let f = match args.first() {
-                Some(v @ Value::Object(_)) => v.clone(),
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.reduceRight: callback must be a function".into(),
-                    ))
-                }
-            };
+            let f =
+                typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduceRight")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18943,35 +18864,14 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "copyWithin", |rt, args| {
-            // TAMM-EXT 8: ValidateTypedArray + index args run through
-            // ToIntegerOrInfinity per §23.2.3.6, which must throw on Symbol.
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "copyWithin: this must be a TypedArray".into(),
-                    ))
-                }
-            };
-            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError(
-                    "copyWithin: this is not a TypedArray".into(),
-                ));
-            }
+            let this_id = validate_typed_array_this(rt, "copyWithin")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as i64,
                 _ => 0,
             };
-            let to_idx = |rt: &mut Runtime, v: Value, default: i64| -> Result<i64, RuntimeError> {
-                if matches!(v, Value::Undefined) {
-                    return Ok(default);
-                }
-                let n = rt.coerce_to_number(&v)? as i64;
-                Ok(if n < 0 { (len + n).max(0) } else { n.min(len) })
-            };
-            let target = to_idx(rt, args.first().cloned().unwrap_or(Value::Undefined), 0)?;
-            let start = to_idx(rt, args.get(1).cloned().unwrap_or(Value::Undefined), 0)?;
-            let end = to_idx(rt, args.get(2).cloned().unwrap_or(Value::Undefined), len)?;
+            let target = typed_array_integer_index(rt, args.first(), len, 0)?;
+            let start = typed_array_integer_index(rt, args.get(1), len, 0)?;
+            let end = typed_array_integer_index(rt, args.get(2), len, len)?;
             let count = (end - start).min(len - target).max(0);
             // Buffer the slice first to avoid in-place aliasing.
             let mut buf = Vec::with_capacity(count as usize);
@@ -18985,10 +18885,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "findLast", |rt, args| {
             let this_id = validate_typed_array_this(rt, "findLast")?;
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("findLast: callback required".into()))?;
+            let cb = typed_array_callable_arg(rt, args.first(), "findLast")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -19007,28 +18904,8 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "findLastIndex", |rt, args| {
-            // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.13.
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "findLastIndex: this must be a TypedArray".into(),
-                    ))
-                }
-            };
-            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError(
-                    "findLastIndex: this is not a TypedArray".into(),
-                ));
-            }
-            let cb = args.first().cloned().ok_or_else(|| {
-                RuntimeError::TypeError("findLastIndex: callback required".into())
-            })?;
-            if !rt.is_callable(&cb) {
-                return Err(RuntimeError::TypeError(
-                    "findLastIndex: predicate is not callable".into(),
-                ));
-            }
+            let this_id = validate_typed_array_this(rt, "findLastIndex")?;
+            let cb = typed_array_callable_arg(rt, args.first(), "findLastIndex")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -19068,6 +18945,11 @@ impl Runtime {
             // a stub; fine for typed-array test262 surface which uses
             // short arrays).
             if !matches!(cmp, Value::Undefined) {
+                if !rt.is_callable(&cmp) {
+                    return Err(RuntimeError::TypeError(
+                        "sort: comparefn must be callable".into(),
+                    ));
+                }
                 for i in 1..items.len() {
                     let mut j = i;
                     while j > 0 {
@@ -19186,6 +19068,11 @@ impl Runtime {
                 .collect();
             let cmp = args.first().cloned().unwrap_or(Value::Undefined);
             if !matches!(cmp, Value::Undefined) {
+                if !rt.is_callable(&cmp) {
+                    return Err(RuntimeError::TypeError(
+                        "toSorted: comparefn must be callable".into(),
+                    ));
+                }
                 for i in 1..items.len() {
                     let mut j = i;
                     while j > 0 {
@@ -21455,6 +21342,42 @@ fn validate_typed_array_this(
         )));
     }
     Ok(this_id)
+}
+
+fn typed_array_callable_arg(
+    rt: &Runtime,
+    arg: Option<&Value>,
+    method_name: &str,
+) -> Result<Value, RuntimeError> {
+    let cb = arg
+        .cloned()
+        .ok_or_else(|| RuntimeError::TypeError(format!("{method_name}: callback required")))?;
+    if !rt.is_callable(&cb) {
+        return Err(RuntimeError::TypeError(format!(
+            "{method_name}: callback must be callable"
+        )));
+    }
+    Ok(cb)
+}
+
+fn typed_array_integer_index(
+    rt: &mut Runtime,
+    arg: Option<&Value>,
+    len: i64,
+    default: i64,
+) -> Result<i64, RuntimeError> {
+    let Some(v) = arg else {
+        return Ok(default.clamp(0, len.max(0)));
+    };
+    if matches!(v, Value::Undefined) {
+        return Ok(default.clamp(0, len.max(0)));
+    }
+    let n = rt.coerce_to_number(v)? as i64;
+    Ok(if n < 0 {
+        (len + n).max(0)
+    } else {
+        n.min(len.max(0))
+    })
 }
 
 fn num_arg(args: &[Value], i: usize) -> f64 {
