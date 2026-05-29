@@ -6,6 +6,7 @@ decided_at: 2026-05-29T16:05:35Z
 covers_commits:
   - 9f1b35ecacdb916243c8457a1b1da897886c932e
   - 6c0995a9c0bca944534580de84fb4f4a038f6a58
+  - 1b98efa8f18a6871a5c2dbec4535d629e3030db0
 ---
 
 ## Findings
@@ -20,3 +21,4 @@ Verified closure claims:
 - Wider-directory residuals are limited to the explicitly out-of-scope cross-realm and Proxy/Reflect edge rows.
 
 The proposal covers both local resolver commits that must pass the pre-push hook.
+It also covers `1b98efa8f18a6871a5c2dbec4535d629e3030db0`, a post-rebase verification/manifest metadata correction that records the fresh artifact path and restores the canonical manifest root string.
