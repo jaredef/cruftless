@@ -2235,13 +2235,9 @@ impl Compiler {
                         (s, None, false, Some(target.clone()))
                     }
                 };
-                // IR-EXT 24 (TDZ candidate A.iii — for-of head): the
-                // for-head let/const bound names are in TDZ during
-                // evaluation of the iterable expression per §13.7.5.5.
-                // Emit PushTDZ + StoreLocal for every head let/const slot
-                // allocated above so `let x = 1; for (let x in { x }) {}`
-                // throws ReferenceError when the inner `x` shorthand
-                // resolves to the head-binding (still in TDZ).
+                // IR-EXT 25: for-of head slots are TDZ-seeded before the
+                // iterable expression runs, then legitimately initialized by
+                // the binding write once iteration begins.
                 for i in scope_snapshot..self.locals.len() {
                     let nm = self.locals[i].name.clone();
                     let kind = self.locals[i].kind;
@@ -2250,7 +2246,7 @@ impl Compiler {
                     }
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
                         encode_op(&mut self.bytecode, Op::PushTDZ);
-                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_op(&mut self.bytecode, Op::InitLocal);
                         encode_u16(&mut self.bytecode, i as u16);
                     }
                 }
@@ -3006,7 +3002,7 @@ impl Compiler {
                     }
                     if matches!(kind, VariableKind::Let | VariableKind::Const) {
                         encode_op(&mut self.bytecode, Op::PushTDZ);
-                        encode_op(&mut self.bytecode, Op::StoreLocal);
+                        encode_op(&mut self.bytecode, Op::InitLocal);
                         encode_u16(&mut self.bytecode, i as u16);
                     }
                 }
