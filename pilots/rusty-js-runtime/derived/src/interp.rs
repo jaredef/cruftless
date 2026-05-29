@@ -3397,6 +3397,106 @@ impl Runtime {
         Ok(true)
     }
 
+    fn array_set_length_define_property_via(
+        &mut self,
+        target: ObjectRef,
+        desc_id: ObjectRef,
+    ) -> Result<Value, RuntimeError> {
+        if self.has_property(desc_id, "configurable")
+            && crate::abstract_ops::to_boolean(&self.read_property(desc_id, "configurable")?)
+        {
+            return Err(RuntimeError::TypeError(
+                "Array length: configurable is false".into(),
+            ));
+        }
+        if self.has_property(desc_id, "enumerable")
+            && crate::abstract_ops::to_boolean(&self.read_property(desc_id, "enumerable")?)
+        {
+            return Err(RuntimeError::TypeError(
+                "Array length: enumerable is false".into(),
+            ));
+        }
+        if self.has_property(desc_id, "get") || self.has_property(desc_id, "set") {
+            return Err(RuntimeError::TypeError(
+                "Array length cannot be accessor".into(),
+            ));
+        }
+
+        let old_len = self.try_array_length(target)?;
+        let cur_writable = self
+            .obj(target)
+            .get_own("length")
+            .map(|d| d.writable)
+            .unwrap_or(true);
+        let requested_writable = if self.has_property(desc_id, "writable") {
+            Some(crate::abstract_ops::to_boolean(
+                &self.read_property(desc_id, "writable")?,
+            ))
+        } else {
+            None
+        };
+
+        if !self.has_property(desc_id, "value") {
+            if let Some(new_writable) = requested_writable {
+                if !cur_writable && new_writable {
+                    return Err(RuntimeError::TypeError(
+                        "Cannot promote Array length to writable".into(),
+                    ));
+                }
+                self.array_length_set_internal_via(
+                    &Value::Object(target),
+                    &Value::Number(old_len as f64),
+                    &Value::Boolean(new_writable),
+                )?;
+            }
+            return Ok(Value::Object(target));
+        }
+
+        let raw_value = self.read_property(desc_id, "value")?;
+        let new_len_v = self.to_uint32_strict_via(&raw_value)?;
+        let new_len = match new_len_v {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if !cur_writable && new_len != old_len {
+            return Err(RuntimeError::TypeError(
+                "Cannot change non-writable Array length".into(),
+            ));
+        }
+
+        let new_writable = requested_writable.unwrap_or(cur_writable);
+        if new_len < old_len {
+            let mut idx = old_len;
+            while idx > new_len {
+                idx -= 1;
+                let key = idx.to_string();
+                let configurable = self
+                    .obj(target)
+                    .get_own(&key)
+                    .map(|d| d.configurable)
+                    .unwrap_or(true);
+                if !configurable {
+                    self.array_length_set_internal_via(
+                        &Value::Object(target),
+                        &Value::Number((idx + 1) as f64),
+                        &Value::Boolean(cur_writable),
+                    )?;
+                    return Err(RuntimeError::TypeError(
+                        "Cannot truncate Array: non-configurable element".into(),
+                    ));
+                }
+                self.obj_mut(target).remove_str(&key);
+            }
+        }
+
+        self.array_length_set_internal_via(
+            &Value::Object(target),
+            &Value::Number(new_len as f64),
+            &Value::Boolean(new_writable),
+        )?;
+        Ok(Value::Object(target))
+    }
+
     pub fn object_define_property_via(
         &mut self,
         target_v: &Value,
@@ -3458,11 +3558,7 @@ impl Runtime {
                 crate::value::InternalKind::Array
             )
         {
-            return crate::generated::array_set_length(
-                self,
-                Value::Undefined,
-                &[Value::Object(target), Value::Object(desc_id)],
-            );
+            return self.array_set_length_define_property_via(target, desc_id);
         }
         // §6.2.5.5 ToPropertyDescriptor: HasProperty + Get dispatch through
         // the prototype chain (test262 15.2.3.6-3-129 et al. inherit descriptor
@@ -3583,20 +3679,6 @@ impl Runtime {
                     )));
                 }
 
-                if let Some(value) = desc.value.clone() {
-                    let mapped_cell = {
-                        let o = self.obj(target);
-                        if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
-                            parameter_map.get(&key).cloned()
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some(cell) = mapped_cell {
-                        *cell.borrow_mut() = value;
-                    }
-                }
-
                 if !self.validate_and_apply_property_descriptor(target, key_pk.clone(), desc)? {
                     return Err(RuntimeError::TypeError(format!(
                         "Cannot define property '{}'",
@@ -3614,27 +3696,33 @@ impl Runtime {
             }
         }
 
-        if let Some(value) = desc.value.clone() {
-            if let crate::value::PropertyKey::String(s) = &key_pk {
-                let mapped_cell = {
-                    let o = self.obj(target);
-                    if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
-                        parameter_map.get(s).cloned()
-                    } else {
-                        None
-                    }
-                };
-                if let Some(cell) = mapped_cell {
-                    *cell.borrow_mut() = value;
-                }
-            }
-        }
-
-        if !self.validate_and_apply_property_descriptor(target, key_pk.clone(), desc)? {
+        if !self.validate_and_apply_property_descriptor(target, key_pk.clone(), desc.clone())? {
             return Err(RuntimeError::TypeError(format!(
                 "Cannot define property '{}'",
                 key
             )));
+        }
+        if let crate::value::PropertyKey::String(s) = &key_pk {
+            let mapped_cell = {
+                let o = self.obj(target);
+                if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
+                    parameter_map.get(s).cloned()
+                } else {
+                    None
+                }
+            };
+            if let Some(cell) = mapped_cell {
+                if let Some(value) = desc.value.clone() {
+                    *cell.borrow_mut() = value;
+                }
+                if desc.is_accessor_descriptor() || desc.writable == Some(false) {
+                    if let InternalKind::MappedArguments { parameter_map } =
+                        &mut self.obj_mut(target).internal_kind
+                    {
+                        parameter_map.shift_remove(s);
+                    }
+                }
+            }
         }
         Ok(Value::Object(target))
     }
@@ -11197,11 +11285,7 @@ impl Runtime {
                         setter: None,
                     },
                 );
-                let _ = crate::generated::array_set_length(
-                    self,
-                    Value::Undefined,
-                    &[Value::Object(id), Value::Object(desc_id)],
-                );
+                let _ = self.array_set_length_define_property_via(id, desc_id);
                 return;
             }
         }
@@ -11209,7 +11293,8 @@ impl Runtime {
             crate::value::PropertyKey::String(s) => {
                 if s.starts_with("__") {
                     self.obj_mut(id).migrate_to_dictionary();
-                } else if self.obj(id).shape.is_some() {
+                } else if self.obj(id).shape.as_ref().and_then(|shape| shape.slot_of(s)).is_some()
+                {
                     self.obj_mut(id).set_own(s.clone(), value);
                     return;
                 }
@@ -11224,6 +11309,22 @@ impl Runtime {
             }
             d.value = value;
             return;
+        }
+        let mut proto = self.obj(id).proto;
+        while let Some(cur) = proto {
+            let o = self.obj(cur);
+            if let Some(d) = o.properties.get(&key) {
+                if d.getter.is_none() && d.setter.is_none() && !d.writable {
+                    return;
+                }
+                break;
+            }
+            if let crate::value::PropertyKey::String(s) = &key {
+                if o.shape.as_ref().and_then(|shape| shape.slot_of(s)).is_some() {
+                    break;
+                }
+            }
+            proto = o.proto;
         }
         self.obj_mut(id).dict_mut().insert(
             key,
@@ -11698,6 +11799,9 @@ impl Runtime {
             return Ok(Value::Undefined);
         }
         let mut frame = Frame::new_module(m);
+        if !m.strict {
+            frame.this_value = self.global_get("globalThis");
+        }
         self.run_frame(&mut frame)
     }
 
@@ -12024,6 +12128,20 @@ impl Runtime {
                             )));
                         }
                     }
+                    if frame.eval_var_env_is_global
+                        || (frame.upvalue_names.is_empty()
+                            && frame.param_count == 0
+                            && !frame.is_arrow
+                            && frame.source_url.is_empty())
+                    {
+                        if let Some(desc) = frame.locals_names.get(slot) {
+                            if desc.depth == 0
+                                && matches!(desc.kind, rusty_js_ast::VariableKind::Var)
+                            {
+                                self.define_global_property(&desc.name, v.clone());
+                            }
+                        }
+                    }
                     frame.write_local(slot, v);
                 }
                 Op::InitLocal => {
@@ -12034,6 +12152,20 @@ impl Runtime {
                     let slot = decode_u16(&frame.bytecode, frame.pc) as usize;
                     frame.pc += 2;
                     let v = frame.pop()?;
+                    if frame.eval_var_env_is_global
+                        || (frame.upvalue_names.is_empty()
+                            && frame.param_count == 0
+                            && !frame.is_arrow
+                            && frame.source_url.is_empty())
+                    {
+                        if let Some(desc) = frame.locals_names.get(slot) {
+                            if desc.depth == 0
+                                && matches!(desc.kind, rusty_js_ast::VariableKind::Var)
+                            {
+                                self.define_global_property(&desc.name, v.clone());
+                            }
+                        }
+                    }
                     frame.write_local(slot, v);
                 }
                 Op::ResetLocalCell => {
@@ -12217,7 +12349,11 @@ impl Runtime {
                         let gt = self
                             .global_object
                             .expect("global_object eager-allocated in Runtime::new");
-                        self.object_set(gt, name, v);
+                        if self.obj(gt).has_own_str(&name) {
+                            self.object_set(gt, name, v);
+                        } else {
+                            self.define_global_property(&name, v);
+                        }
                     }
                 }
                 Op::LoadUpvalue => {
@@ -13369,7 +13505,15 @@ impl Runtime {
                                     self.apply_proxy_delete_invariant(target, &key, trap_deleted)?;
                                     trap_deleted
                                 } else {
-                                    self.obj_mut(target).remove_str(&key).is_some()
+                                    let removed = self.obj_mut(target).remove_str(&key).is_some();
+                                    if removed {
+                                        if let InternalKind::MappedArguments { parameter_map } =
+                                            &mut self.obj_mut(target).internal_kind
+                                        {
+                                            parameter_map.shift_remove(&key);
+                                        }
+                                    }
+                                    removed
                                 }
                             } else {
                                 // ODP-EXT 1: Array exotic .length is
@@ -13421,7 +13565,17 @@ impl Runtime {
                                         }
                                         false
                                     } else {
-                                        self.obj_mut(id).remove_str(&key).is_some()
+                                        let removed =
+                                            self.obj_mut(id).remove_str(&key).is_some();
+                                        if removed {
+                                            if let InternalKind::MappedArguments {
+                                                parameter_map,
+                                            } = &mut self.obj_mut(id).internal_kind
+                                            {
+                                                parameter_map.shift_remove(&key);
+                                            }
+                                        }
+                                        removed
                                     }
                                 } else {
                                     true
@@ -13465,10 +13619,21 @@ impl Runtime {
                                     self.apply_proxy_delete_invariant(target, &key, trap_deleted)?;
                                     trap_deleted
                                 } else {
-                                    self.obj_mut(target)
+                                    let removed = self
+                                        .obj_mut(target)
                                         .dict_mut()
                                         .shift_remove(&key_pk)
-                                        .is_some()
+                                        .is_some();
+                                    if removed {
+                                        if let (
+                                            crate::value::PropertyKey::String(s),
+                                            InternalKind::MappedArguments { parameter_map },
+                                        ) = (&key_pk, &mut self.obj_mut(target).internal_kind)
+                                        {
+                                            parameter_map.shift_remove(s);
+                                        }
+                                    }
+                                    removed
                                 }
                             } else {
                                 // Ω.5.P62.E10: §10.1.10 non-configurable guard.
@@ -13490,7 +13655,21 @@ impl Runtime {
                                         }
                                         false
                                     } else {
-                                        self.obj_mut(id).dict_mut().shift_remove(&key_pk).is_some()
+                                        let removed = self
+                                            .obj_mut(id)
+                                            .dict_mut()
+                                            .shift_remove(&key_pk)
+                                            .is_some();
+                                        if removed {
+                                            if let (
+                                                crate::value::PropertyKey::String(s),
+                                                InternalKind::MappedArguments { parameter_map },
+                                            ) = (&key_pk, &mut self.obj_mut(id).internal_kind)
+                                            {
+                                                parameter_map.shift_remove(s);
+                                            }
+                                        }
+                                        removed
                                     }
                                 } else if let crate::value::PropertyKey::Symbol(sym) = &key_pk {
                                     // Well-known-symbol transition: built-ins
@@ -14896,11 +15075,11 @@ impl Runtime {
         let stash_key = format!("__eval_out_{}", n);
         let expr_source = format!("{} = ({});", stash_key, source);
         let global_this = self.global_get("globalThis");
-        let saved_this = std::mem::replace(&mut self.current_this, global_this);
+        let saved_this = std::mem::replace(&mut self.current_this, global_this.clone());
         self.pending_direct_eval_super_context = direct_eval_super_context.clone();
         let expr_ok = self.evaluate_script(&expr_source, &url).is_ok();
+        self.current_this = saved_this;
         if expr_ok {
-            self.current_this = saved_this;
             let result = self.global_get(&stash_key);
             if let Some(gt) = self.global_object {
                 self.obj_mut(gt).remove_str(&stash_key);
@@ -14910,6 +15089,7 @@ impl Runtime {
 
         let stmt_url = format!("file://<eval:{}:stmt>", n);
         self.pending_direct_eval_super_context = direct_eval_super_context;
+        let saved_this = std::mem::replace(&mut self.current_this, global_this);
         let result = self.evaluate_script(&source, &stmt_url);
         self.current_this = saved_this;
         match result {
