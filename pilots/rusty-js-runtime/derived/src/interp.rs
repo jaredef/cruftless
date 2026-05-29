@@ -64,6 +64,30 @@ pub enum RuntimeError {
     Thrown(Value),
 }
 
+#[derive(Debug, Clone)]
+struct OdpDescriptor {
+    value: Option<Value>,
+    writable: Option<bool>,
+    enumerable: Option<bool>,
+    configurable: Option<bool>,
+    getter: Option<Value>,
+    setter: Option<Value>,
+}
+
+impl OdpDescriptor {
+    fn is_accessor_descriptor(&self) -> bool {
+        self.getter.is_some() || self.setter.is_some()
+    }
+
+    fn is_data_descriptor(&self) -> bool {
+        self.value.is_some() || self.writable.is_some()
+    }
+
+    fn is_generic_descriptor(&self) -> bool {
+        !self.is_accessor_descriptor() && !self.is_data_descriptor()
+    }
+}
+
 pub struct Runtime {
     /// Ω.5.P04.E2.jit-runtime-dispatch: per-FunctionProto JIT cache.
     /// Key is the FunctionProto's Rc pointer cast to usize; value is
@@ -3049,6 +3073,167 @@ impl Runtime {
     /// ToPropertyDescriptor: validates the desc object, throws TypeError on
     /// non-callable get/set or mixed data+accessor, honors generic-data
     /// preservation of existing [[Value]], enforces non-configurable redef.
+    fn get_own_property_descriptor_pk(
+        &self,
+        target: ObjectRef,
+        key: &crate::value::PropertyKey,
+    ) -> Option<crate::value::PropertyDescriptor> {
+        match key {
+            crate::value::PropertyKey::String(s) => {
+                self.obj(target).get_own(s).cloned().or_else(|| {
+                    if self.obj(target).has_own_str(s) {
+                        Some(crate::value::PropertyDescriptor {
+                            value: self.object_get(target, s),
+                            writable: true,
+                            enumerable: true,
+                            configurable: true,
+                            getter: None,
+                            setter: None,
+                        })
+                    } else {
+                        None
+                    }
+                })
+            }
+            crate::value::PropertyKey::Symbol(rc) => self
+                .obj(target)
+                .properties
+                .get(&crate::value::PropertyKey::Symbol(rc.clone()))
+                .cloned(),
+        }
+    }
+
+    fn validate_and_apply_property_descriptor(
+        &mut self,
+        target: ObjectRef,
+        key: crate::value::PropertyKey,
+        desc: OdpDescriptor,
+    ) -> Result<bool, RuntimeError> {
+        let current = self.get_own_property_descriptor_pk(target, &key);
+        if current.is_none() {
+            if !self.obj(target).extensible {
+                return Ok(false);
+            }
+            let new_desc = if desc.is_accessor_descriptor() {
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: desc.enumerable.unwrap_or(false),
+                    configurable: desc.configurable.unwrap_or(false),
+                    getter: desc.getter,
+                    setter: desc.setter,
+                }
+            } else {
+                crate::value::PropertyDescriptor {
+                    value: desc.value.unwrap_or(Value::Undefined),
+                    writable: desc.writable.unwrap_or(false),
+                    enumerable: desc.enumerable.unwrap_or(false),
+                    configurable: desc.configurable.unwrap_or(false),
+                    getter: None,
+                    setter: None,
+                }
+            };
+            self.obj_mut(target).dict_mut().insert(key, new_desc);
+            return Ok(true);
+        }
+
+        let current = current.unwrap();
+        let current_is_accessor = current.getter.is_some() || current.setter.is_some();
+        let desc_is_accessor = desc.is_accessor_descriptor();
+        let desc_is_data = desc.is_data_descriptor();
+
+        if !current.configurable {
+            if desc.configurable == Some(true) {
+                return Ok(false);
+            }
+            if let Some(enumerable) = desc.enumerable {
+                if enumerable != current.enumerable {
+                    return Ok(false);
+                }
+            }
+            if !desc.is_generic_descriptor() {
+                if desc_is_accessor != current_is_accessor {
+                    return Ok(false);
+                }
+                if !current_is_accessor && desc_is_data {
+                    if !current.writable {
+                        if desc.writable == Some(true) {
+                            return Ok(false);
+                        }
+                        if let Some(value) = &desc.value {
+                            if !crate::abstract_ops::same_value(value, &current.value) {
+                                return Ok(false);
+                            }
+                        }
+                    }
+                } else if current_is_accessor && desc_is_accessor {
+                    if let Some(getter) = &desc.getter {
+                        let same_getter = match (&current.getter, getter) {
+                            (None, Value::Undefined) => true,
+                            (Some(a), b) => crate::abstract_ops::same_value(a, b),
+                            _ => false,
+                        };
+                        if !same_getter {
+                            return Ok(false);
+                        }
+                    }
+                    if let Some(setter) = &desc.setter {
+                        let same_setter = match (&current.setter, setter) {
+                            (None, Value::Undefined) => true,
+                            (Some(a), b) => crate::abstract_ops::same_value(a, b),
+                            _ => false,
+                        };
+                        if !same_setter {
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_desc = if current_is_accessor {
+            if desc_is_data {
+                crate::value::PropertyDescriptor {
+                    value: desc.value.unwrap_or(Value::Undefined),
+                    writable: desc.writable.unwrap_or(false),
+                    enumerable: desc.enumerable.unwrap_or(current.enumerable),
+                    configurable: desc.configurable.unwrap_or(current.configurable),
+                    getter: None,
+                    setter: None,
+                }
+            } else {
+                crate::value::PropertyDescriptor {
+                    value: Value::Undefined,
+                    writable: false,
+                    enumerable: desc.enumerable.unwrap_or(current.enumerable),
+                    configurable: desc.configurable.unwrap_or(current.configurable),
+                    getter: desc.getter.or(current.getter),
+                    setter: desc.setter.or(current.setter),
+                }
+            }
+        } else if desc_is_accessor {
+            crate::value::PropertyDescriptor {
+                value: Value::Undefined,
+                writable: false,
+                enumerable: desc.enumerable.unwrap_or(current.enumerable),
+                configurable: desc.configurable.unwrap_or(current.configurable),
+                getter: desc.getter,
+                setter: desc.setter,
+            }
+        } else {
+            crate::value::PropertyDescriptor {
+                value: desc.value.unwrap_or(current.value),
+                writable: desc.writable.unwrap_or(current.writable),
+                enumerable: desc.enumerable.unwrap_or(current.enumerable),
+                configurable: desc.configurable.unwrap_or(current.configurable),
+                getter: None,
+                setter: None,
+            }
+        };
+        self.obj_mut(target).dict_mut().insert(key, new_desc);
+        Ok(true)
+    }
+
     pub fn object_define_property_via(
         &mut self,
         target_v: &Value,
@@ -3098,14 +3283,6 @@ impl Runtime {
                 ))
             }
         };
-        // §10.1.6.3 step 2: if target is not extensible and the property
-        // does not already exist, throw TypeError.
-        if !self.obj(target).has_own_str(&key) && !self.obj(target).extensible {
-            return Err(RuntimeError::TypeError(format!(
-                "Cannot add property '{}': object is not extensible",
-                key
-            )));
-        }
         // §10.4.2.1 ArraySetLength for Array exotic length redefinition.
         // IR-EXT 66: lifted into an IR section per keeper's higher-resolution-IR
         // conjecture. The intricate spec algorithm (RangeError + TypeError
@@ -3149,8 +3326,6 @@ impl Runtime {
                 "Invalid property descriptor: setter must be callable".into(),
             ));
         }
-        let has_getter = matches!(&getter, Value::Object(_));
-        let has_setter = matches!(&setter, Value::Object(_));
         let has_value_key =
             self.has_property(desc_id, "value") || self.has_property(desc_id, "writable");
         let has_accessor_key = has_get_key || has_set_key;
@@ -3158,9 +3333,18 @@ impl Runtime {
             return Err(RuntimeError::TypeError(
                 "Invalid property descriptor: cannot both specify accessors and a value or writable attribute".into()));
         }
-        // Accessor branch — has get and/or set in descriptor, possibly with
-        // enumerable/configurable. §10.1.6.3 ValidateAndApply enforcement
-        // applies symmetrically to data and accessor properties.
+        let read_bool_via = |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
+            if !rt.has_property(desc_id, name) {
+                return Ok(None);
+            }
+            let v = rt.read_property(desc_id, name)?;
+            Ok(Some(crate::abstract_ops::to_boolean(&v)))
+        };
+        let has_value = self.has_property(desc_id, "value");
+        let writable = read_bool_via(self, "writable")?;
+        let enumerable = read_bool_via(self, "enumerable")?;
+        let configurable = read_bool_via(self, "configurable")?;
+
         if has_get_key || has_set_key {
             if self.typed_array_views.contains_key(&target)
                 && Self::canonical_array_index_key(&key).is_some()
@@ -3169,321 +3353,70 @@ impl Runtime {
                     "Cannot define accessor property on TypedArray index".into(),
                 ));
             }
-            let read_bool_via =
-                |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
-                    if !rt.has_property(desc_id, name) {
-                        return Ok(None);
-                    }
-                    let v = rt.read_property(desc_id, name)?;
-                    Ok(Some(crate::abstract_ops::to_boolean(&v)))
-                };
-            let enumerable = read_bool_via(self, "enumerable")?;
-            let configurable = read_bool_via(self, "configurable")?;
-            let exists = self.obj(target).has_own_str(&key);
-            let (default_e, default_c, existing_getter, existing_setter, existing_is_accessor) =
-                if exists {
-                    let d = self.obj(target).get_own(&key).unwrap();
-                    let is_acc = d.getter.is_some() || d.setter.is_some();
-                    (
-                        d.enumerable,
-                        d.configurable,
-                        d.getter.clone(),
-                        d.setter.clone(),
-                        is_acc,
-                    )
-                } else {
-                    (false, false, None, None, false)
-                };
-            let new_e = enumerable.unwrap_or(default_e);
-            let new_c = configurable.unwrap_or(default_c);
-            // §10.1.6.3 step 4: when existing is non-configurable.
-            if exists && !default_c {
-                // 4.a: configurable change disallowed.
-                if configurable == Some(true) {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable property '{}': configurable would change",
-                        key
-                    )));
-                }
-                // 4.b: enumerable change disallowed.
-                if enumerable.is_some() && new_e != default_e {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable property '{}': enumerable would change",
-                        key
-                    )));
-                }
-                // 4.c-d: data ⇄ accessor conversion disallowed.
-                if !existing_is_accessor {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable data property '{}' as accessor",
-                        key
-                    )));
-                }
-                // 4.e: replacing existing get/set with a different one disallowed.
-                if has_get_key {
-                    let same = match (&existing_getter, &getter) {
-                        (None, Value::Undefined) => true,
-                        (Some(Value::Object(a)), Value::Object(b)) => a == b,
-                        _ => false,
-                    };
-                    if !same {
-                        return Err(RuntimeError::TypeError(format!(
-                            "Cannot redefine non-configurable accessor '{}': [[Get]] would change",
-                            key
-                        )));
-                    }
-                }
-                if has_set_key {
-                    let same = match (&existing_setter, &setter) {
-                        (None, Value::Undefined) => true,
-                        (Some(Value::Object(a)), Value::Object(b)) => a == b,
-                        _ => false,
-                    };
-                    if !same {
-                        return Err(RuntimeError::TypeError(format!(
-                            "Cannot redefine non-configurable accessor '{}': [[Set]] would change",
-                            key
-                        )));
-                    }
-                }
-            }
-            // GOPD-EXT 1: Option<Value> on PropertyDescriptor now carries
-            // the spec discriminator "is field present in the descriptor":
-            // Some(Value::Undefined) means "accessor with explicit undefined
-            // getter/setter field" (per ECMA-262 §6.2.5 IsAccessorDescriptor);
-            // None means "field absent" (data descriptor). Pre-fix conflated
-            // Some(callable) with "is accessor"; lost the explicit-undefined
-            // case so Object.getOwnPropertyDescriptor returned data-shape.
-            let final_getter = if has_get_key {
-                Some(getter)
-            } else {
-                existing_getter
-            };
-            let final_setter = if has_set_key {
-                Some(setter)
-            } else {
-                existing_setter
-            };
-            let _ = has_getter;
-            let _ = has_setter;
-            self.obj_mut(target).dict_mut().insert(
-                key_pk.clone(),
-                crate::value::PropertyDescriptor {
-                    value: Value::Undefined,
-                    writable: false,
-                    enumerable: new_e,
-                    configurable: new_c,
-                    getter: final_getter,
-                    setter: final_setter,
-                },
-            );
-        } else {
-            let has_value = self.has_property(desc_id, "value");
-            let has_writable = self.has_property(desc_id, "writable");
-            // §6.2.5.6 generic descriptor: when Desc has none of
-            // value/writable/get/set, the operation preserves the
-            // existing property's type (data or accessor) and only
-            // updates enumerable/configurable. Without this, redefining
-            // an accessor with `{enumerable: true}` would silently
-            // replace it with an undefined data property.
-            let is_generic = !has_value && !has_writable;
-            // §6.2.5.5 attribute reads use ToBoolean per abstract_ops.
-            let read_bool_via =
-                |rt: &mut Runtime, name: &str| -> Result<Option<bool>, RuntimeError> {
-                    if !rt.has_property(desc_id, name) {
-                        return Ok(None);
-                    }
-                    let v = rt.read_property(desc_id, name)?;
-                    Ok(Some(crate::abstract_ops::to_boolean(&v)))
-                };
-            let writable = read_bool_via(self, "writable")?;
-            let enumerable = read_bool_via(self, "enumerable")?;
-            let configurable = read_bool_via(self, "configurable")?;
-            // TAWR-EXT 2: §10.4.5.3 [[DefineOwnProperty]] for
-            // IntegerIndexedExotic. Per spec, when key is a canonical-
-            // numeric-index string (CanonicalNumericIndexString returns
-            // not-undefined), return false (not throw) for:
-            //   (3.b.i) IsInteger(numericIndex) false  (e.g. "NaN", "1.5")
-            //   (3.b.iii) numericIndex === -0
-            //   (3.b.iv) numericIndex < 0 or >= length
-            //   (3.b.v) the descriptor's writable/enumerable/configurable
-            //          attribute disagrees with the IntegerIndexedExotic
-            //          fixed shape (writable:true, enumerable:true,
-            //          configurable:true since ES2023)
-            // Successful set: store value, return true.
-            if self.typed_array_views.contains_key(&target) {
-                if let Some(numeric_class) = Self::classify_numeric_index_key(&key) {
-                    match numeric_class {
-                        NumericIndexClass::ValidArrayIndex(idx) => {
-                            let len = self.typed_array_view_len(target).unwrap_or(0);
-                            if idx >= len {
-                                return Ok(Value::Boolean(false));
-                            }
-                            // §10.4.5.3 step 3.b.v attribute checks
-                            if configurable == Some(false)
-                                || enumerable == Some(false)
-                                || writable == Some(false)
-                            {
-                                return Ok(Value::Boolean(false));
-                            }
-                            let value = if has_value {
-                                self.read_property(desc_id, "value")?
-                            } else {
-                                self.typed_array_get_index(target, idx)
-                                    .unwrap_or(Value::Undefined)
-                            };
-                            self.typed_array_set_index(target, idx, value);
-                            return Ok(Value::Boolean(true));
-                        }
-                        NumericIndexClass::InvalidNumericIndex => {
+        } else if self.typed_array_views.contains_key(&target) {
+            if let Some(numeric_class) = Self::classify_numeric_index_key(&key) {
+                match numeric_class {
+                    NumericIndexClass::ValidArrayIndex(idx) => {
+                        let len = self.typed_array_view_len(target).unwrap_or(0);
+                        if idx >= len {
                             return Ok(Value::Boolean(false));
                         }
+                        if configurable == Some(false)
+                            || enumerable == Some(false)
+                            || writable == Some(false)
+                        {
+                            return Ok(Value::Boolean(false));
+                        }
+                        let value = if has_value {
+                            self.read_property(desc_id, "value")?
+                        } else {
+                            self.typed_array_get_index(target, idx)
+                                .unwrap_or(Value::Undefined)
+                        };
+                        self.typed_array_set_index(target, idx, value);
+                        return Ok(Value::Boolean(true));
+                    }
+                    NumericIndexClass::InvalidNumericIndex => {
+                        return Ok(Value::Boolean(false));
                     }
                 }
             }
-            if is_generic {
-                let existed = self.obj(target).has_own_str(&key);
-                if existed {
-                    let prev = self.obj(target).get_own(&key).cloned().unwrap_or_else(|| {
-                        crate::value::PropertyDescriptor {
-                            value: self.object_get(target, &key),
-                            writable: true,
-                            enumerable: true,
-                            configurable: true,
-                            getter: None,
-                            setter: None,
-                        }
-                    });
-                    let new_e = enumerable.unwrap_or(prev.enumerable);
-                    let new_c = configurable.unwrap_or(prev.configurable);
-                    // §10.1.6.3 non-configurable invariants for generic
-                    // descriptor: only enumerable/configurable can change,
-                    // and only in the legal direction.
-                    if !prev.configurable {
-                        if configurable == Some(true) {
-                            return Err(RuntimeError::TypeError(format!(
-                                "Cannot redefine non-configurable property '{}': configurable would change", key)));
-                        }
-                        if enumerable.is_some() && new_e != prev.enumerable {
-                            return Err(RuntimeError::TypeError(format!(
-                                "Cannot redefine non-configurable property '{}': enumerable would change", key)));
-                        }
-                    }
-                    self.obj_mut(target).dict_mut().insert(
-                        key_pk.clone(),
-                        crate::value::PropertyDescriptor {
-                            value: prev.value,
-                            writable: prev.writable,
-                            enumerable: new_e,
-                            configurable: new_c,
-                            getter: prev.getter,
-                            setter: prev.setter,
-                        },
-                    );
-                    return Ok(Value::Object(target));
-                }
-                // No existing property: install a data property with
-                // value=undefined and absent flags defaulting to false.
-                self.obj_mut(target).dict_mut().insert(
-                    key_pk.clone(),
-                    crate::value::PropertyDescriptor {
-                        value: Value::Undefined,
-                        writable: false,
-                        enumerable: enumerable.unwrap_or(false),
-                        configurable: configurable.unwrap_or(false),
-                        getter: None,
-                        setter: None,
-                    },
-                );
-                return Ok(Value::Object(target));
-            }
-            let value = if has_value {
-                self.read_property(desc_id, "value")?
+        }
+
+        let desc = OdpDescriptor {
+            value: if has_value {
+                Some(self.read_property(desc_id, "value")?)
             } else {
-                match self.obj(target).get_own(&key) {
-                    Some(d) => d.value.clone(),
-                    None => Value::Undefined,
-                }
-            };
-            let exists = self.obj(target).has_own_str(&key);
-            let (default_w, default_e, default_c, existing_value, existing_is_accessor) = if exists
-            {
-                let d = self.obj(target).get_own(&key).unwrap();
-                let is_acc = d.getter.is_some() || d.setter.is_some();
-                (
-                    d.writable,
-                    d.enumerable,
-                    d.configurable,
-                    d.value.clone(),
-                    is_acc,
-                )
-            } else {
-                (false, false, false, Value::Undefined, false)
-            };
-            let new_w = writable.unwrap_or(default_w);
-            let new_e = enumerable.unwrap_or(default_e);
-            let new_c = configurable.unwrap_or(default_c);
-            if exists && !default_c {
-                // §10.1.6.3 step 4.a: configurable promotion disallowed.
-                if configurable == Some(true) {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable property '{}': configurable would change",
-                        key
-                    )));
-                }
-                // §10.1.6.3 step 4.b: enumerable change disallowed.
-                if enumerable.is_some() && new_e != default_e {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable property '{}': enumerable would change",
-                        key
-                    )));
-                }
-                // §10.1.6.3 step 4.c-d: accessor → data conversion disallowed.
-                if existing_is_accessor {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable accessor '{}' as data property",
-                        key
-                    )));
-                }
-                // Data → data: writable promotion (false → true) and value
-                // change while non-writable are forbidden.
-                if default_w == false && new_w == true {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable non-writable property '{}': writable would change", key)));
-                }
-                let value_changed =
-                    has_value && !crate::abstract_ops::is_strictly_equal(&value, &existing_value);
-                if value_changed && !default_w {
-                    return Err(RuntimeError::TypeError(format!(
-                        "Cannot redefine non-configurable non-writable property '{}'",
-                        key
-                    )));
-                }
-            }
-            if has_value {
+                None
+            },
+            writable,
+            enumerable,
+            configurable,
+            getter: if has_get_key { Some(getter) } else { None },
+            setter: if has_set_key { Some(setter) } else { None },
+        };
+
+        if let Some(value) = desc.value.clone() {
+            if let crate::value::PropertyKey::String(s) = &key_pk {
                 let mapped_cell = {
                     let o = self.obj(target);
                     if let InternalKind::MappedArguments { parameter_map } = &o.internal_kind {
-                        parameter_map.get(&key).cloned()
+                        parameter_map.get(s).cloned()
                     } else {
                         None
                     }
                 };
                 if let Some(cell) = mapped_cell {
-                    *cell.borrow_mut() = value.clone();
+                    *cell.borrow_mut() = value;
                 }
             }
-            self.obj_mut(target).dict_mut().insert(
-                key_pk.clone(),
-                crate::value::PropertyDescriptor {
-                    value,
-                    writable: new_w,
-                    enumerable: new_e,
-                    configurable: new_c,
-                    getter: None,
-                    setter: None,
-                },
-            );
+        }
+
+        if !self.validate_and_apply_property_descriptor(target, key_pk.clone(), desc)? {
+            return Err(RuntimeError::TypeError(format!(
+                "Cannot define property '{}'",
+                key
+            )));
         }
         Ok(Value::Object(target))
     }
@@ -3699,7 +3632,18 @@ impl Runtime {
                 _ => return Ok(Value::Undefined),
             },
         };
-        let key = self.coerce_to_string(key_v)?;
+        let coerced_key = match key_v {
+            Value::Object(_) => {
+                let prim = self.to_primitive(key_v, "string")?;
+                match prim {
+                    Value::Symbol(_) => prim,
+                    _ => Value::String(crate::abstract_ops::to_string(&prim)),
+                }
+            }
+            other => other.clone(),
+        };
+        let key_pk = crate::interp::property_key(&coerced_key);
+        let key = key_pk.as_str().to_string();
         // §10.4.2 Array exotic: length is always an own property. Most
         // arrays synthesize it lazily as writable:true, but frozen template
         // arrays install an explicit descriptor before Object.freeze flips
@@ -3758,7 +3702,7 @@ impl Runtime {
             if let Some(v) = o.shape_get(&key) {
                 (true, v.clone(), true, true, true, None, None)
             } else {
-                match o.get_own(&key) {
+                match o.properties.get(&key_pk) {
                     Some(d) => (
                         true,
                         d.value.clone(),
@@ -13546,7 +13490,7 @@ impl Runtime {
                             }
                         } else {
                             if frame.strict {
-                                if let Some(d) = self.obj(*id).get_own(&key) {
+                                if let Some(d) = self.obj(*id).properties.get(&key_pk) {
                                     if !d.writable && d.getter.is_none() && d.setter.is_none() {
                                         return Err(RuntimeError::TypeError(format!(
                                             "Attempted to assign to readonly property '{}'",

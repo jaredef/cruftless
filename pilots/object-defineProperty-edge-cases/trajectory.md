@@ -138,3 +138,87 @@ Read-only probe plus locale spawn; no runtime substrate gate required. Locale ma
 ### Finding
 
 **Finding ODP.1**: The Object.defineProperty cluster is not primarily an availability gap. The actionable substrate center is a property-key-aware `ValidateAndApplyPropertyDescriptor` / define-own-property closure. Array exotic length/index, arguments mapping, and prototype shadowing are follow-up specializations of the same internal-method boundary.
+
+## ODP-EXT 1 - property-key-aware ValidateAndApply helper (2026-05-29)
+
+**Status**: LANDED. Phase-3 rung 1, approved by Helmsman CAACP `odp-ext-1-validate-and-apply-r4`.
+
+### Move
+
+`pilots/rusty-js-runtime/derived/src/interp.rs::object_define_property_via` now routes ordinary own-property descriptor lookup and storage through a `PropertyKey`-aware `ValidateAndApplyPropertyDescriptor` helper. The helper implements the §10.1.6.3 center for ordinary data/accessor descriptors:
+
+- absent target property plus non-extensible target returns false to the Object.defineProperty throw path;
+- configurable and enumerable changes are rejected for non-configurable properties;
+- data/accessor conversion is rejected for non-configurable properties;
+- non-configurable non-writable data properties use `SameValue` for value changes and reject writable promotion;
+- accessor getter/setter updates preserve field presence, including explicit `undefined`.
+
+The rung also makes `Object.getOwnPropertyDescriptor` use `ToPropertyKey` so Symbol-keyed properties defined by Object.defineProperty reflect through the same `PropertyKey` bucket. Computed strict writes now check Symbol-keyed non-writable data descriptors before routing to `object_set_pk`, closing the strict Symbol exemplar without adding a broader assignment substrate.
+
+Out-of-scope residuals from ODP-EXT 0 remain out of scope here: array exotic length/index, arguments mapped parameters, prototype-shadow own creation, typed-array/resizable, and Reflect.defineProperty boolean-return alignment.
+
+### Gates
+
+Build:
+
+```
+cargo build --release --bin cruft -p cruftless
+PASS
+```
+
+Targeted exemplars:
+
+```
+15.2.3.6-4-217.js                                  PASS
+15.2.3.6-4-218.js                                  PASS
+15.2.3.6-4-254.js                                  PASS
+15.2.3.6-4-257.js                                  PASS
+symbol-data-property-configurable.js               PASS
+symbol-data-property-default-non-strict.js         PASS
+symbol-data-property-default-strict.js             PASS
+symbol-data-property-writable.js                   PASS
+```
+
+43-row descriptor-shape/property-semantics bucket selected from `test262-full-2026-05-28-123833-p2/interpreted.jsonl`:
+
+```
+expected=43
+outputs=42
+PASS=26
+FAIL=16
+NO_JSON_OUTPUT_OR_PANIC=1
+```
+
+The 43 rows were matrix-classified failures at ODP-EXT 0, so this is a +26 PASS gain against the descriptor-shape bucket.
+
+Full 54-row `surface == "Object.defineProperty"` sweep:
+
+```
+expected=54
+outputs=53
+PASS=33
+FAIL=20
+NO_JSON_OUTPUT_OR_PANIC=1
+```
+
+ODP-EXT 0 current rerun baseline for the same 54 surface was `PASS=4 / FAIL=37 / NO_JSON_OUTPUT_OR_PANIC=13`; ODP-EXT 1 therefore raises the focused surface by +29 PASS and removes 12 no-output/panic rows.
+
+### Residuals
+
+Remaining descriptor-bucket failures match the ODP-EXT 0 roadmap:
+
+- array exotic length/index boundary and value application: `4-184`, `4-185`, `4-186`, `4-193`, `4-275`;
+- arguments mapped-parameter defineProperty behavior: `4-289-1`, `4-301-1`;
+- arguments/index descriptor writability rows: `4-292-1`, `4-293-2`, `4-293-3`, `4-294-1`, `4-295-1`, `4-296-1`;
+- prototype-chain own shadow creation: `4-410`, `4-415`, `4-625gs`;
+- one remaining no-output row: `4-116`.
+
+Full-surface residuals additionally include ODP-EXT 2 array non-writable length throws (`4-188`, `4-189`, `coerced-P-shrink`) and ODP-EXT 4 typed-array/resizable behavior.
+
+### Tag
+
+`validate-and-apply-property-key`
+
+### Finding
+
+**Finding ODP.2**: Symbol-key correctness required both write-side and reflection-side property-key discipline. Fixing only `Object.defineProperty` storage left `Object.getOwnPropertyDescriptor(obj, sym)` invisible and strict computed writes to non-writable Symbol data properties silent; the coherent substrate boundary is `ToPropertyKey` through define, reflect, and computed strict-write enforcement.
