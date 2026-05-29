@@ -193,7 +193,13 @@ Same operator-started discipline + same `**CAACP NEW**` directive format + same 
 ### Directive format (both bridges)
 
 ```
-**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
+**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>.
+
+Run to CAACP quiescence before yielding:
+1. Poll the sidecar inbox for this exact role/instance and read every PENDING message.
+2. For each PENDING message, either perform the requested same-turn work and ack/respond RESOLVED, or send a response naming the concrete blocker.
+3. Poll the inbox again after the last ack/response; if new PENDING messages appeared, repeat step 2.
+4. Only final when the inbox has no actionable PENDING messages, required bridge/process state is verified, and your final answer includes message IDs / ack IDs / process IDs or the blocker evidence.
 ```
 
 ### V.3 On-wake standing instruction (mandatory; per watcher's 10298 reflection)
@@ -208,11 +214,11 @@ Bridge injection wakes the thread; **a wake is not handling**. The agent must fo
    - `response` intent: if it closes a prior outbound request, file the resolution + ack RESOLVED.
    - `broadcast` intent: integrate the announcement into working context; no ack required.
    - `veto-pending` intent: escalate to keeper immediately.
-4. **Resume prior work** only after step 3 completes for every PENDING message in the inbox.
+4. **Re-poll after the last ack/response**. If any PENDING messages remain or new PENDING messages appeared while you were acting, repeat steps 1-3. Resume prior work only after the inbox has no actionable PENDING messages.
 
 **Failure mode this rule prevents** (per watcher 10298): wake fires, the agent's turn starts, but the agent gets distracted by the keeper's next directive or its own in-flight micro-step and never inspects the CAACP inbox. The standing rule moves "poll-and-act" to the agent's #1 priority on every wake.
 
-The directive `Check sidecar inbox before continuing` in the wake string is the **operationalization** of this standing rule, not a soft suggestion. Treat it as a preemption signal that displaces whatever the agent was about to do until the inbox is drained.
+The bridge's `Run to CAACP quiescence before yielding` block is the **operationalization** of this standing rule, not a soft suggestion. Treat it as a preemption signal that displaces whatever the agent was about to do until the inbox is drained, every same-turn request has either resolved or reported a concrete blocker, and the final answer carries the message/ack/process evidence.
 
 ### V.4 Same-turn-imperative continuity (mandatory; per keeper 10320 + 10322)
 

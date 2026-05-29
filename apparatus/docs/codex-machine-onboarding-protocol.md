@@ -133,10 +133,16 @@ What it does:
 - Injects a real user turn into the target thread on new-PENDING:
 
 ```text
-**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
+**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>.
+
+Run to CAACP quiescence before yielding:
+1. Poll the sidecar inbox for this exact role/instance and read every PENDING message.
+2. For each PENDING message, either perform the requested same-turn work and ack/respond RESOLVED, or send a response naming the concrete blocker.
+3. Poll the inbox again after the last ack/response; if new PENDING messages appeared, repeat step 2.
+4. Only final when the inbox has no actionable PENDING messages, required bridge/process state is verified, and your final answer includes message IDs / ack IDs / process IDs or the blocker evidence.
 ```
 
-The receiving agent treats that prefix as a directive to check its CAACP inbox before continuing.
+The receiving agent treats that prefix as a directive to run the CAACP inbox to quiescence before continuing.
 
 **Stop-continue wake primitive** (per watcher's 2026-05-29 design + keeper Telegrams 10446/10449): when the bridge has injected a directive but the Codex thread enters `idle` or `notLoaded` status (per `thread/read`'s `thread.status`) before the directive is RESOLVED, the bridge re-injects a CONTINUE turn:
 
@@ -178,7 +184,7 @@ Expected:
 
 ### Standing instruction on wake (mandatory)
 
-Per `apparatus/docs/agent-init-protocol.md` §V.3 (added per watcher's 10298 reflection): wake is not handling. When a `**CAACP NEW** ...` turn arrives via this bridge, the Codex agent's standing rule is: (1) immediately poll the inbox via `curl /local/inbox?role=<my-role>[&instance_id=<my-instance>]`; (2) summarize each PENDING message; (3) ack or respond per the intent + policy in §V.3; (4) only then resume prior work. The `Check sidecar inbox before continuing` text in the wake string is the operationalization of this rule — preemption, not suggestion.
+Per `apparatus/docs/agent-init-protocol.md` §V.3 (added per watcher's 10298 reflection): wake is not handling. When a `**CAACP NEW** ...` turn arrives via this bridge, the Codex agent's standing rule is: (1) immediately poll the inbox via `curl /local/inbox?role=<my-role>[&instance_id=<my-instance>]`; (2) summarize each PENDING message; (3) ack or respond per the intent + policy in §V.3; (4) re-poll after the last ack/response and repeat until there are no actionable PENDING messages; (5) only then resume prior work or final. The `Run to CAACP quiescence before yielding` text in the wake string is the operationalization of this rule — preemption, not suggestion.
 
 If the agent's session is interrupted by a keeper directive between wake-arrival and inbox-poll, the inbox-poll still takes priority and runs before the keeper directive's substantive work. (Acknowledge the keeper's directive context separately; do not let the new keeper input displace the standing on-wake duty.)
 

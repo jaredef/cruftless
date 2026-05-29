@@ -15,10 +15,11 @@
 #   - Maintains a seen-cache at apparatus/caacp-server/data/bridge-
 #     <role>-seen.json so each message_id triggers exactly one
 #     injection.
-#   - Injects a SHORT directive ("**CAACP NEW** role=X count=N
-#     latest=<sender>/<intent>/<slug>. Check sidecar inbox before
-#     continuing.") — NOT the full body. The agent reads the inbox
-#     itself.
+#   - Injects a directive headed by "**CAACP NEW** role=X count=N
+#     latest=<sender>/<intent>/<slug>" plus a quiescence contract —
+#     NOT the full body. The agent reads the inbox itself, resolves
+#     or explicitly blocks every PENDING message, then re-polls before
+#     yielding.
 #   - Verifies the tmux target exists before entering the loop; logs
 #     failures to apparatus/caacp-server/data/bridge-<role>.log.
 #   - Operator-started ONLY. Not auto-invoked from any other repo
@@ -131,7 +132,13 @@ while true; do
     LATEST_MID="${NEW_IDS[-1]}"
     LATEST="$(echo "$RESP" | jq -r --arg id "$LATEST_MID" '.messages[] | select(.message_id==$id) | "\(.sender)/\(.intent)/\(.slug)"')"
     COUNT="$(echo "$MSG_IDS" | wc -l | tr -d ' ')"
-    DIRECTIVE="**CAACP NEW** role=${ROLE} count=${COUNT} latest=${LATEST}. Check sidecar inbox before continuing."
+    DIRECTIVE="**CAACP NEW** role=${ROLE} count=${COUNT} latest=${LATEST}.
+
+Run to CAACP quiescence before yielding:
+1. Poll the sidecar inbox for this exact role/instance and read every PENDING message.
+2. For each PENDING message, either perform the requested same-turn work and ack/respond RESOLVED, or send a response naming the concrete blocker.
+3. Poll the inbox again after the last ack/response; if new PENDING messages appeared, repeat step 2.
+4. Only final when the inbox has no actionable PENDING messages, required bridge/process state is verified, and your final answer includes message IDs / ack IDs / process IDs or the blocker evidence."
 
     # Inject via tmux send-keys. Append Enter so the prompt is submitted.
     tmux send-keys -t "$TARGET" -- "$DIRECTIVE" Enter
