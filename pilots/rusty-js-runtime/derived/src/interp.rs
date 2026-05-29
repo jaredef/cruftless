@@ -333,6 +333,7 @@ pub struct Runtime {
     /// stack correctly.
     pub gen_yields_stack: Vec<rusty_js_gc::ObjectId>,
     pub gen_async_stack: Vec<bool>,
+    pub active_generator_for_yield: Option<ObjectRef>,
     /// Tier-Ω.5.P23.E1.live-import-bindings: per-source-URL registry of
     /// import-bindings whose source module was still Linking at evaluate-
     /// time. When the source module's evaluation completes, the registry
@@ -692,6 +693,7 @@ impl Runtime {
             async_generator_function_prototype: None,
             gen_yields_stack: Vec::new(),
             gen_async_stack: Vec::new(),
+            active_generator_for_yield: None,
             pending_live_bindings: HashMap::new(),
             fd_table: HashMap::new(),
             next_fd: 3,
@@ -742,8 +744,24 @@ impl Runtime {
         obj.proto = self.generator_prototype;
         obj.internal_kind = crate::value::InternalKind::Generator(crate::value::GeneratorObject {
             state: crate::value::GeneratorState::SuspendedStart,
+            continuation: None,
+            yielded_value: None,
         });
         self.alloc_object(obj)
+    }
+
+    pub fn with_active_generator_for_yield<F, T>(
+        &mut self,
+        generator: ObjectRef,
+        f: F,
+    ) -> Result<T, RuntimeError>
+    where
+        F: FnOnce(&mut Self) -> Result<T, RuntimeError>,
+    {
+        let prior = self.active_generator_for_yield.replace(generator);
+        let result = f(self);
+        self.active_generator_for_yield = prior;
+        result
     }
 
     pub fn generator_next_scaffold(
@@ -13484,6 +13502,36 @@ impl Runtime {
                         };
                     frame.push(result);
                 }
+                Op::Yield => {
+                    let yielded = frame.pop()?;
+                    if let Some(generator) = self.active_generator_for_yield {
+                        frame.push(Value::Undefined);
+                        let snapshot = FrameSnapshot::from_frame(frame, None);
+                        match &mut self.obj_mut(generator).internal_kind {
+                            crate::value::InternalKind::Generator(g) => {
+                                g.state = crate::value::GeneratorState::SuspendedYield;
+                                g.yielded_value = Some(yielded.clone());
+                                g.continuation = Some(Box::new(snapshot));
+                            }
+                            _ => {
+                                return Err(RuntimeError::TypeError(
+                                    "active yield target is not a Generator object".into(),
+                                ))
+                            }
+                        }
+                        self.last_value = yielded.clone();
+                        return Ok(yielded);
+                    }
+
+                    let arr = *self
+                        .gen_yields_stack
+                        .last()
+                        .ok_or_else(|| RuntimeError::TypeError("yield outside generator".into()))?;
+                    let len = self.array_length(arr);
+                    self.object_set(arr, len.to_string(), yielded);
+                    self.object_set(arr, "length".into(), Value::Number((len + 1) as f64));
+                    frame.push(Value::Undefined);
+                }
                 Op::CallMethod => {
                     let site_pc = frame.pc - 1; // IHI-EXT 7: Op byte's pc for cache key
                     let n = frame.bytecode[frame.pc] as usize;
@@ -16391,6 +16439,7 @@ pub struct Frame<'a> {
 /// module/function proto, which cannot live inside a heap GeneratorObject.
 /// This snapshot owns the resumable state and can be borrowed back into a
 /// `Frame<'_>` when a later rung wires the actual yield boundary.
+#[derive(Debug, Clone)]
 pub struct FrameSnapshot {
     pub function_proto: Option<Rc<rusty_js_bytecode::compiler::FunctionProto>>,
     pub bytecode: Vec<u8>,
@@ -16458,6 +16507,41 @@ impl FrameSnapshot {
             strict: frame.strict,
             new_target: frame.new_target.clone(),
             eval_var_env_is_global: frame.eval_var_env_is_global,
+        }
+    }
+
+    pub fn trace_object_refs(&self, ids: &mut Vec<rusty_js_gc::ObjectId>) {
+        for value in self
+            .locals
+            .iter()
+            .chain(self.operand_stack.iter())
+            .chain(std::iter::once(&self.this_value))
+            .chain(self.derived_initial_this.iter())
+            .chain(self.new_target.iter())
+        {
+            if let Value::Object(id) = value {
+                ids.push(*id);
+            }
+        }
+        for id in &self.with_env_stack {
+            ids.push(*id);
+        }
+        if let Some(id) = self.private_home {
+            ids.push(id);
+        }
+        if let Some(id) = self.import_meta {
+            ids.push(id);
+        }
+        for cell in self
+            .local_cells
+            .iter()
+            .flatten()
+            .chain(self.this_cell.iter())
+            .chain(self.upvalues.iter())
+        {
+            if let Value::Object(id) = &*cell.borrow() {
+                ids.push(*id);
+            }
         }
     }
 }
@@ -17399,6 +17483,85 @@ fn record_synthetic_deopt(ic_id: u32) {
         stack_values: Vec::new(),
     };
     rusty_js_jit::deopt::LAST_DEOPT_FRAME.with(|c| *c.borrow_mut() = Some(state));
+}
+
+#[cfg(test)]
+mod gcs_tests {
+    use super::*;
+    use rusty_js_bytecode::op::{encode_op, Op};
+
+    #[test]
+    fn yield_opcode_captures_active_generator_frame_snapshot() {
+        let mut rt = Runtime::new();
+        let generator = rt.new_generator_scaffold();
+
+        let mut bytecode = Vec::new();
+        encode_op(&mut bytecode, Op::PushI32);
+        bytecode.extend_from_slice(&42_i32.to_le_bytes());
+        encode_op(&mut bytecode, Op::Yield);
+        encode_op(&mut bytecode, Op::ReturnUndef);
+
+        let constants = rusty_js_bytecode::ConstantsPool::new();
+        let source_map = Vec::new();
+        let line_starts = Vec::new();
+        let source_url = String::new();
+        let construct_tags = Vec::new();
+        let locals_names = Vec::new();
+        let upvalue_names = Vec::new();
+        let mut frame = Frame {
+            bytecode: &bytecode,
+            constants: &constants,
+            source_map: &source_map,
+            line_starts: &line_starts,
+            source_url: &source_url,
+            construct_tags: &construct_tags,
+            locals_names: &locals_names,
+            upvalue_names: &upvalue_names,
+            locals: Vec::new(),
+            local_cells: Vec::new(),
+            operand_stack: Vec::new(),
+            pc: 0,
+            try_stack: Vec::new(),
+            with_env_stack: Vec::new(),
+            this_value: Value::Undefined,
+            derived_initial_this: None,
+            this_cell: None,
+            upvalues: Vec::new(),
+            last_property_lookup: None,
+            pending_method_name: None,
+            pending_method_getprop_pc: None,
+            private_home: None,
+            import_meta: None,
+            is_arrow: false,
+            param_count: 0,
+            strict: false,
+            new_target: None,
+            eval_var_env_is_global: false,
+            back_edge_counts: HashMap::new(),
+            ic_dispatch_cache: HashMap::new(),
+            osr_cache: HashMap::new(),
+        };
+
+        let yielded = rt
+            .with_active_generator_for_yield(generator, |rt| rt.run_frame(&mut frame))
+            .expect("yield opcode should return through suspension channel");
+        assert!(matches!(yielded, Value::Number(n) if n == 42.0));
+
+        match &rt.obj(generator).internal_kind {
+            crate::value::InternalKind::Generator(g) => {
+                assert_eq!(g.state, crate::value::GeneratorState::SuspendedYield);
+                assert!(matches!(&g.yielded_value, Some(Value::Number(n)) if *n == 42.0));
+                let snapshot = g
+                    .continuation
+                    .as_ref()
+                    .expect("yield should store a continuation snapshot");
+                assert_eq!(snapshot.pc, bytecode.len() - 1);
+                assert_eq!(snapshot.operand_stack.len(), 1);
+                assert!(matches!(&snapshot.operand_stack[0], Value::Undefined));
+            }
+            _ => panic!("expected generator internal kind"),
+        }
+    }
 }
 
 #[cfg(test)]

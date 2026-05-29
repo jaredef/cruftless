@@ -74,3 +74,38 @@ Not captured yet: per-frame JIT/OSR caches and IC dispatch caches. They are opti
 ### Finding
 
 **Finding GCS.2**: the owned continuation boundary can be introduced without touching generator behavior. The only semantic-sensitive clone boundary is cell-backed binding identity; cache state can be discarded at suspend/resume without changing observable JS behavior.
+
+## GCS-EXT 2b - yield-boundary opcode (2026-05-29)
+
+**Directive**: introduce the real yield boundary that can capture an active interpreter frame through `FrameSnapshot::from_frame`, while leaving generator lifecycle wiring and the existing eager generator call path deferred to EXT 2c.
+
+### Substrate
+
+Added `Op::Yield` as a zero-operand bytecode instruction and changed plain `yield` lowering from `LoadGlobal "__yield_push__"; Call 1` to `compile argument; Yield`.
+
+The opcode has two execution modes:
+
+- **legacy eager mode**: when no active generator object is installed, `Yield` appends the yielded value to the existing `Runtime::gen_yields_stack` array and pushes `undefined` as the yield-expression result. This preserves the current eager-collect generator behavior.
+- **suspension mode**: when `Runtime::active_generator_for_yield` names a generator object, `Yield` pushes `undefined` as the later resume value placeholder, captures the active frame with `FrameSnapshot::from_frame`, stores it in the generator object's continuation slot, marks the generator `SuspendedYield`, records the yielded value, and returns the yielded value through `run_frame`.
+
+`GeneratorObject` now carries the dormant continuation slot plus the last yielded value. The snapshot object-reference trace is threaded through `InternalKind::Generator` so the saved frame remains visible to future GC tracing.
+
+### Exemplar
+
+Added `interp::gcs_tests::yield_opcode_captures_active_generator_frame_snapshot`, which constructs a minimal frame containing `PushI32 42; Yield; ReturnUndef`, installs an active generator object, runs the frame, and verifies:
+
+- the suspension channel returns `42`
+- the generator state becomes `SuspendedYield`
+- the generator stores a continuation snapshot
+- the captured pc points after `Yield`
+- the operand stack contains the `undefined` yield-expression resume placeholder
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 54 passed, 1 ignored.
+- Legacy eager generator smoke: `function* g(){ yield 1; yield 2; }` still returns `1 2 true` through the existing `.next()` array-cursor path.
+
+### Finding
+
+**Finding GCS.3**: `Yield` can be introduced as a dual-mode opcode. EXT 2c should not need another compiler rewrite for plain `yield`; it needs lifecycle routing that constructs a real `GeneratorObject`, installs it as `active_generator_for_yield` while running/resuming the saved frame, and replaces the eager `call_function` generator branch.

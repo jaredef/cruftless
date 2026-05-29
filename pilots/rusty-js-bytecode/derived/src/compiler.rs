@@ -3783,23 +3783,14 @@ impl Compiler {
             Expr::Unary {
                 operator, argument, ..
             } => {
-                // Tier-Ω.5.gggggg: yield / yield* lower to a call into
-                // the host __yield_push__ / __yield_delegate__ globals.
-                // The runtime maintains a thread-local yields vector
-                // around generator-function invocations; these helpers
-                // append the argument's value(s). The expression's
-                // result is left on the stack (yield-as-expression
-                // returns undefined in this v1; real coroutines would
-                // return the value passed to .next()).
+                // GCS-EXT 2b: plain yield lowers to the interpreter's
+                // yield-boundary opcode. In the current eager generator
+                // lifecycle the opcode preserves the old collection path;
+                // when the suspension path installs an active generator
+                // object it captures the active frame continuation.
                 if matches!(operator, UnaryOp::Yield) {
-                    let nm = self
-                        .constants
-                        .intern(Constant::String("__yield_push__".into()));
-                    encode_op(&mut self.bytecode, Op::LoadGlobal);
-                    encode_u16(&mut self.bytecode, nm);
                     self.compile_expr(argument)?;
-                    encode_op(&mut self.bytecode, Op::Call);
-                    encode_u8(&mut self.bytecode, 1);
+                    encode_op(&mut self.bytecode, Op::Yield);
                     return Ok(());
                 }
                 if matches!(operator, UnaryOp::YieldDelegate) {

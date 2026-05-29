@@ -103,6 +103,11 @@ impl rusty_js_gc::Trace for Object {
                     }
                 }
             }
+            InternalKind::Generator(g) => {
+                if let Some(snapshot) = &g.continuation {
+                    snapshot.trace_object_refs(ids);
+                }
+            }
             _ => {}
         }
     }
@@ -878,6 +883,8 @@ pub enum GeneratorState {
 #[derive(Debug)]
 pub struct GeneratorObject {
     pub state: GeneratorState,
+    pub continuation: Option<Box<crate::interp::FrameSnapshot>>,
+    pub yielded_value: Option<Value>,
 }
 
 #[derive(Debug)]
