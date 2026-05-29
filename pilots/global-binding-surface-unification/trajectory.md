@@ -371,3 +371,27 @@ Per keeper directive (Telegram 10022) "Continue".
 **Cumulative arc LoC**: ~600 net (additions ~700, deletions ~100, gross migrations across ~125 sites). Deletion ledger updated with the rung 6 entry + a new 7f.4 entry.
 
 **Next**: returning to the parent locale (`pilots/eval-scope-binding-chain/`) to attempt ES-EXT 2 v2 (the original arc telos) now that the unified surface stands. With IC.1 preserved (pre-allocation passes untouched) and the binding surface unified, the constraint-respecting v2 design from Doc 729 §XIII methodology section can land.
+
+## GBSU-EXT 7f.5 — Integration-test API cleanup (2026-05-29)
+
+Per helmsman directive `runtime-globals-integration-test-cleanup-r4`.
+
+Follow-up cleanup after GBSU-EXT 7f.4 deleted `Runtime.globals`. The runtime test surface still had direct field reads/writes against the removed HashMap API, so `rusty-js-runtime` integration tests no longer compiled even though the runtime substrate had converged on the eager global-object model.
+
+**Substrate boundary**: test-only. No edits to `pilots/rusty-js-runtime/derived/src/` proper.
+
+**Migration shape**:
+- Post-exec inspection sites now use `Runtime::global_get("__last_recorded")`, preserving the current global-object-backed read path instead of resurrecting a shadow map.
+- GC root anchoring now uses `Runtime::define_global_property`, with explicit removal through the global object's dictionary where the test needs to release roots.
+- Promise-golden's optional recorder helper now treats `Value::Undefined` from `global_get` as absence, matching the old `HashMap::get(...).cloned()` option shape.
+
+**Actual affected set**: broader than the eight named files because the compile sweep found the same removed API residue across 21 integration test files:
+`binding_capture.rs`, `class_fields.rs`, `closure_upvalues.rs`, `complex_assign_target.rs`, `computed_key.rs`, `destructure.rs`, `for_in.rs`, `gc_cycle.rs`, `iteration.rs`, `labelled.rs`, `object_create.rs`, `omega_5_w.rs`, `omega_5_x.rs`, `omega_5_y.rs`, `promise_golden.rs`, `prototype_chains.rs`, `regexp.rs`, `spread.rs`, `spread_misc.rs`, `switch_stmt.rs`, `template_literal.rs`.
+
+**Gates**:
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --no-run` PASS; integration tests compile against the current Runtime API.
+- `cargo test --release -p rusty-js-runtime --lib` PASS (53 passed, 1 ignored).
+- `cargo test --release -p rusty-js-runtime` reaches execution and then FAILS at `tests/destructure.rs::t11_object_rest` with `ReferenceError("Cannot access 'rest' before initialization @1:43")`. This is unrelated to the deleted `Runtime.globals` field; the globals compile barrier is removed.
+
+**Disposition**: cleanup complete. `Runtime.globals` removal was already documented in GBSU-EXT 7f.4; this rung documents the integration-test fallout and preserves the one-object global binding surface rather than adding a compatibility accessor.

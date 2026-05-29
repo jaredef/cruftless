@@ -15,7 +15,10 @@ fn run_with_jobs(src: &str) -> Runtime {
 }
 
 fn recorded(rt: &Runtime) -> Option<Value> {
-    rt.globals.get("__last_recorded").cloned()
+    match rt.global_get("__last_recorded") {
+        Value::Undefined => None,
+        value => Some(value),
+    }
 }
 
 // ─────────── Single-then chain ───────────

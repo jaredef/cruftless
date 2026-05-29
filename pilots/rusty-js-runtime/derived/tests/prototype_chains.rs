@@ -18,10 +18,7 @@ fn run_drain(src: &str) -> Value {
         .unwrap_or_else(|e| panic!("run: {:?}", e));
     // Drain microtasks to fire Promise reaction chains.
     let _ = rt.run_to_completion();
-    rt.globals
-        .get("__last_recorded")
-        .cloned()
-        .unwrap_or(Value::Undefined)
+    rt.global_get("__last_recorded")
 }
 
 // ─────────── 1. ({}).toString() === "[object Object]" ───────────
@@ -82,13 +79,7 @@ fn t04_array_forEach() {
     let mut rt = Runtime::new();
     rt.install_intrinsics();
     rt.run_module(&module).unwrap();
-    assert_eq!(
-        rt.globals
-            .get("__last_recorded")
-            .cloned()
-            .unwrap_or(Value::Undefined),
-        Value::Number(60.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(60.0));
 }
 
 // ─────────── 5. [1,2,3].length === 3 ───────────

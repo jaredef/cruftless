@@ -115,11 +115,7 @@ fn t07_foreach_accumulator() {
         __record(n);
     "#;
     let (rt, _) = run_rt(src);
-    let recorded = rt
-        .globals
-        .get("__last_recorded")
-        .cloned()
-        .unwrap_or(Value::Undefined);
+    let recorded = rt.global_get("__last_recorded");
     assert_eq!(recorded, Value::Number(6.0));
 }
 

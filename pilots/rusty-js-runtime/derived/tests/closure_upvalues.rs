@@ -51,11 +51,7 @@ fn t03_foreach_accumulator() {
     // arrow does NOT propagate to the outer `n` for v1. This deviation is
     // documented; the test verifies engine *runs* this code without panic
     // and the recorded value is the snapshot result.
-    let recorded = rt
-        .globals
-        .get("__last_recorded")
-        .cloned()
-        .unwrap_or(Value::Undefined);
+    let recorded = rt.global_get("__last_recorded");
     // Binding-shared: arrow's writes propagate to outer `n`. 0+1+2+3 = 6.
     assert_eq!(recorded, Value::Number(6.0));
 }

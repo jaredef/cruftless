@@ -2,7 +2,7 @@
 //! migration. Proves that the mark-sweep GC reclaims cycles that the
 //! pre-migration Rc-based representation would have leaked.
 
-use rusty_js_runtime::value::{Object, Value};
+use rusty_js_runtime::value::{Object, PropertyKey, Value};
 use rusty_js_runtime::Runtime;
 
 #[test]
@@ -16,8 +16,8 @@ fn cycle_collection_reclaims_unreachable_pair() {
     rt.object_set(b, "a".into(), Value::Object(a));
 
     // Make them reachable via globals first.
-    rt.globals.insert("a".into(), Value::Object(a));
-    rt.globals.insert("b".into(), Value::Object(b));
+    rt.define_global_property("a", Value::Object(a));
+    rt.define_global_property("b", Value::Object(b));
 
     let before_anchor = rt.heap.live_count();
     // Confirm the GC keeps them while they are reachable.
@@ -33,8 +33,15 @@ fn cycle_collection_reclaims_unreachable_pair() {
     // Drop the root references — the cycle is now unreachable but still
     // references itself. The pre-migration Rc<RefCell> representation
     // would leak here. The GC should reclaim both slots.
-    rt.globals.remove("a");
-    rt.globals.remove("b");
+    let global_object = rt
+        .global_object
+        .expect("Runtime::new eagerly allocates global_object");
+    rt.obj_mut(global_object)
+        .dict_mut()
+        .remove(&PropertyKey::String("a".into()));
+    rt.obj_mut(global_object)
+        .dict_mut()
+        .remove(&PropertyKey::String("b".into()));
 
     let live_before = rt.heap.live_count();
     let freed = rt.collect();

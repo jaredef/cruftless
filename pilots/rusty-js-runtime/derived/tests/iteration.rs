@@ -29,10 +29,7 @@ fn run_rt(src: &str) -> Runtime {
 #[test]
 fn t01_forof_array_sum() {
     let rt = run_rt("let s = 0; for (const x of [1,2,3]) { s = s + x; } __record(s);");
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(6.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(6.0));
 }
 
 // ─────────── 2. for-of over string ───────────
@@ -40,7 +37,7 @@ fn t01_forof_array_sum() {
 fn t02_forof_string() {
     let rt =
         run_rt(r#"let out = ""; for (const c of "abc") { out = out + c + "-"; } __record(out);"#);
-    if let Some(Value::String(s)) = rt.globals.get("__last_recorded") {
+    if let Value::String(s) = rt.global_get("__last_recorded") {
         assert_eq!(s.as_str(), "a-b-c-");
     } else {
         panic!();
@@ -59,10 +56,7 @@ fn t03_nested_forof() {
         __record(sum);
     "#,
     );
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(10.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(10.0));
 }
 
 // ─────────── 4. Symbol.iterator is the well-known key ───────────
@@ -80,29 +74,20 @@ fn t04_symbol_iterator_key() {
 fn t05_forof_identifier_binding() {
     let rt =
         run_rt("let x = 0; let sum = 0; for (x of [10, 20, 30]) { sum = sum + x; } __record(sum);");
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(60.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(60.0));
 }
 
 // ─────────── 6. for-of over empty array ───────────
 #[test]
 fn t06_forof_empty() {
     let rt = run_rt("let n = 0; for (const x of []) { n = n + 1; } __record(n);");
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(0.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(0.0));
 }
 
 #[test]
 fn t06b_forof_member_lhs_assignment_target() {
     let rt = run_rt("const o = {}; for (o.x of [10, 20]) {} __record(o.x);");
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(20.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(20.0));
 }
 
 #[test]
@@ -110,7 +95,7 @@ fn t06c_forof_computed_lhs_assignment_target() {
     let rt = run_rt(
         "const o = {a: []}; let i = 0; for (o.a[i++] of [3, 4]) {} __record(o.a.join(',') + ':' + i);",
     );
-    if let Some(Value::String(s)) = rt.globals.get("__last_recorded") {
+    if let Value::String(s) = rt.global_get("__last_recorded") {
         assert_eq!(s.as_str(), "3,4:2");
     } else {
         panic!();
@@ -165,10 +150,7 @@ fn t10_object_assign() {
         __record(t.a + t.b + t.c);
     "#,
     );
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(6.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(6.0));
 }
 
 // ─────────── 11. Array.from(iterable) ───────────
@@ -241,10 +223,7 @@ fn t17_from_entries() {
         __record(o.a + o.b);
     "#,
     );
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(3.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(3.0));
 }
 
 // ─────────── 18. for-of break stops iteration ───────────
@@ -260,10 +239,7 @@ fn t18_forof_break() {
         __record(n);
     "#,
     );
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(2.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(2.0));
 }
 
 // ─────────── 19. Explicit @@iterator-protocol consumption ───────────
@@ -276,10 +252,7 @@ fn t19_manual_iterator_protocol() {
         __record(first.value);
     "#,
     );
-    assert_eq!(
-        rt.globals.get("__last_recorded").cloned().unwrap(),
-        Value::Number(10.0)
-    );
+    assert_eq!(rt.global_get("__last_recorded"), Value::Number(10.0));
 }
 
 // ─────────── 20. Object.keys on array yields numeric-string indices ───────────

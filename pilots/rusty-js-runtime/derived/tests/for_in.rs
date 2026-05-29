@@ -19,7 +19,7 @@ fn run_rt(src: &str) -> Runtime {
 }
 
 fn recorded(rt: &Runtime) -> Value {
-    rt.globals.get("__last_recorded").cloned().unwrap()
+    rt.global_get("__last_recorded")
 }
 
 // 1. Basic: collects all own keys.

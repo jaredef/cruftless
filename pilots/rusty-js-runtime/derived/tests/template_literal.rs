@@ -17,7 +17,7 @@ fn run_rt(src: &str) -> Runtime {
 }
 
 fn last_str(rt: &Runtime) -> String {
-    match rt.globals.get("__last_recorded").cloned().unwrap() {
+    match rt.global_get("__last_recorded") {
         Value::String(s) => (*s).clone(),
         other => panic!("expected string, got {:?}", other),
     }

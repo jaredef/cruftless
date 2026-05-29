@@ -15,10 +15,7 @@ fn run_rt(src: &str) -> Runtime {
 }
 
 fn last_recorded(rt: &Runtime) -> Value {
-    rt.globals
-        .get("__last_recorded")
-        .cloned()
-        .unwrap_or(Value::Undefined)
+    rt.global_get("__last_recorded")
 }
 
 fn last_bool(rt: &Runtime) -> bool {
