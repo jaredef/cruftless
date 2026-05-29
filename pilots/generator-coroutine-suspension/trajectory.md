@@ -346,12 +346,15 @@ it.return("done"); // { value:"cleanup", done:false }
 it.next();          // { value:"done", done:true }
 ```
 
+and for a non-generator delegate with no `throw`, where outer `.throw("boom")`
+calls the delegate `return()` before rethrowing `"boom"`.
+
 ### Verification
 
-- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 12 passed.
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 13 passed.
 - `cargo build --release --bin cruft -p cruftless` PASS.
-- `cargo test --release -p rusty-js-runtime --lib` PASS: 65 passed, 1 ignored.
-- For-of/generator slice: 50 PASS / 19 FAIL from the 69-row slice, +0 over GCS-EXT 6. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-residuals-delegate-abrupt-20260529T163839Z/summary.json`.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 66 passed, 1 ignored.
+- For-of/generator slice: 50 PASS / 19 FAIL from the 69-row slice, +0 over GCS-EXT 6. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-residuals-r1-20260529T164153Z/summary.json`.
 - `built-ins/GeneratorPrototype/return/*`: 13 PASS / 10 FAIL from 23 tests, +0 over GCS-EXT 5.
 - Delegate-related sync `yield-star` test262 slice: 2 PASS / 2 FAIL from 4 tests; remaining failures are ASI syntax rows, not delegate abrupt forwarding.
 

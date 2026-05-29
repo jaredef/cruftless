@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - b90969f1155fe0d6f58b618f23258a9eafcf643b
+  - 1d770c33d66a69fd479750c150a38078cf645748
 target_branch: main
 summary: GCS residuals - yield-star delegate abrupt forwarding
 risk_class: substrate
@@ -28,12 +28,12 @@ This is the scoped GCS residual rung authorized by the directive's scope-down op
 ## Verification
 
 - `cargo build --release --bin cruft -p cruftless` PASS.
-- `cargo test --release -p rusty-js-runtime --lib` PASS: 65 passed, 1 ignored.
-- Focused GCS tests PASS: 12 passed.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 66 passed, 1 ignored.
+- Focused GCS tests PASS: 13 passed.
 - For-of/generator slice: 50 PASS / 19 FAIL, +0 over GCS-EXT 6.
 - `built-ins/GeneratorPrototype/return/*`: 13 PASS / 10 FAIL, +0 over GCS-EXT 5.
 - Sync yield-star test262 slice: 2 PASS / 2 FAIL from 4 tests; the two remaining failures are ASI syntax rows.
-- Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-residuals-delegate-abrupt-20260529T163839Z/summary.json`.
+- Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-residuals-r1-20260529T164153Z/summary.json`.
 
 ## Risk Assessment
 
