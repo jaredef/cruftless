@@ -177,3 +177,43 @@ it.next(42);  // terminal result value is 43
 ### Finding
 
 **Finding GCS.5**: `Op::Yield`'s placeholder stack slot is the correct injection point for `next(value)`. No opcode rewrite is needed for sent-value delivery; the saved continuation boundary can be patched before frame restore. The remaining generator wall is abrupt-completion injection (`throw`, `return`) plus `yield*` delegation and iterator-close forwarding.
+
+## GCS-EXT 4 - throw resume-with-exception (2026-05-29)
+
+**Directive**: implement `Generator.prototype.throw(err)` for SuspendedYield generators by raising the value at the suspended yield-expression site. `return(value)` and `yield*` delegation remain follow-on scope.
+
+### Substrate
+
+`Generator.prototype.throw` now resumes only `SuspendedYield` generators. It takes the saved `FrameSnapshot`, restores a `Frame`, and injects the thrown value through the same catch-entry shape used by `Runtime::run_frame`: pop the top `TryFrame`, truncate the operand stack to `sp_at_entry`, push the thrown value, and set `pc` to the catch handler offset.
+
+If the suspended yield has no active try frame, the thrown value propagates out of `gen.throw()` and the generator is completed. If the catch handler yields, the generator transitions back to `SuspendedYield` through the existing `Op::Yield` path and `throw()` returns `{ value, done:false }`.
+
+### Exemplar
+
+Added runtime-library coverage for:
+
+```js
+function* g() {
+  try {
+    yield 1;
+  } catch (e) {
+    yield e + "!";
+  }
+}
+const it = g();
+it.next();
+it.throw("oops"); // { value:"oops!", done:false }
+```
+
+Also added an uncaught throw exemplar proving `gen.throw("boom")` propagates to the caller and completes the generator.
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 6 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 59 passed, 1 ignored.
+- Post-EXT 3 for-of/generator slice measurement: 46 PASS / 23 FAIL / 0 SKIP from the same 69-row slice, +0 PASS over EXT 3. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext4-forof-generators-20260529T153213Z/summary.json`.
+
+### Finding
+
+**Finding GCS.6**: throw-resume can reuse the interpreter's existing try-stack substrate by entering the catch handler before the restored frame is run. The measured for-of/generator residual is not primarily blocked on catch-resume; the next expected walls are `return(value)`, `yield*`, IteratorClose forwarding, and destructuring interactions.

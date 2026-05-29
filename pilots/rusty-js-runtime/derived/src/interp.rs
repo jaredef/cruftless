@@ -921,24 +921,84 @@ impl Runtime {
         generator: ObjectRef,
         thrown: Value,
     ) -> Result<Value, RuntimeError> {
-        match &mut self.obj_mut(generator).internal_kind {
-            crate::value::InternalKind::Generator(g) => {
-                if matches!(g.state, crate::value::GeneratorState::Executing) {
-                    return Err(RuntimeError::TypeError(
-                        "Generator.prototype.throw: generator is already executing".into(),
-                    ));
+        let snapshot = {
+            let obj = self.obj_mut(generator);
+            match &mut obj.internal_kind {
+                crate::value::InternalKind::Generator(g) => {
+                    if matches!(g.state, crate::value::GeneratorState::Executing) {
+                        return Err(RuntimeError::TypeError(
+                            "Generator.prototype.throw: generator is already executing".into(),
+                        ));
+                    }
+                    if !matches!(g.state, crate::value::GeneratorState::SuspendedYield) {
+                        g.state = crate::value::GeneratorState::Completed;
+                        g.continuation = None;
+                        g.yielded_value = None;
+                        return Err(RuntimeError::Thrown(thrown));
+                    }
+                    g.state = crate::value::GeneratorState::Executing;
+                    g.yielded_value = None;
+                    g.continuation.take()
                 }
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Generator.prototype.throw: receiver is not a Generator object".into(),
+                    ))
+                }
+            }
+        };
+        let Some(snapshot) = snapshot else {
+            if let crate::value::InternalKind::Generator(g) =
+                &mut self.obj_mut(generator).internal_kind
+            {
+                g.state = crate::value::GeneratorState::Completed;
+            }
+            return Err(RuntimeError::Thrown(thrown));
+        };
+
+        let mut frame = Frame::from(snapshot.as_ref());
+        if let Err(e) = inject_throw_into_frame(&mut frame, thrown) {
+            if let crate::value::InternalKind::Generator(g) =
+                &mut self.obj_mut(generator).internal_kind
+            {
                 g.state = crate::value::GeneratorState::Completed;
                 g.continuation = None;
-                g.yielded_value = None;
             }
-            _ => {
-                return Err(RuntimeError::TypeError(
-                    "Generator.prototype.throw: receiver is not a Generator object".into(),
-                ))
+            return Err(e);
+        }
+        let result = self.with_active_generator_for_yield(generator, |rt| rt.run_frame(&mut frame));
+        match result {
+            Ok(value) => {
+                let yielded = match &self.obj(generator).internal_kind {
+                    crate::value::InternalKind::Generator(g)
+                        if matches!(g.state, crate::value::GeneratorState::SuspendedYield) =>
+                    {
+                        true
+                    }
+                    _ => false,
+                };
+                if yielded {
+                    Ok(self.generator_result_object(value, false))
+                } else {
+                    if let crate::value::InternalKind::Generator(g) =
+                        &mut self.obj_mut(generator).internal_kind
+                    {
+                        g.state = crate::value::GeneratorState::Completed;
+                        g.continuation = None;
+                    }
+                    Ok(self.generator_result_object(value, true))
+                }
+            }
+            Err(e) => {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                }
+                Err(e)
             }
         }
-        Err(RuntimeError::Thrown(thrown))
     }
 
     pub fn generator_return_scaffold(
@@ -17034,6 +17094,16 @@ pub struct TryFrame {
     pub sp_at_entry: usize,
 }
 
+fn inject_throw_into_frame(frame: &mut Frame<'_>, thrown: Value) -> Result<(), RuntimeError> {
+    let Some(t) = frame.try_stack.pop() else {
+        return Err(RuntimeError::Thrown(thrown));
+    };
+    frame.operand_stack.truncate(t.sp_at_entry);
+    frame.operand_stack.push(thrown);
+    frame.pc = t.catch_offset;
+    Ok(())
+}
+
 impl<'a> Frame<'a> {
     pub fn new_module(m: &'a CompiledModule) -> Self {
         let mut locals = Vec::new();
@@ -17907,6 +17977,62 @@ mod gcs_tests {
         .expect("next(value) should resume yield expression");
         let result = rt.global_get("result");
         assert!(matches!(result, Value::Number(n) if n == 1044.0));
+    }
+
+    #[test]
+    fn generator_throw_resumes_into_catch_handler() {
+        let rt = run_js_runtime(
+            r#"
+            function* g() {
+              try {
+                yield 1;
+              } catch (e) {
+                yield e + "!";
+              }
+              return 5;
+            }
+            const it = g();
+            const a = it.next();
+            const b = it.throw("oops");
+            const c = it.next();
+            globalThis.result =
+              a.value + (a.done ? 10000 : 0)
+              + b.value
+              + (b.done ? " bad" : "")
+              + " "
+              + c.value
+              + " "
+              + c.done;
+            "#,
+        )
+        .expect("throw should resume suspended yield through catch");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "1oops! 5 true"));
+    }
+
+    #[test]
+    fn generator_throw_outside_catch_completes_and_propagates() {
+        let rt = run_js_runtime(
+            r#"
+            function* g() {
+              yield 1;
+              yield 2;
+            }
+            const it = g();
+            it.next();
+            let caught = "";
+            try {
+              it.throw("boom");
+            } catch (e) {
+              caught = e;
+            }
+            const after = it.next();
+            globalThis.result = caught + " " + after.value + " " + after.done;
+            "#,
+        )
+        .expect("uncaught generator throw should be catchable by caller");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "boom undefined true"));
     }
 }
 
