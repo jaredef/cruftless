@@ -2052,16 +2052,38 @@ impl Runtime {
                                 if strip_prototype_only && k.as_str() == "prototype" {
                                     return false;
                                 }
-                                // Rung-7 enumerability filter (only when a
-                                // meaningful superclass prototype was found).
-                                if let Some(super_names) = &super_proto_names {
-                                    if !d.enumerable {
-                                        let kn = k.as_str();
-                                        let is_fn_intrinsic =
-                                            matches!(kn, "name" | "length" | "prototype");
-                                        if !is_fn_intrinsic && !super_names.contains(kn) {
-                                            return false;
+                                // CJS-NS-ENUMERABILITY (principled, per keeper
+                                // Telegram 10417): non-enumerable own properties
+                                // of the CJS exports object are not mirrored to
+                                // the synthesized ESM namespace by default. The
+                                // explicit lift-list (name / length / prototype)
+                                // is preserved for fn-default CJS shape parity
+                                // with bun; everything else non-enumerable —
+                                // notably the legacy `caller` and `arguments`
+                                // function-internals — is excluded.
+                                //
+                                // Anchor: 2026-05-29 top500 sweep surfaced 145
+                                // packages failing solely on `caller` appearing
+                                // in cruft's namespace where bun's doesn't.
+                                // Single substrate move; expected +~145 PASS;
+                                // any regression is a probe signal for an
+                                // implicit constraint the unfiltered iteration
+                                // was masking (per keeper conjecture 10417).
+                                if !d.enumerable {
+                                    let kn = k.as_str();
+                                    let in_lift_list =
+                                        matches!(kn, "name" | "length" | "prototype");
+                                    if !in_lift_list {
+                                        // Rung-7 super_proto exception preserved:
+                                        // class-with-superclass exports still
+                                        // surface superclass-prototype names
+                                        // (enquirer pattern).
+                                        if let Some(super_names) = &super_proto_names {
+                                            if super_names.contains(kn) {
+                                                return true;
+                                            }
                                         }
+                                        return false;
                                     }
                                 }
                                 true
