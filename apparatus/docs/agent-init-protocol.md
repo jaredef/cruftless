@@ -142,14 +142,44 @@ There is no formal de-registration. The sidecar retains your token until its reg
 
 Per the CAACP §VI.4 token-discipline carve-outs, rotation + revocation are deferred to future operational-protocol passes; the current state accepts long-lived per-instance tokens.
 
-## V. Failure modes
+## IV.5 Heartbeat-discipline polling (fallback for runtimes without async notification)
+
+When the agent runtime does NOT support a file-watch / task-notification primitive AND no external bridge has been started for the session (see §V cybernetic bridge), the apparatus falls back to **heartbeat-discipline polling** at two concrete reliable trigger points:
+
+1. **At role-load / session-ready** — the session's load skill or init protocol already polls inbox; this is the canonical first poll.
+2. **Before sending any outbound CAACP message** — before invoking `caacp-sidecar.sh send` or its equivalent, the session first checks `curl http://127.0.0.1:7777/local/inbox?role=<your-role>` and processes any PENDING messages addressed to it. This guarantees that the session's outbound state cannot be authored against a stale inbox view.
+
+"Start of each response" and "end of each substrate-shaped-work phase" are NOT reliable trigger points for runtimes without inline interruption support (a Codex session cannot enforce "start of each response" automatically). Use the two trigger points above; rely on the cybernetic bridge (§V) for everything else.
+
+## V. Cybernetic bridge for Codex (and similar runtimes)
+
+When the agent runtime lacks native file-watch / task-notification (the OpenAI Codex CLI does, as of 2026-05; inotify/fswatch may not be installed; Claude Code's Monitor is not available), the apparatus provides a **terminal-multiplexer bridge** at `apparatus/scripts/caacp-tmux-bridge.sh` that injects a short directive into the tmux pane running the session via `tmux send-keys`.
+
+**Operator-started only**. The bridge is not invoked from any other repo script automatically; injecting text into an interactive pane is powerful and context-sensitive. The keeper (or a helmsman-with-keeper-blessing) starts the bridge for a specific session, in a separate tmux/screen pane:
+
+```sh
+apparatus/scripts/caacp-tmux-bridge.sh <role> <tmux-target> [poll-interval]
+# example: bash apparatus/scripts/caacp-tmux-bridge.sh watcher codex-watcher:0.0 5
+```
+
+The bridge polls `http://127.0.0.1:7777/local/inbox?role=<role>` every poll-interval (default 5s), maintains a seen-cache at `apparatus/caacp-server/data/bridge-<role>-seen.json`, and on new PENDING messages injects:
+
+```
+**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
+```
+
+The session interprets the `**CAACP NEW**` prefix as a directive to (a) drop its current micro-step, (b) `curl /local/inbox?role=<role>` to fetch full message metadata + body, (c) decide whether to act on the incoming message or defer per its own discipline. The bridge logs activity to `apparatus/caacp-server/data/bridge-<role>.log`.
+
+Pre-flight: the bridge verifies the tmux target exists before entering its loop; logs and exits non-zero if not.
+
+## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.
 - **Registration fails with `remote registration failed`**: the sidecar's admin token (`CAACP_TOKEN_VERIFIER`) is unset, expired, or jaredfoy.com is down. Surface to keeper.
 - **No callback received + no file-watch update**: either the polling loop is stuck or no messages are arriving. Sanity-check `curl http://127.0.0.1:7777/local/health` for `last_polled_at` per-agent.
 - **Token mismatch (403)**: you're sending with a token that doesn't bind to the sender role you're claiming. Re-verify Step 4 output.
 
-## VI. Cross-references
+## VII. Cross-references
 
 - `apparatus/docs/cybernetic-agentic-communication-protocol.md` — full CAACP articulation (§VI for endpoint surface, §IV for state machine).
 - `apparatus/caacp-server/README.md` — sidecar HTTP API + operational notes.
