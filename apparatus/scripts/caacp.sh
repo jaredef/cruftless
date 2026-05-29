@@ -171,6 +171,11 @@ cmd_send() {
     local message_id="local-only-$artifact_slug"
     if endpoint_available; then
         local payload
+        # jq construction: avoid `select` for the optional related_to field
+        # because select() emits empty stream when the predicate fails, which
+        # then prunes the entire enclosing object expression and yields an
+        # empty payload (POST fails with 500 at server-side parseBody).
+        # Use a conditional null instead.
         payload=$(jq -n \
             --arg sender "$sender" \
             --arg recipient "$recipient" \
@@ -178,7 +183,7 @@ cmd_send() {
             --arg slug "$slug" \
             --arg related_to "$related_to" \
             --arg content_sha "$body_sha" \
-            '{sender:$sender, recipient:$recipient, intent:$intent, slug:$slug, related_to:($related_to | select(. != "")), content_sha:$content_sha}')
+            '{sender:$sender, recipient:$recipient, intent:$intent, slug:$slug, related_to:(if $related_to == "" then null else $related_to end), content_sha:$content_sha}')
         local response
         if response=$(curl_post "/messages" "$payload" 2>&1); then
             message_id=$(echo "$response" | jq -r '.message_id')
