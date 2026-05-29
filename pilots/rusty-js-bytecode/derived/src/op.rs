@@ -197,6 +197,11 @@ pub enum Op {
     /// by the suspension path, the interpreter captures the current frame
     /// continuation and returns the yielded value to the caller.
     Yield = 0x7B,
+    /// YIELD_DELEGATE — pop iterable and perform sync `yield*` delegation.
+    /// Under the suspended generator lifecycle this opcode owns the delegate
+    /// iterator loop and captures the frame at the opcode until the delegate
+    /// completes.
+    YieldDelegate = 0x7C,
 
     // Member access
     /// GET_PROP <u16>
@@ -378,7 +383,7 @@ impl Op {
             | Throw | TryExit | IterInit | IterNext | IterClose | Nop | Debugger | PushThis
             | PushImportMeta | PushNewTarget | SetThis | PropagateNewTarget | EnterWith
             | ExitWith | AddI64 | SubI64 | MulI64 | IncI64 | DecI64 | LtI64 | LeI64 | GtI64
-            | GeI64 | EqI64 | NeI64 | Yield => 0,
+            | GeI64 | EqI64 | NeI64 | Yield | YieldDelegate => 0,
             Call | New | CallMethod | DirectEval | CallMethodIcCached => 1,
             PushConst | LoadLocal | StoreLocal | InitLocal | LoadArg | StoreArg | LoadGlobal
             | LoadGlobalOrUndef | StoreGlobal | LoadUpvalue | StoreUpvalue | DefineLocal
@@ -506,6 +511,7 @@ pub fn op_from_byte(b: u8) -> Option<Op> {
         0x79 => PropagateNewTarget,
         0x7A => DirectEval,
         0x7B => Yield,
+        0x7C => YieldDelegate,
         0x80 => GetProp,
         0x81 => SetProp,
         0x82 => GetIndex,

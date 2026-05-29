@@ -786,6 +786,7 @@ impl Runtime {
             continuation: None,
             yielded_value: None,
             pending_return: None,
+            delegate: None,
         });
         let generator = self.alloc_object(obj);
         self.install_generator_lifecycle_methods(generator);
@@ -848,6 +849,66 @@ impl Runtime {
         o.set_own("value".into(), value);
         o.set_own("done".into(), Value::Boolean(done));
         Value::Object(self.alloc_object(o))
+    }
+
+    fn get_sync_iterator_for_yield_delegate(
+        &mut self,
+        iterable: Value,
+    ) -> Result<(ObjectRef, Value), RuntimeError> {
+        let receiver = match iterable {
+            Value::Object(id) => id,
+            Value::Undefined | Value::Null => {
+                return Err(RuntimeError::TypeError(
+                    "yield* cannot iterate undefined or null".into(),
+                ))
+            }
+            ref other => match self.to_object(other)? {
+                Value::Object(id) => id,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "yield* iterable cannot be converted to object".into(),
+                    ))
+                }
+            },
+        };
+        let method = self.object_get(receiver, "@@iterator");
+        if !self.is_callable(&method) {
+            return Err(RuntimeError::TypeError(
+                "yield* iterator method is not callable".into(),
+            ));
+        }
+        let iterator = self.call_function(method, Value::Object(receiver), Vec::new())?;
+        let iterator = match iterator {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("yield* iterator is not an object".into())),
+        };
+        let next = self.object_get(iterator, "next");
+        if !self.is_callable(&next) {
+            return Err(RuntimeError::TypeError(
+                "yield* iterator next is not callable".into(),
+            ));
+        }
+        Ok((iterator, next))
+    }
+
+    fn yield_delegate_next(
+        &mut self,
+        iterator: ObjectRef,
+        next: Value,
+        args: Vec<Value>,
+    ) -> Result<(bool, Value), RuntimeError> {
+        let result = self.call_function(next, Value::Object(iterator), args)?;
+        let result = match result {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "yield* iterator result is not an object".into(),
+                ))
+            }
+        };
+        let done = crate::abstract_ops::to_boolean(&self.object_get(result, "done"));
+        let value = self.object_get(result, "value");
+        Ok((done, value))
     }
 
     pub fn with_active_generator_for_yield<F, T>(
@@ -930,6 +991,7 @@ impl Runtime {
                     {
                         g.state = crate::value::GeneratorState::Completed;
                         g.continuation = None;
+                        g.delegate = None;
                         if let Some(return_value) = g.pending_return.take() {
                             value = return_value;
                         }
@@ -943,6 +1005,7 @@ impl Runtime {
                 {
                     g.state = crate::value::GeneratorState::Completed;
                     g.continuation = None;
+                    g.delegate = None;
                 }
                 Err(e)
             }
@@ -968,6 +1031,7 @@ impl Runtime {
                         g.continuation = None;
                         g.yielded_value = None;
                         g.pending_return = None;
+                        g.delegate = None;
                         return Err(RuntimeError::Thrown(thrown));
                     }
                     g.state = crate::value::GeneratorState::Executing;
@@ -987,6 +1051,7 @@ impl Runtime {
             {
                 g.state = crate::value::GeneratorState::Completed;
                 g.pending_return = None;
+                g.delegate = None;
             }
             return Err(RuntimeError::Thrown(thrown));
         };
@@ -999,6 +1064,7 @@ impl Runtime {
                 g.state = crate::value::GeneratorState::Completed;
                 g.continuation = None;
                 g.pending_return = None;
+                g.delegate = None;
             }
             return Err(e);
         }
@@ -1022,6 +1088,7 @@ impl Runtime {
                         g.state = crate::value::GeneratorState::Completed;
                         g.continuation = None;
                         g.pending_return = None;
+                        g.delegate = None;
                     }
                     Ok(self.generator_result_object(value, true))
                 }
@@ -1033,6 +1100,7 @@ impl Runtime {
                     g.state = crate::value::GeneratorState::Completed;
                     g.continuation = None;
                     g.pending_return = None;
+                    g.delegate = None;
                 }
                 Err(e)
             }
@@ -1058,6 +1126,7 @@ impl Runtime {
                         g.continuation = None;
                         g.yielded_value = None;
                         g.pending_return = None;
+                        g.delegate = None;
                         return Ok(self.generator_result_object(value, true));
                     }
                     g.state = crate::value::GeneratorState::Executing;
@@ -1079,6 +1148,7 @@ impl Runtime {
             {
                 g.state = crate::value::GeneratorState::Completed;
                 g.pending_return = None;
+                g.delegate = None;
             }
             return Ok(self.generator_result_object(value, true));
         };
@@ -1091,6 +1161,7 @@ impl Runtime {
                 g.state = crate::value::GeneratorState::Completed;
                 g.continuation = None;
                 g.pending_return = None;
+                g.delegate = None;
             }
             return Ok(self.generator_result_object(value, true));
         }
@@ -1114,6 +1185,7 @@ impl Runtime {
                     {
                         g.state = crate::value::GeneratorState::Completed;
                         g.continuation = None;
+                        g.delegate = None;
                         if let Some(return_value) = g.pending_return.take() {
                             out = return_value;
                         }
@@ -1128,6 +1200,7 @@ impl Runtime {
                     g.state = crate::value::GeneratorState::Completed;
                     g.continuation = None;
                     g.pending_return = None;
+                    g.delegate = None;
                 }
                 Err(e)
             }
@@ -13977,6 +14050,78 @@ impl Runtime {
                     self.object_set(arr, "length".into(), Value::Number((len + 1) as f64));
                     frame.push(Value::Undefined);
                 }
+                Op::YieldDelegate => {
+                    let site_pc = frame.pc - 1;
+                    if let Some(generator) = self.active_generator_for_yield {
+                        let existing_delegate = match &self.obj(generator).internal_kind {
+                            crate::value::InternalKind::Generator(g) => g.delegate.clone(),
+                            _ => None,
+                        };
+                        let (delegate, args) = if let Some(delegate) = existing_delegate {
+                            let sent = frame.pop().unwrap_or(Value::Undefined);
+                            (delegate, vec![sent])
+                        } else {
+                            let iterable = frame.pop()?;
+                            let (iterator, next_method) =
+                                self.get_sync_iterator_for_yield_delegate(iterable)?;
+                            (
+                                crate::value::GeneratorDelegate {
+                                    iterator,
+                                    next_method,
+                                },
+                                Vec::new(),
+                            )
+                        };
+
+                        let (done, value) = self.yield_delegate_next(
+                            delegate.iterator,
+                            delegate.next_method.clone(),
+                            args,
+                        )?;
+                        if done {
+                            if let crate::value::InternalKind::Generator(g) =
+                                &mut self.obj_mut(generator).internal_kind
+                            {
+                                g.delegate = None;
+                            }
+                            frame.push(value);
+                        } else {
+                            frame.push(Value::Undefined);
+                            let mut snapshot = FrameSnapshot::from_frame(frame, None);
+                            snapshot.pc = site_pc;
+                            match &mut self.obj_mut(generator).internal_kind {
+                                crate::value::InternalKind::Generator(g) => {
+                                    g.state = crate::value::GeneratorState::SuspendedYield;
+                                    g.yielded_value = Some(value.clone());
+                                    g.continuation = Some(Box::new(snapshot));
+                                    g.delegate = Some(delegate);
+                                }
+                                _ => {
+                                    return Err(RuntimeError::TypeError(
+                                        "active yield* target is not a Generator object".into(),
+                                    ))
+                                }
+                            }
+                            self.last_value = value.clone();
+                            return Ok(value);
+                        }
+                    } else {
+                        let iterable = frame.pop()?;
+                        for value in crate::intrinsics::collect_iterable(self, iterable)? {
+                            let arr = *self.gen_yields_stack.last().ok_or_else(|| {
+                                RuntimeError::TypeError("yield* outside generator".into())
+                            })?;
+                            let len = self.array_length(arr);
+                            self.object_set(arr, len.to_string(), value);
+                            self.object_set(
+                                arr,
+                                "length".into(),
+                                Value::Number((len + 1) as f64),
+                            );
+                        }
+                        frame.push(Value::Undefined);
+                    }
+                }
                 Op::CallMethod => {
                     let site_pc = frame.pc - 1; // IHI-EXT 7: Op byte's pc for cache key
                     let n = frame.bytecode[frame.pc] as usize;
@@ -15804,7 +15949,7 @@ impl Runtime {
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
         };
-        if is_generator && !proto.is_async && !function_proto_uses_yield_delegate(&proto) {
+        if is_generator && !proto.is_async {
             if proto.param_prologue_end > 0 {
                 let prologue_end = proto.param_prologue_end.min(proto.bytecode.len());
                 inner.bytecode = &proto.bytecode[..prologue_end];
@@ -17043,15 +17188,6 @@ impl<'a> From<&'a FrameSnapshot> for Frame<'a> {
     }
 }
 
-fn function_proto_uses_yield_delegate(proto: &rusty_js_bytecode::compiler::FunctionProto) -> bool {
-    proto.constants.entries().iter().any(|constant| {
-        matches!(
-            constant,
-            rusty_js_bytecode::Constant::String(name) if name.contains("yield_delegate")
-        )
-    })
-}
-
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
 /// Reserved for OSR-EXT 3+ consumption; consulted at OSR-EXT 4 first.
 pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
@@ -18237,6 +18373,54 @@ mod gcs_tests {
         .expect("return without finally should complete directly");
         let result = rt.global_get("result");
         assert!(matches!(&result, Value::String(s) if s.as_ref() == "1 false done true undefined true"));
+    }
+
+    #[test]
+    fn generator_yield_star_delegates_array_values() {
+        let rt = run_js_runtime(
+            r#"
+            function* g() {
+              yield* [1, 2, 3];
+            }
+            const it = g();
+            const a = it.next();
+            const b = it.next();
+            const c = it.next();
+            const d = it.next();
+            globalThis.result =
+              a.value + " " + a.done + " "
+              + b.value + " " + b.done + " "
+              + c.value + " " + c.done + " "
+              + d.value + " " + d.done;
+            "#,
+        )
+        .expect("yield* should delegate array values lazily");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "1 false 2 false 3 false undefined true"));
+    }
+
+    #[test]
+    fn generator_yield_star_propagates_inner_return_value() {
+        let rt = run_js_runtime(
+            r#"
+            function* inner() {
+              yield "a";
+              return "b";
+            }
+            function* outer() {
+              return yield* inner();
+            }
+            const it = outer();
+            const a = it.next();
+            const b = it.next();
+            globalThis.result =
+              a.value + " " + a.done + " "
+              + b.value + " " + b.done;
+            "#,
+        )
+        .expect("yield* should complete with inner return value");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "a false b true"));
     }
 }
 

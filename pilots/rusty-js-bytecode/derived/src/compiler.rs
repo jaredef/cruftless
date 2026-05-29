@@ -3794,14 +3794,8 @@ impl Compiler {
                     return Ok(());
                 }
                 if matches!(operator, UnaryOp::YieldDelegate) {
-                    let nm = self
-                        .constants
-                        .intern(Constant::String("__yield_delegate__".into()));
-                    encode_op(&mut self.bytecode, Op::LoadGlobal);
-                    encode_u16(&mut self.bytecode, nm);
                     self.compile_expr(argument)?;
-                    encode_op(&mut self.bytecode, Op::Call);
-                    encode_u8(&mut self.bytecode, 1);
+                    encode_op(&mut self.bytecode, Op::YieldDelegate);
                     return Ok(());
                 }
                 // Tier-Ω.5.BBBBBBBB: `delete obj.prop` / `delete obj[key]`

@@ -110,6 +110,12 @@ impl rusty_js_gc::Trace for Object {
                 if let Some(Value::Object(id)) = &g.pending_return {
                     ids.push(*id);
                 }
+                if let Some(delegate) = &g.delegate {
+                    ids.push(delegate.iterator);
+                    if let Value::Object(id) = &delegate.next_method {
+                        ids.push(*id);
+                    }
+                }
             }
             _ => {}
         }
@@ -889,6 +895,13 @@ pub struct GeneratorObject {
     pub continuation: Option<Box<crate::interp::FrameSnapshot>>,
     pub yielded_value: Option<Value>,
     pub pending_return: Option<Value>,
+    pub delegate: Option<GeneratorDelegate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratorDelegate {
+    pub iterator: ObjectRef,
+    pub next_method: Value,
 }
 
 #[derive(Debug)]

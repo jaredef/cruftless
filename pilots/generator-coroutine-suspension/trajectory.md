@@ -260,3 +260,47 @@ Also added the no-finally terminal path proving a suspended generator without a 
 ### Finding
 
 **Finding GCS.7**: early `return(value)` needs a distinct pending-completion slot on the generator object because cleanup `yield`s split the return completion across two external calls. The residual return slice is now concentrated in descriptor metadata, nested try/catch/finally discrimination, and finally-return override semantics; those require a richer abrupt-completion record than the current try-stack-only handler entry.
+
+## GCS-EXT 6 - yield-star delegation (2026-05-29)
+
+**Directive**: replace the legacy `__yield_delegate__` eager-drain path with a real generator-lifecycle delegation mechanism for `yield*`.
+
+### Substrate
+
+The bytecode alphabet now has `Op::YieldDelegate`. The compiler lowers `yield* expr` by evaluating the delegate expression and emitting that opcode, rather than calling the old `__yield_delegate__` helper. Plain sync generator calls no longer exclude function protos containing `yield*`, so delegated generators enter the same SuspendedStart/SuspendedYield lifecycle as the EXT 2c generator substrate.
+
+`GeneratorObject` now carries an optional `GeneratorDelegate` record containing the active delegate iterator and its `next` method. `Op::YieldDelegate` creates this record on first entry, calls delegate `next()`, and either pushes the delegate's completion value into the outer frame or captures a continuation at the opcode pc and yields the delegate value to the outer caller. On resume, `Generator.prototype.next(value)` overwrites the saved placeholder slot; `Op::YieldDelegate` reads that value and forwards it to the delegate `next(value)` call.
+
+The delegate record is traced by GC so the iterator and next method remain live while the outer generator is suspended inside `yield*`.
+
+### Exemplar
+
+Added runtime-library coverage for:
+
+```js
+function* g() {
+  yield* [1, 2, 3];
+}
+```
+
+which now lazily returns `1`, `2`, `3`, then `undefined done:true`.
+
+Also added nested-generator return propagation:
+
+```js
+function* inner() { yield "a"; return "b"; }
+function* outer() { return yield* inner(); }
+```
+
+where the second `outer().next()` completes with value `"b"`.
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 10 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 63 passed, 1 ignored.
+- For-of/generator slice measurement: 50 PASS / 19 FAIL from the same 69-row slice. Baseline from `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext4-forof-generators-20260529T153213Z/results.jsonl` was 46 PASS / 23 FAIL, for +4 PASS. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext6-forof-generators-20260529T160327Z/summary.json`.
+
+### Finding
+
+**Finding GCS.8**: `yield*` needs an opcode-owned delegation loop because the frame must resume at the delegation site, not after it, until the inner iterator completes. The saved-frame pc rewrite to the opcode site plus a generator-owned delegate record is enough for lazy array delegation, sent-value forwarding via `next(value)`, and inner generator return-value propagation. The remaining slice residuals are now outside the basic delegate pump: abrupt forwarding through delegate `throw`/`return`, IteratorClose, and destructuring iterator-close interactions.
