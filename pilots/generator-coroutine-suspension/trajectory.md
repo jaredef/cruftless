@@ -41,3 +41,36 @@ The scaffold is intentionally dormant. Existing generator instances still use th
 ### Finding
 
 **Finding GCS.1**: the existing interpreter `Frame` already contains the continuation boundary GCS needs. The next substrate should preserve and resume `Frame` state rather than model generator suspension as host Rust coroutine control flow.
+
+## GCS-EXT 2a - owned FrameSnapshot substrate (2026-05-29)
+
+**Directive**: after the EXT 2 lifecycle wiring blocker, keeper/helmsman rescoped the next rung to the prerequisite owned continuation type only. No yield opcode, `__yield_push__` rewrite, lifecycle flip, or eager-generator behavior change is in scope.
+
+### Substrate
+
+Added `FrameSnapshot`, an owned continuation payload that can capture the parts of `Frame<'a>` needed by future generator suspension:
+
+- function identity (`Option<Rc<FunctionProto>>`)
+- bytecode and constant pool
+- source maps, line starts, source URL, construct tags
+- local/upvalue descriptor metadata
+- locals, cell-backed locals, operand stack
+- program counter, try stack, with-environment stack
+- `this`, `this_cell`, derived initial this, upvalues
+- method-call diagnostics (`last_property_lookup`, `pending_method_name`, `pending_method_getprop_pc`)
+- private home, import.meta, new.target
+- arrow/strict/param/eval-var-env metadata
+
+`FrameSnapshot::from_frame` captures a borrowed frame into owned storage. `impl From<&FrameSnapshot> for Frame<'_>` restores a borrowed execution frame view over the snapshot's owned metadata while cloning the mutable execution vectors back into the active frame.
+
+### Clone Notes
+
+Straightforward clone fields: bytecode, constants, source metadata, locals, operand stack, try stack, with-env stack, diagnostics, private/import/new-target metadata.
+
+Careful clone fields: `local_cells`, `this_cell`, and `upvalues` intentionally clone the `Rc<RefCell<Value>>` handles, not the pointed values. This preserves binding identity across a suspended frame and already-created closures, which is required for generator resumption to observe shared mutable bindings correctly.
+
+Not captured yet: per-frame JIT/OSR caches and IC dispatch caches. They are optimization state, not semantic continuation state, and can be cold on resume in the first correctness implementation.
+
+### Finding
+
+**Finding GCS.2**: the owned continuation boundary can be introduced without touching generator behavior. The only semantic-sensitive clone boundary is cell-backed binding identity; cache state can be discarded at suspend/resume without changing observable JS behavior.

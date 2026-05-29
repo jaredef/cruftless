@@ -16335,6 +16335,120 @@ pub struct Frame<'a> {
     pub osr_cache: HashMap<usize, Option<Box<rusty_js_jit::CompiledFn>>>,
 }
 
+/// GCS-EXT 2a: owned continuation payload for future generator
+/// suspend/resume. `Frame<'a>` borrows bytecode and metadata from a
+/// module/function proto, which cannot live inside a heap GeneratorObject.
+/// This snapshot owns the resumable state and can be borrowed back into a
+/// `Frame<'_>` when a later rung wires the actual yield boundary.
+pub struct FrameSnapshot {
+    pub function_proto: Option<Rc<rusty_js_bytecode::compiler::FunctionProto>>,
+    pub bytecode: Vec<u8>,
+    pub constants: rusty_js_bytecode::ConstantsPool,
+    pub source_map: Vec<(usize, rusty_js_ast::Span)>,
+    pub line_starts: Vec<u32>,
+    pub source_url: String,
+    pub construct_tags: Vec<(usize, &'static str)>,
+    pub locals_names: Vec<rusty_js_bytecode::compiler::LocalDescriptor>,
+    pub upvalue_names: Vec<rusty_js_bytecode::compiler::UpvalueDescriptor>,
+    pub locals: Vec<Value>,
+    pub local_cells: Vec<Option<UpvalueCell>>,
+    pub operand_stack: Vec<Value>,
+    pub pc: usize,
+    pub try_stack: Vec<TryFrame>,
+    pub with_env_stack: Vec<crate::value::ObjectRef>,
+    pub this_value: Value,
+    pub derived_initial_this: Option<Value>,
+    pub this_cell: Option<UpvalueCell>,
+    pub upvalues: Vec<UpvalueCell>,
+    pub last_property_lookup: Option<String>,
+    pub pending_method_name: Option<String>,
+    pub pending_method_getprop_pc: Option<usize>,
+    pub private_home: Option<ObjectRef>,
+    pub import_meta: Option<crate::value::ObjectRef>,
+    pub is_arrow: bool,
+    pub param_count: usize,
+    pub strict: bool,
+    pub new_target: Option<Value>,
+    pub eval_var_env_is_global: bool,
+}
+
+impl FrameSnapshot {
+    pub fn from_frame(
+        frame: &Frame<'_>,
+        function_proto: Option<Rc<rusty_js_bytecode::compiler::FunctionProto>>,
+    ) -> Self {
+        Self {
+            function_proto,
+            bytecode: frame.bytecode.to_vec(),
+            constants: frame.constants.clone(),
+            source_map: frame.source_map.to_vec(),
+            line_starts: frame.line_starts.to_vec(),
+            source_url: frame.source_url.to_string(),
+            construct_tags: frame.construct_tags.to_vec(),
+            locals_names: frame.locals_names.to_vec(),
+            upvalue_names: frame.upvalue_names.to_vec(),
+            locals: frame.locals.clone(),
+            local_cells: frame.local_cells.clone(),
+            operand_stack: frame.operand_stack.clone(),
+            pc: frame.pc,
+            try_stack: frame.try_stack.clone(),
+            with_env_stack: frame.with_env_stack.clone(),
+            this_value: frame.this_value.clone(),
+            derived_initial_this: frame.derived_initial_this.clone(),
+            this_cell: frame.this_cell.clone(),
+            upvalues: frame.upvalues.clone(),
+            last_property_lookup: frame.last_property_lookup.clone(),
+            pending_method_name: frame.pending_method_name.clone(),
+            pending_method_getprop_pc: frame.pending_method_getprop_pc,
+            private_home: frame.private_home,
+            import_meta: frame.import_meta,
+            is_arrow: frame.is_arrow,
+            param_count: frame.param_count,
+            strict: frame.strict,
+            new_target: frame.new_target.clone(),
+            eval_var_env_is_global: frame.eval_var_env_is_global,
+        }
+    }
+}
+
+impl<'a> From<&'a FrameSnapshot> for Frame<'a> {
+    fn from(snapshot: &'a FrameSnapshot) -> Self {
+        Self {
+            bytecode: &snapshot.bytecode,
+            constants: &snapshot.constants,
+            source_map: &snapshot.source_map,
+            line_starts: &snapshot.line_starts,
+            source_url: &snapshot.source_url,
+            construct_tags: &snapshot.construct_tags,
+            locals_names: &snapshot.locals_names,
+            upvalue_names: &snapshot.upvalue_names,
+            locals: snapshot.locals.clone(),
+            local_cells: snapshot.local_cells.clone(),
+            operand_stack: snapshot.operand_stack.clone(),
+            pc: snapshot.pc,
+            try_stack: snapshot.try_stack.clone(),
+            with_env_stack: snapshot.with_env_stack.clone(),
+            this_value: snapshot.this_value.clone(),
+            derived_initial_this: snapshot.derived_initial_this.clone(),
+            this_cell: snapshot.this_cell.clone(),
+            upvalues: snapshot.upvalues.clone(),
+            last_property_lookup: snapshot.last_property_lookup.clone(),
+            pending_method_name: snapshot.pending_method_name.clone(),
+            pending_method_getprop_pc: snapshot.pending_method_getprop_pc,
+            private_home: snapshot.private_home,
+            import_meta: snapshot.import_meta,
+            is_arrow: snapshot.is_arrow,
+            param_count: snapshot.param_count,
+            strict: snapshot.strict,
+            new_target: snapshot.new_target.clone(),
+            back_edge_counts: HashMap::new(),
+            ic_dispatch_cache: HashMap::new(),
+            eval_var_env_is_global: snapshot.eval_var_env_is_global,
+            osr_cache: HashMap::new(),
+        }
+    }
+}
+
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
 /// Reserved for OSR-EXT 3+ consumption; consulted at OSR-EXT 4 first.
 pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
@@ -16517,7 +16631,7 @@ pub fn compute_loop_region(bytecode: &[u8], site_pc: usize) -> Option<(usize, us
     Some((entry_pc, end_pc))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TryFrame {
     pub catch_offset: usize,
     pub sp_at_entry: usize,
