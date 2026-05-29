@@ -27,6 +27,7 @@ Arguments:
   thread-id               Codex app-server thread id to wake
   poll-interval           seconds between polls; default 5
   --once                  process one poll cycle and exit
+  --instance-id <id>      optional CAACP instance_id for per-instance roles
 
 Environment:
   CAACP_SIDECAR_HOST      default 127.0.0.1
@@ -39,11 +40,26 @@ Environment:
 
 const args = process.argv.slice(2);
 const once = args.includes("--once");
-const positional = args.filter((arg) => arg !== "--once");
+let instanceId = null;
+const positional = [];
+for (let i = 0; i < args.length; i += 1) {
+  const arg = args[i];
+  if (arg === "--once") continue;
+  if (arg === "--instance-id") {
+    instanceId = args[++i] ?? null;
+    continue;
+  }
+  if (arg.startsWith("--instance-id=")) {
+    instanceId = arg.slice("--instance-id=".length);
+    continue;
+  }
+  positional.push(arg);
+}
 if (positional.length < 2) usage();
 
 const ROLE = positional[0];
 const THREAD_ID = positional[1];
+const INSTANCE_ID = instanceId;
 const INTERVAL_MS = Math.max(1, Number(positional[2] ?? "5")) * 1000;
 const SIDECAR_HOST = process.env.CAACP_SIDECAR_HOST ?? "127.0.0.1";
 const SIDECAR_PORT = process.env.CAACP_SIDECAR_PORT ?? "7777";
@@ -52,8 +68,9 @@ const CODEX_APP_TOKEN_FILE =
   process.env.CODEX_APP_TOKEN_FILE ??
   path.join(process.env.HOME ?? "", ".codex/remote-control/ios-token");
 
-const SEEN_FILE = path.join(DATA_DIR, `bridge-${ROLE}-codex-app-seen.json`);
-const LOG_FILE = path.join(DATA_DIR, `bridge-${ROLE}-codex-app.log`);
+const BRIDGE_ID = INSTANCE_ID ? `${ROLE}-${INSTANCE_ID}` : ROLE;
+const SEEN_FILE = path.join(DATA_DIR, `bridge-${BRIDGE_ID}-codex-app-seen.json`);
+const LOG_FILE = path.join(DATA_DIR, `bridge-${BRIDGE_ID}-codex-app.log`);
 
 async function log(message) {
   const line = `[caacp-codex-app-bridge] ${new Date().toISOString()} role=${ROLE} ${message}\n`;
@@ -76,7 +93,8 @@ async function writeSeen(ids) {
 }
 
 async function fetchInbox() {
-  const url = `http://${SIDECAR_HOST}:${SIDECAR_PORT}/local/inbox?role=${encodeURIComponent(ROLE)}`;
+  let url = `http://${SIDECAR_HOST}:${SIDECAR_PORT}/local/inbox?role=${encodeURIComponent(ROLE)}`;
+  if (INSTANCE_ID) url += `&instance_id=${encodeURIComponent(INSTANCE_ID)}`;
   const resp = await fetch(url);
   if (!resp.ok) {
     throw new Error(`sidecar inbox returned HTTP ${resp.status}`);
@@ -287,7 +305,8 @@ async function cycle() {
 
   const latest = fresh[fresh.length - 1];
   const latestTag = `${latest.sender}/${latest.intent}/${latest.slug}`;
-  const directive = `**CAACP NEW** role=${ROLE} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.`;
+  const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
+  const directive = `**CAACP NEW** role=${ROLE}${instance} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.`;
 
   await wakeCodex(directive);
   await writeSeen([...seen, ...fresh.map((msg) => msg.message_id)]);
@@ -300,7 +319,7 @@ try {
 } catch {
   await fs.writeFile(SEEN_FILE, "[]\n", "utf8");
 }
-await log(`starting; thread=${THREAD_ID} interval=${INTERVAL_MS / 1000}s seen-cache=${SEEN_FILE}`);
+await log(`starting; thread=${THREAD_ID} instance_id=${INSTANCE_ID ?? ""} interval=${INTERVAL_MS / 1000}s seen-cache=${SEEN_FILE}`);
 
 while (true) {
   try {
