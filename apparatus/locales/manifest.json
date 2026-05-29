@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless-r3/pilots",
   "totals": {
-    "locales": 217,
-    "top_level": 130,
+    "locales": 218,
+    "top_level": 131,
     "nested": 87,
     "warnings": 0
   },
@@ -170,6 +170,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": null
+    },
+    {
+      "coord": "array-prototype-sort",
+      "tag": "L.array-prototype-sort",
+      "parent": null,
+      "scope": "array-prototype-sort",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "FOUNDED at APS-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no runtime substrate lands in this founding round."
     },
     {
       "coord": "array-search-arg-strict-coerce",
@@ -519,7 +528,7 @@
       "parent": null,
       "scope": "generator-coroutine-suspension",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 5,
       "status": null
     },
     {
@@ -537,7 +546,7 @@
       "parent": null,
       "scope": "global-binding-surface-unification",
       "depth": 1,
-      "rung_count": 14,
+      "rung_count": 15,
       "status": null
     },
     {
@@ -853,7 +862,7 @@
       "scope": "promise-iterator-not-callable-discipline",
       "depth": 1,
       "rung_count": 0,
-      "status": "FOUNDED at PIND-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no substrate landing is authorized in the founding round."
+      "status": "CHAPTER CLOSED at PIND-EXT 4. The named 40-row Promise.all/allSettled/race `Symbol.iterator` + not-callable cluster measures 40/40 PASS after Promise-local iterator acquisition and `C.resolve` rejection routing."
     },
     {
       "coord": "realm-substrate",
