@@ -254,3 +254,52 @@ The regression exercises the same native-parent-constructor shape as the package
   - PASS: `got`, `commander`, `@actions/http-client`, `got-fetch`, `webpack-cli`, `ngrok` (`6/8`).
   - residual non-super failures: `cheerio` -> `MessagePort is not defined`; `discord.js` -> `Assignment to constant variable 'd'`.
   - super-constructor TDZ error cleared across all eight probed cells (`0/8` still show the target error).
+
+## CITPT-EXT 2 — object-rest TDZ init-site closure, lexical/module residual (2026-05-29)
+
+Directive: `helmsman/request/citpt-ext-2-tdz-lexical-module-r4`.
+
+**Scope-down disposition**
+
+Closed the concrete destructuring/rest TDZ sub-shape that had been blocking
+`cargo test --release -p rusty-js-runtime` at `tests/destructure.rs::t11_object_rest`.
+The nine package cells remain a separate lexical/module TDZ false-positive
+surface and are explicitly deferred as the next layer.
+
+**Root cause closed**
+
+`emit_destructure()` already initialized ordinary object-pattern leaves with
+`Op::InitLocal`, allowing declaration initialization to overwrite the TDZ
+sentinel seeded for `let`/`const` bindings. The object-rest binding path was
+still using `Op::StoreLocal`, so this valid declaration:
+
+```js
+const {a, b, ...rest} = {a: 1, b: 2, c: 3, d: 4};
+```
+
+threw `ReferenceError("Cannot access 'rest' before initialization")` while
+initializing `rest`.
+
+**Closure**
+
+Changed the object-rest declarator write from `StoreLocal` to `InitLocal` in
+`pilots/rusty-js-bytecode/derived/src/compiler.rs`, matching the existing
+destructure leaf initialization semantics.
+
+**Measurements**
+
+- `cargo test --release -p rusty-js-runtime --test destructure t11_object_rest -- --nocapture` — PASS.
+- `cargo build` — PASS.
+- `cargo test --release -p rusty-js-runtime --lib` — PASS (`68 passed`, `1 ignored`).
+- 9-cell TDZ package smoke via `legacy/host-rquickjs/tools/parity-measure.sh` — `0/9` PASS; all nine still fail with the original `Cannot access ... before initialization` load-time TDZ messages.
+
+**Residual**
+
+The package cluster is not closed by the object-rest init-site fix:
+
+- `arktype` still fails on `innerSchema` in optional-chain/declaration ordering.
+- `prettier`, `csso`, `stylelint`, and `svgo` still fail on scoped lexical names.
+- `rehype`, `redis`, `puppeteer-core`, and `config` still fail on package/module initialization reads.
+
+The next rung should target the lexical/module evaluation-order layer directly,
+not the destructuring rest helper path.
