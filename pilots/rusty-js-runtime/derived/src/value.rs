@@ -855,12 +855,29 @@ pub enum InternalKind {
     StringWrapper(Value),
     BooleanWrapper(Value),
     BigIntWrapper(Value),
+    /// Generator object scaffold per ECMA-262 §27.5.3. GCS-EXT 1 only
+    /// records the state cell; existing eager-collected generator behavior
+    /// remains wired until later suspension rungs replace it.
+    Generator(GeneratorObject),
     /// Sloppy mapped arguments exotic object per ECMA-262 §10.4.4.
     /// Each mapped index points at the same binding cell as the formal
     /// parameter, so `a = 2` and `arguments[0] = 2` observe one location.
     MappedArguments {
         parameter_map: IndexMap<String, UpvalueCell>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratorState {
+    SuspendedStart,
+    SuspendedYield,
+    Executing,
+    Completed,
+}
+
+#[derive(Debug)]
+pub struct GeneratorObject {
+    pub state: GeneratorState,
 }
 
 #[derive(Debug)]
@@ -1120,6 +1137,7 @@ impl InternalKind {
             InternalKind::StringWrapper(_) => "string-wrapper",
             InternalKind::BooleanWrapper(_) => "boolean-wrapper",
             InternalKind::BigIntWrapper(_) => "bigint-wrapper",
+            InternalKind::Generator(_) => "generator",
             InternalKind::MappedArguments { .. } => "mapped-arguments",
         }
     }

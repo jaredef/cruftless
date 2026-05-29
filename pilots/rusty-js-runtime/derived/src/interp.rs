@@ -737,6 +737,62 @@ impl Runtime {
         self.current_this.clone()
     }
 
+    pub fn new_generator_scaffold(&mut self) -> ObjectRef {
+        let mut obj = Object::new_ordinary();
+        obj.proto = self.generator_prototype;
+        obj.internal_kind = crate::value::InternalKind::Generator(crate::value::GeneratorObject {
+            state: crate::value::GeneratorState::SuspendedStart,
+        });
+        self.alloc_object(obj)
+    }
+
+    pub fn generator_next_scaffold(
+        &mut self,
+        generator: ObjectRef,
+        _sent: Value,
+    ) -> Result<Value, RuntimeError> {
+        self.generator_entry_scaffold(generator, "Generator.prototype.next")
+    }
+
+    pub fn generator_throw_scaffold(
+        &mut self,
+        generator: ObjectRef,
+        _thrown: Value,
+    ) -> Result<Value, RuntimeError> {
+        self.generator_entry_scaffold(generator, "Generator.prototype.throw")
+    }
+
+    pub fn generator_return_scaffold(
+        &mut self,
+        generator: ObjectRef,
+        _value: Value,
+    ) -> Result<Value, RuntimeError> {
+        self.generator_entry_scaffold(generator, "Generator.prototype.return")
+    }
+
+    fn generator_entry_scaffold(
+        &mut self,
+        generator: ObjectRef,
+        method_name: &str,
+    ) -> Result<Value, RuntimeError> {
+        let state = match &self.obj(generator).internal_kind {
+            crate::value::InternalKind::Generator(g) => g.state,
+            _ => {
+                return Err(RuntimeError::TypeError(format!(
+                    "{}: receiver is not a Generator object",
+                    method_name
+                )))
+            }
+        };
+        if matches!(state, crate::value::GeneratorState::Executing) {
+            return Err(RuntimeError::TypeError(format!(
+                "{}: generator is already executing",
+                method_name
+            )));
+        }
+        Ok(Value::Undefined)
+    }
+
     /// IHI-EXT 2 (2026-05-24): table-indexed cached intrinsic-ObjectId
     /// getter. Returns the cached id for the named field, or None if
     /// not yet populated (first eligible call). The dispatcher uses
