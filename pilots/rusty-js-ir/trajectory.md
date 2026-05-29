@@ -2978,3 +2978,50 @@ cargo build --release --bin cruft -p cruftless: PASS
 ```
 
 **Status**: IR-EXT 41 landed as a partial closure with two documented residuals. Cumulative IR rungs: 41.
+
+---
+
+## Rung-cluster-42 — ODP-EXT 4 Reflect.defineProperty boolean follow-through (2026-05-29)
+
+Helmsman directive `odp-ext-4-typed-array-resizable-reflect-r4` targeted typed-array/resizable Object.defineProperty behavior and Reflect.defineProperty follow-through after the ODP-EXT 1 shared ValidateAndApply helper.
+
+**Baseline-inspect**:
+- The three typed-array/resizable ODP fixtures already passed on the ODP-EXT 3 baseline:
+  - `built-ins/Object/defineProperty/typedarray-backed-by-resizable-buffer.js`
+  - `built-ins/Object/defineProperty/coerced-P-grow.js`
+  - `built-ins/Object/defineProperty/coerced-P-shrink.js`
+- The active in-scope failure was `built-ins/Reflect/defineProperty/return-boolean.js`: Reflect routed through Object.defineProperty, but the validation-shaped `Cannot define property 'p2'` TypeError was not mapped back to Boolean(false).
+
+**Substrate landed**:
+- Extended the Reflect.defineProperty shim's validation-failure classifier to map the shared ODP helper's `Cannot define property` false outcome to `false`.
+- Extended the same classifier for TypedArray integer-index false outcomes (`Cannot define out-of-bounds TypedArray index`, invalid TypedArray descriptor, invalid numeric index), preserving abrupt completions from descriptor/property-key coercion.
+
+**Measured yield**:
+```text
+Targeted ODP-EXT 4 set:
+PASS typedarray-backed-by-resizable-buffer, coerced-P-grow, coerced-P-shrink
+PASS Reflect.defineProperty define-properties, define-symbol-properties, defineProperty,
+     return-boolean, return-abrupt-from-attributes, return-abrupt-from-property-key,
+     return-abrupt-from-result
+FAIL 15.2.3.6-4-625gs (unchanged global own-property reflection residual)
+NO OUTPUT 15.2.3.6-4-116 (unchanged timeout/no-output residual)
+
+Reflect.defineProperty directory: 12 PASS / 0 FAIL
+descriptor-shape/property-semantics bucket: 41 PASS / 1 FAIL / 1 no-output
+Object.defineProperty surface bucket: 52 PASS / 1 FAIL / 1 no-output
+Adjacent first-80 Object.defineProperty sample: 80 PASS / 0 FAIL
+```
+
+**Residual disposition**:
+- `4-625gs` is not ODP-EXT 4 scope. ODP-EXT 3 focused probe already showed value resolution succeeds (`this.prop === 1002`, `prop === 1002`) while `this.hasOwnProperty("prop")` remains false, localizing the row to script-global own-property reflection.
+- `4-116` is not ODP-EXT 4 scope. It remains a no-output timeout under the runner (`timeout 10s`, empty stdout/stderr), requiring a separate hang trace.
+
+**Worktree note**:
+- Per §V.8, the worktree had a pre-existing unstaged `pilots/rusty-js-runtime/derived/src/interp.rs` global/eval diff at session start. This rung did not touch or stage that file.
+
+**Gates**:
+```text
+cargo build --release --bin cruft -p cruftless: PASS
+```
+
+**Status**: IR-EXT 42 CLOSED. Cumulative IR rungs: 42.
