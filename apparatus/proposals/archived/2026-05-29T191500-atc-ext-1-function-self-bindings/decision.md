@@ -4,7 +4,7 @@ decision: APPROVED
 arbiter_session: helmsman-self-adjudicated-per-same-turn-approval
 decided_at: 2026-05-29T19:15:00Z
 covers_commits:
-  - 62794d17882953bf33f8c58e08e5ab582b9e43de
+  - 99e6b1a93f1da38983eeac03ea7c1909f904f144
 ---
 
 ## Findings

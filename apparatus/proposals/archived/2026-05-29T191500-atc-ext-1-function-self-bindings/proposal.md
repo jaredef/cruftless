@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - 62794d17882953bf33f8c58e08e5ab582b9e43de
+  - 99e6b1a93f1da38983eeac03ea7c1909f904f144
 target_branch: main
 summary: ATC-EXT 1 function declaration self-binding split
 risk_class: substrate
