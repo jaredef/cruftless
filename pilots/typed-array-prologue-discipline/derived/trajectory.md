@@ -56,3 +56,24 @@
 - Touched-method sweep against current main: baseline 497 PASS / 350 FAIL, candidate 521 PASS / 326 FAIL across 847 rows; delta 24 newly passing rows and 0 regressions. Artifacts: `/home/jaredef/Developer/cruftless-r3-sidecar/results/tapd-ext2-baseline-20260529T132714Z/` and `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-ext2-targeted-final-20260529T132919Z/`.
 
 **Findings**: TAPD-EXT 2 closes the local callback/not-callable and safe numeric coercion subset without adjacent regression. Remaining TAPD mass is now more strongly shaped by detached/resizable buffers, species/subclass allocation, constructor/static method shape, and method-surface neighbors rather than simple duplicated callback prologues.
+
+## TAPD-EXT 3 — access validation and species-create bridge (2026-05-29)
+
+**Trigger**: continuation after TAPD-EXT 2 exposed the remaining TAPD mass as detached/out-of-bounds validation plus TypedArray species/subclass allocation rather than simple receiver or callback prologues.
+
+**Move**:
+- added `validate_typed_array_access(rt, method_name)`, layering `typed_array_view_out_of_bounds` on top of the EXT 1 receiver helper.
+- routed access-validating TypedArray prototype methods through it (`set`, `fill`, `slice`, iterators, reverse/search/callback methods, `join`, `map`, `filter`, reducers, `toString`, `at`, `copyWithin`, `findLast`, `findLastIndex`).
+- upgraded `make_typed_array_like` to return `Result<ObjectRef, RuntimeError>` and consult `species_constructor`, including custom constructor calls and validation that the result is TypedArray-like.
+- kept `subarray` on receiver-only validation: resizable-buffer rows require its length snapshot and argument coercions to operate even when the source is temporarily out-of-bounds.
+
+**Verification**:
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- Focused detached/species probes: direct detached-buffer rows still expose the host `$262.detachArrayBuffer` shim limitation, but species and out-of-bounds rows are covered by the broader sweep.
+- Touched-method sweep across 1,006 rows (`fill`, `copyWithin`, `includes`, `indexOf`, `lastIndexOf`, `find`, `findIndex`, `every`, `some`, `forEach`, `map`, `filter`, `reduce`, `reduceRight`, `findLast`, `findLastIndex`, `sort`, `toSorted`, `slice`, `subarray`):
+  - Baseline on current main (`/home/jaredef/Developer/cruftless-r3`): 574 PASS / 432 FAIL.
+  - Candidate on R2: 660 PASS / 346 FAIL.
+  - Delta: 86 newly passing rows, 0 regressions.
+  - Artifacts: `/home/jaredef/Developer/cruftless-r3-sidecar/results/tapd-ext3-baseline-20260529T134149Z/` and `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-ext3-candidate-fixed-20260529T134245Z/`.
+
+**Findings**: access validation plus the species-create bridge closes a larger, coherent TAPD subset without regressing the touched-method surface. The only narrowing required was `subarray`: treating temporary out-of-bounds as an immediate TypeError regressed `subarray/coerced-begin-end-grow.js`, confirming that `subarray` belongs to a separate resizable-buffer ordering shape.

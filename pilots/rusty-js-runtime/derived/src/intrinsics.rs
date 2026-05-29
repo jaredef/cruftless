@@ -18240,14 +18240,7 @@ impl Runtime {
         // so `keyPair()` failed at first byte op.
         let ta_proto = self.alloc_object(Object::new_ordinary());
         register_method(self, ta_proto, "subarray", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "subarray: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "subarray")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18259,9 +18252,6 @@ impl Runtime {
                 Value::String(s) => (*s).clone(),
                 _ => "Uint8Array".into(),
             };
-            let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(slice_len as f64));
-            o.set_own_internal("__kind".into(), Value::String(Rc::new(kind)));
             // TAMM-EXT 5: subarray shares the parent's underlying buffer
             // per §23.2.3.31. Propagate .buffer + adjust byteOffset.
             let parent_buf = rt.object_get(this_id, "buffer");
@@ -18275,12 +18265,18 @@ impl Runtime {
                 .map(|v| v.bytes_per_element)
                 .unwrap_or(1);
             let new_offset = parent_offset + start * bpe;
+            let new_id = make_typed_array_like(rt, this_id, slice_len)?;
+            rt.object_set(new_id, "length".into(), Value::Number(slice_len as f64));
+            rt.object_set(new_id, "__kind".into(), Value::String(Rc::new(kind)));
             if let Value::Object(_) = parent_buf {
-                o.set_own("buffer".into(), parent_buf.clone());
-                o.set_own("byteOffset".into(), Value::Number(new_offset as f64));
-                o.set_own("byteLength".into(), Value::Number((slice_len * bpe) as f64));
+                rt.object_set(new_id, "buffer".into(), parent_buf.clone());
+                rt.object_set(new_id, "byteOffset".into(), Value::Number(new_offset as f64));
+                rt.object_set(
+                    new_id,
+                    "byteLength".into(),
+                    Value::Number((slice_len * bpe) as f64),
+                );
             }
-            let new_id = rt.alloc_object(o);
             for i in 0..slice_len {
                 let v = rt.object_get(this_id, &(start + i).to_string());
                 rt.object_set(new_id, i.to_string(), v);
@@ -18302,7 +18298,7 @@ impl Runtime {
             Ok(Value::Object(new_id))
         });
         register_method(self, ta_proto, "set", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "set")?;
+            let this_id = validate_typed_array_access(rt, "set")?;
             let src = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
@@ -18323,7 +18319,7 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "fill", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "fill")?;
+            let this_id = validate_typed_array_access(rt, "fill")?;
             let v = args.first().cloned().unwrap_or(Value::Number(0.0));
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18337,7 +18333,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "slice", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "slice")?;
+            let this_id = validate_typed_array_access(rt, "slice")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18395,7 +18391,7 @@ impl Runtime {
         // superagent depends on cuid2. Without these the iteration path
         // throws "callee not callable: undefined (method='values')".
         register_method(self, ta_proto, "values", |rt, _args| {
-            let src_id = validate_typed_array_this(rt, "values")?;
+            let src_id = validate_typed_array_access(rt, "values")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18412,7 +18408,7 @@ impl Runtime {
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "keys", |rt, _args| {
-            let src_id = validate_typed_array_this(rt, "keys")?;
+            let src_id = validate_typed_array_access(rt, "keys")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18429,7 +18425,7 @@ impl Runtime {
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "entries", |rt, _args| {
-            let src_id = validate_typed_array_this(rt, "entries")?;
+            let src_id = validate_typed_array_access(rt, "entries")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18500,7 +18496,7 @@ impl Runtime {
         // Array.prototype). Cover the high-fanout set: reverse, indexOf,
         // includes, forEach, find, findIndex, every, some, join.
         register_method(self, ta_proto, "reverse", |rt, _args| {
-            let this_id = validate_typed_array_this(rt, "reverse")?;
+            let this_id = validate_typed_array_access(rt, "reverse")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18516,7 +18512,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "indexOf", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "indexOf")?;
+            let this_id = validate_typed_array_access(rt, "indexOf")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18534,7 +18530,7 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "includes", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "includes")?;
+            let this_id = validate_typed_array_access(rt, "includes")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18552,7 +18548,7 @@ impl Runtime {
             Ok(Value::Boolean(false))
         });
         register_method(self, ta_proto, "forEach", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "forEach")?;
+            let this_id = validate_typed_array_access(rt, "forEach")?;
             let cb = typed_array_callable_arg(rt, args.first(), "forEach")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18610,7 +18606,7 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "findIndex", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "findIndex")?;
+            let this_id = validate_typed_array_access(rt, "findIndex")?;
             let cb = typed_array_callable_arg(rt, args.first(), "findIndex")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18630,7 +18626,7 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "every", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "every")?;
+            let this_id = validate_typed_array_access(rt, "every")?;
             let cb = typed_array_callable_arg(rt, args.first(), "every")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18650,7 +18646,7 @@ impl Runtime {
             Ok(Value::Boolean(true))
         });
         register_method(self, ta_proto, "some", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "some")?;
+            let this_id = validate_typed_array_access(rt, "some")?;
             let cb = typed_array_callable_arg(rt, args.first(), "some")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18670,7 +18666,7 @@ impl Runtime {
             Ok(Value::Boolean(false))
         });
         register_method(self, ta_proto, "join", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "join")?;
+            let this_id = validate_typed_array_access(rt, "join")?;
             let sep = match args.first() {
                 Some(v) => abstract_ops::to_string(v).as_str().to_string(),
                 None => ",".into(),
@@ -18702,13 +18698,13 @@ impl Runtime {
         // via the type-specific subtype chain), length, byteLength,
         // __kind sentinel (non-enumerable per P58.E1).
         register_method(self, ta_proto, "map", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.map")?;
+            let this_id = validate_typed_array_access(rt, "TypedArray.prototype.map")?;
             let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.map")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
-            let out = make_typed_array_like(rt, this_id, len);
+            let out = make_typed_array_like(rt, this_id, len)?;
             for i in 0..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 let r = rt.call_function(
@@ -18721,7 +18717,7 @@ impl Runtime {
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "filter", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.filter")?;
+            let this_id = validate_typed_array_access(rt, "TypedArray.prototype.filter")?;
             let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.filter")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18740,14 +18736,14 @@ impl Runtime {
                     keeps.push(v);
                 }
             }
-            let out = make_typed_array_like(rt, this_id, keeps.len());
+            let out = make_typed_array_like(rt, this_id, keeps.len())?;
             for (i, v) in keeps.into_iter().enumerate() {
                 rt.object_set(out, i.to_string(), v);
             }
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "reduce", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduce")?;
+            let this_id = validate_typed_array_access(rt, "TypedArray.prototype.reduce")?;
             let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduce")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18775,7 +18771,7 @@ impl Runtime {
             Ok(acc)
         });
         register_method(self, ta_proto, "reduceRight", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduceRight")?;
+            let this_id = validate_typed_array_access(rt, "TypedArray.prototype.reduceRight")?;
             let f =
                 typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduceRight")?;
             let len = match rt.object_get(this_id, "length") {
@@ -18809,7 +18805,7 @@ impl Runtime {
             Ok(acc)
         });
         register_method(self, ta_proto, "toString", |rt, _args| {
-            let this_id = validate_typed_array_this(rt, "toString")?;
+            let this_id = validate_typed_array_access(rt, "toString")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18832,7 +18828,7 @@ impl Runtime {
         // (toReversed/toSorted/with/findLast/findLastIndex) gap plus the
         // older missing copyWithin/lastIndexOf/sort.
         register_method(self, ta_proto, "at", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "at")?;
+            let this_id = validate_typed_array_access(rt, "at")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18864,7 +18860,7 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "copyWithin", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "copyWithin")?;
+            let this_id = validate_typed_array_access(rt, "copyWithin")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as i64,
                 _ => 0,
@@ -18884,7 +18880,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "findLast", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "findLast")?;
+            let this_id = validate_typed_array_access(rt, "findLast")?;
             let cb = typed_array_callable_arg(rt, args.first(), "findLast")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18904,7 +18900,7 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "findLastIndex", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "findLastIndex")?;
+            let this_id = validate_typed_array_access(rt, "findLastIndex")?;
             let cb = typed_array_callable_arg(rt, args.first(), "findLastIndex")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -21344,6 +21340,19 @@ fn validate_typed_array_this(
     Ok(this_id)
 }
 
+fn validate_typed_array_access(
+    rt: &mut Runtime,
+    method_name: &str,
+) -> Result<ObjectRef, RuntimeError> {
+    let this_id = validate_typed_array_this(rt, method_name)?;
+    if rt.typed_array_view_out_of_bounds(this_id) {
+        return Err(RuntimeError::TypeError(format!(
+            "{method_name}: receiver is detached or out of bounds"
+        )));
+    }
+    Ok(this_id)
+}
+
 fn typed_array_callable_arg(
     rt: &Runtime,
     arg: Option<&Value>,
@@ -21427,7 +21436,40 @@ fn make_typed_array_like(
     rt: &mut Runtime,
     src: rusty_js_gc::ObjectId,
     len: usize,
-) -> rusty_js_gc::ObjectId {
+) -> Result<rusty_js_gc::ObjectId, RuntimeError> {
+    let default_ctor = rt.object_get(src, "constructor");
+    let ctor = rt.species_constructor(&Value::Object(src), default_ctor)?;
+    if rt.is_callable(&ctor) {
+        let proto_override = if let Value::Object(cid) = &ctor {
+            match rt.object_get(*cid, "prototype") {
+                Value::Object(pid) => Some(pid),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let mut ordinary = Object::new_ordinary();
+        ordinary.proto = proto_override.or_else(|| rt.obj(src).proto);
+        let this_id = rt.alloc_object(ordinary);
+        let this_obj = Value::Object(this_id);
+        let prev_pending = rt.pending_new_target.take();
+        rt.pending_new_target = Some(ctor.clone());
+        let constructed = rt.call_function(ctor.clone(), this_obj.clone(), vec![Value::Number(len as f64)]);
+        rt.pending_new_target = prev_pending;
+        let out = match constructed? {
+            Value::Object(id) => id,
+            _ => this_id,
+        };
+        if matches!(rt.object_get(out, "__ta_kind"), Value::Undefined)
+            && matches!(rt.object_get(out, "__kind"), Value::Undefined)
+        {
+            return Err(RuntimeError::TypeError(
+                "TypedArraySpeciesCreate: constructor did not create a TypedArray".into(),
+            ));
+        }
+        return Ok(out);
+    }
+
     let src_kind = match rt.object_get(src, "__kind") {
         Value::String(s) | Value::Symbol(s) => (*s).clone(),
         _ => "Uint8Array".into(),
@@ -21452,7 +21494,7 @@ fn make_typed_array_like(
     };
     o.set_own("byteLength".into(), Value::Number(len as f64 * bpe));
     o.set_own_internal("__kind".into(), Value::String(Rc::new(src_kind)));
-    rt.alloc_object(o)
+    Ok(rt.alloc_object(o))
 }
 
 fn describe_thrown_for_diag(rt: &Runtime, e: &RuntimeError) -> String {
