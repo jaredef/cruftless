@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - 35e1116d569a0c6a2d1376c54d0af3fd17de342d
+  - a80f3fd2e72c3c86e869207ce750f0fa2a0b6c7f
 target_branch: main
 summary: PIND Phase 3 Promise combinator factoring design
 risk_class: design
@@ -15,7 +15,7 @@ gates_post:
 
 ## Design Move
 
-Commit `35e1116d569a0c6a2d1376c54d0af3fd17de342d` lands PIND-EXT 1, a design-only rung for Promise combinator not-callable failures.
+Commit `a80f3fd2e72c3c86e869207ce750f0fa2a0b6c7f` lands PIND-EXT 1, a design-only rung for Promise combinator not-callable failures.
 
 - **M** = Promise combinator iterable-acquisition factoring design.
 - **T** = 40-row post-EPSUA sample cluster across `Promise.all`, `Promise.allSettled`, and `Promise.race`.

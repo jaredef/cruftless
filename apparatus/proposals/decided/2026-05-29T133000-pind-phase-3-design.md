@@ -4,7 +4,7 @@ decision: APPROVED
 arbiter_session: keeper-substituted
 decided_at: 2026-05-29T13:30:00Z
 covers_commits:
-  - 35e1116d569a0c6a2d1376c54d0af3fd17de342d
+  - a80f3fd2e72c3c86e869207ce750f0fa2a0b6c7f
 ---
 
 ## Findings
