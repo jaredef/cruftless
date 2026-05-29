@@ -84,3 +84,33 @@
 **Finding SMPT.6 (predicate-correctness over heuristic)**: replacing `function_body_depth > 0` with `in_generator` not only fixed the strict-mode case but corrected the sloppy non-generator function-body yield-as-identifier case (SMPT-EXT 1 was an over-rejecting heuristic). The principled predicate beat the proxy predicate on both axes.
 
 **Status**: SMPT-EXT 3 CLOSED.
+
+## SMPT-EXT 4 — strict/generator yield residual closure (2026-05-29)
+
+**Trigger**: Helmsman EPSUA parallel-R4 adjudication approved the read-only residual segmentation for four latest full-suite parser-owned `yield` rows. Scope remained strictly SMPT: strict-mode + generator-context predicate residuals, no non-strict PPAE for-head changes.
+
+**Edits** (~40 LOC):
+- `expr.rs::parse_object_literal`: reject bare shorthand `{ yield }` when `strict_mode || in_generator`, before the shorthand expression is emitted. This covers both object-literal shorthand and the strict assignment-pattern shorthand conversion path.
+- `stmt.rs::parse_class_body`: parse static blocks as strict code under `[~Yield]` by temporarily setting `strict_mode=true` and `in_generator=false`, preventing generator-function context from leaking into `static { ... }`.
+- `stmt.rs::parse_variable_statement`: after a declarator without initializer, reject a same-line non-separator token. This catches the `let\n yield 0;` lexical-declaration residual where `yield 0` must not be accepted as a following expression on the same declaration line.
+
+**Verification**:
+- Target test262 exemplars: **4/4 PASS** (all expected SyntaxError):
+  - `language/expressions/assignment/dstr/obj-id-identifier-yield-ident-invalid.js`
+  - `language/expressions/object/identifier-shorthand-yield-invalid-strict-mode.js`
+  - `language/statements/class/static-init-invalid-yield.js`
+  - `language/statements/let/syntax/let-newline-yield-in-normal-function.js`
+- Protective probes:
+  - `"use strict"; function f() { yield 1; }` -> SyntaxError
+  - `function f() { var yield = 4; console.log(yield); } f();` -> 4
+  - `var yield = 4; for ([x = yield] of [[]]) console.log(x);` -> 4
+- `cargo build --release --bin cruft -p cruftless` -> PASS.
+- `cargo test --release -p rusty-js-parser` -> blocked by pre-existing unrelated lexer unit `tests/spec_golden.rs::legacy_octal_rejected` accepting `07` as a number token; parser tests reached before that failure passed.
+
+### Findings
+
+**Finding SMPT.7 (residual segmentation correctness)**: the four latest parser-owned yield residuals were not a single missing "yield reserved" switch. They split across three concrete grammar coordinates: shorthand IdentifierReference, ClassStaticBlockStatementList context, and lexical declaration continuation. Applying the exact predicate at each coordinate closed all four target rows without regressing sloppy yield-as-identifier probes.
+
+**Finding SMPT.8 (static-block context boundary)**: static blocks are a strict non-generator body even when syntactically nested inside a generator function. Treating them as `parse_function_body_gs(Some(false), None, true)` is the correct parser-state boundary; preserving outer `in_generator` was the failure shape.
+
+**Status**: SMPT-EXT 4 CLOSED.

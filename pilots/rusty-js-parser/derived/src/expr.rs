@@ -1082,6 +1082,13 @@ impl<'src> Parser<'src> {
                             )
                         }
                     };
+                    if (self.strict_mode || self.in_generator) && name == "yield" {
+                        return Err(ParseError {
+                            span: key_span,
+                            message: "`yield` is not a valid shorthand identifier in this context"
+                                .into(),
+                        });
+                    }
                     let ident = Expr::Identifier {
                         name: name.clone(),
                         span: key_span,

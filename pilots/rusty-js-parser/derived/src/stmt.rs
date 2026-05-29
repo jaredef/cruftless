@@ -449,6 +449,22 @@ impl<'src> Parser<'src> {
             } else {
                 None
             };
+            if init.is_none()
+                && !matches!(
+                    self.current_kind(),
+                    TokenKind::Punct(Punct::Comma)
+                        | TokenKind::Punct(Punct::Semicolon)
+                        | TokenKind::Punct(Punct::RParen)
+                        | TokenKind::Punct(Punct::RBrace)
+                        | TokenKind::Eof
+                )
+                && !self.lookahead_preceded_by_lt()
+            {
+                return Err(ParseError {
+                    span: self.lookahead_span(),
+                    message: "expected initializer, comma, or semicolon after declaration".into(),
+                });
+            }
             let d_end = self.last_span_end();
             declarators.push(VariableDeclarator {
                 target,
@@ -811,7 +827,19 @@ impl<'src> Parser<'src> {
                 let next = bytes.get(p).copied();
                 if next == Some(b'{') {
                     self.bump()?; // `static`
-                    let body = self.parse_function_body()?;
+                    // SMPT-EXT 4: ClassStaticBlockStatementList is strict
+                    // code and is parsed with [~Yield], even when the class
+                    // appears inside a generator function body.
+                    let prior_strict = self.strict_mode;
+                    let prior_gen = self.in_generator;
+                    self.strict_mode = true;
+                    self.set_lexer_strict(true);
+                    self.in_generator = false;
+                    let body_result = self.parse_function_body_gs(Some(false), None, true);
+                    self.strict_mode = prior_strict;
+                    self.set_lexer_strict(prior_strict);
+                    self.in_generator = prior_gen;
+                    let body = body_result?;
                     let end = self.last_span_end();
                     out.push(ClassMember::StaticBlock {
                         body,
