@@ -140,3 +140,40 @@ Added runtime-library tests for:
 ### Finding
 
 **Finding GCS.4**: the initial generator suspension boundary is enough to make plain `.next()` lazy and finite/infinite generators resumable, but the next semantic wall is sent-value/abrupt-completion injection. EXT 3 should wire `next(value)` into the suspended `yield` expression before `throw`, `return`, or `yield*` delegation.
+
+## GCS-EXT 3 - next(value) sent-value injection (2026-05-29)
+
+**Directive**: deliver `Generator.prototype.next(value)`'s argument into the suspended `yield` expression. `throw(err)`, `return(value)`, and `yield*` delegation remain follow-on scope.
+
+### Substrate
+
+`Generator.prototype.next` now distinguishes `SuspendedStart` from `SuspendedYield` before transitioning the generator to `Executing`.
+
+On `SuspendedYield` resume, the runtime mutates the saved `FrameSnapshot` before reconstructing the active `Frame`: the top operand-stack slot, which `Op::Yield` installed as the yield-expression resume placeholder, is overwritten with the `next(value)` argument. If the saved stack is unexpectedly empty, the value is pushed as a conservative fallback.
+
+First `.next(value)` from `SuspendedStart` still ignores its argument, matching the generator-start semantics and preserving EXT 2c's construction behavior.
+
+### Exemplar
+
+Added `interp::gcs_tests::generator_next_value_resumes_yield_expression`:
+
+```js
+function* g() {
+  const x = yield 1;
+  return x + 1;
+}
+const it = g();
+it.next(7);   // first argument ignored
+it.next(42);  // terminal result value is 43
+```
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 4 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 57 passed, 1 ignored.
+- Post-EXT 2c for-of/generator slice measurement: 46 PASS / 23 FAIL / 0 SKIP from the same 69-row slice, +12 PASS over EXT 2c. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext3-forof-generators-20260529T152014Z/summary.json`.
+
+### Finding
+
+**Finding GCS.5**: `Op::Yield`'s placeholder stack slot is the correct injection point for `next(value)`. No opcode rewrite is needed for sent-value delivery; the saved continuation boundary can be patched before frame restore. The remaining generator wall is abrupt-completion injection (`throw`, `return`) plus `yield*` delegation and iterator-close forwarding.

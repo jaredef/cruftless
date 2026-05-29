@@ -827,9 +827,9 @@ impl Runtime {
     pub fn generator_next_scaffold(
         &mut self,
         generator: ObjectRef,
-        _sent: Value,
+        sent: Value,
     ) -> Result<Value, RuntimeError> {
-        let snapshot = {
+        let (snapshot, inject_sent_value) = {
             let obj = self.obj_mut(generator);
             match &mut obj.internal_kind {
                 crate::value::InternalKind::Generator(g) => {
@@ -841,9 +841,11 @@ impl Runtime {
                     if matches!(g.state, crate::value::GeneratorState::Completed) {
                         return Ok(self.generator_result_object(Value::Undefined, true));
                     }
+                    let inject_sent_value =
+                        matches!(g.state, crate::value::GeneratorState::SuspendedYield);
                     g.state = crate::value::GeneratorState::Executing;
                     g.yielded_value = None;
-                    g.continuation.take()
+                    (g.continuation.take(), inject_sent_value)
                 }
                 _ => {
                     return Err(RuntimeError::TypeError(
@@ -852,7 +854,7 @@ impl Runtime {
                 }
             }
         };
-        let Some(snapshot) = snapshot else {
+        let Some(mut snapshot) = snapshot else {
             if let crate::value::InternalKind::Generator(g) =
                 &mut self.obj_mut(generator).internal_kind
             {
@@ -860,6 +862,13 @@ impl Runtime {
             }
             return Ok(self.generator_result_object(Value::Undefined, true));
         };
+        if inject_sent_value {
+            if let Some(slot) = snapshot.operand_stack.last_mut() {
+                *slot = sent;
+            } else {
+                snapshot.operand_stack.push(sent);
+            }
+        }
 
         let mut frame = Frame::from(snapshot.as_ref());
         let result = self.with_active_generator_for_yield(generator, |rt| rt.run_frame(&mut frame));
@@ -17865,6 +17874,29 @@ mod gcs_tests {
         .expect("infinite generator should be lazy");
         let result = rt.global_get("result");
         assert!(matches!(result, Value::Number(n) if n == 1.0));
+    }
+
+    #[test]
+    fn generator_next_value_resumes_yield_expression() {
+        let rt = run_js_runtime(
+            r#"
+            function* g() {
+              const x = yield 1;
+              return x + 1;
+            }
+            const it = g();
+            const a = it.next(7);
+            const b = it.next(42);
+            globalThis.result =
+              a.value * 1000
+              + (a.done ? 100 : 0)
+              + b.value
+              + (b.done ? 1 : 0);
+            "#,
+        )
+        .expect("next(value) should resume yield expression");
+        let result = rt.global_get("result");
+        assert!(matches!(result, Value::Number(n) if n == 1044.0));
     }
 }
 
