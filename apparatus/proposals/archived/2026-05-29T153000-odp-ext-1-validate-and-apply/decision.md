@@ -5,7 +5,7 @@
 **Date**: 2026-05-29
 **Approved commits**:
 
-- `079a4e78` - `runtime: validate object defineProperty descriptors`
+- `0b11aeea` - `runtime: validate object defineProperty descriptors`
 
 ## Rationale
 
