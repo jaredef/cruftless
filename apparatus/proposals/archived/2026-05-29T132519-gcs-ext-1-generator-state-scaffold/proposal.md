@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - 6a423878048693daa9eab947826416413a0b5088
+  - e012bc0e7b586b0b9fb238783170fc33f9ebbcef
 target_branch: main
 summary: GCS-EXT 1 - choose bytecode CPS/save-restore design and scaffold generator state
 risk_class: substrate
