@@ -102,3 +102,117 @@ make the refined sweep JSON, or an equivalent package sandbox with exact package
 failure records, available to R1. Once available, resume this locale at Phase 2
 and inspect at least eight package source lines before choosing single-rung
 versus multi-rung Phase 3.
+
+## ATC-EXT 0b — Inline source Phase 2 segmentation (2026-05-29)
+
+### Directive
+
+Helmsman resent the cluster inline via CAACP message
+`3086cad4-87b3-4cc7-8077-5d173c95bdd2`, preserving the original scope:
+Phase 0 + Phase 2 only, no substrate land.
+
+### Inline cluster segmentation
+
+The 26-row cluster groups by the reported reassigned binding:
+
+| Binding | Count | Packages |
+|---|---:|---|
+| `_interopRequireWildcard` | 10 | `expect`, `@jest/expect`, `sequelize`, `express-validator`, `jest-cli`, `jest-resolve`, `jest-snapshot`, `metro`, `metro-config`, `jest-extended` |
+| `_setPrototypeOf` | 8 | `abortcontroller-polyfill`, `mobx`, `mobx-state-tree`, `postcss-selector-parser`, `nunjucks`, `cssnano`, `postcss-nested`, `postcss-preset-env` |
+| `_typeof` | 4 | `@mswjs/data`, `pino-pretty`, `class-validator`, `strapi` |
+| `_extends` | 1 | `mathjs` |
+| `_getRequireWildcardCache` | 1 | `prettier-eslint` |
+| `_chalk` | 1 | `jest-each` |
+| `cov_toszyysar` | 1 | `commitizen` |
+
+The dominant surface is not user-authored `const x; x = ...`. It is generated
+helper code that declares a function and rewrites that function's own binding
+on first call as a memoization fast path.
+
+### Empirical sample
+
+External sandbox:
+`/home/jaredef/Developer/cruftless-sidecar/results/atc-loader-phase2-r1-20260529T184429Z/sandbox`.
+
+`npm install` populated the sandbox with representative packages. Current
+`target/release/cruft` reproduced the inline failure for 15/15 attempted
+sample imports; Node imported the first 10/10 sample packages successfully.
+
+Representative source-line attributions:
+
+| Package | Reported binding | Source line |
+|---|---|---|
+| `mathjs` | `_extends` | `node_modules/@babel/runtime/helpers/extends.js:1-2`: `function _extends() { return module.exports = _extends = ... }` |
+| `abortcontroller-polyfill` | `_setPrototypeOf` | `node_modules/abortcontroller-polyfill/dist/umd-polyfill.js:119-120`: `function _setPrototypeOf... { return _setPrototypeOf = ... }` |
+| `mobx` | `_setPrototypeOf` | `node_modules/mobx/dist/mobx.cjs.development.js:362-363`: `function _setPrototypeOf... { return _setPrototypeOf = ... }` |
+| `postcss-selector-parser` | `_setPrototypeOf` | `node_modules/postcss-selector-parser/dist/selectors/root.js:11`: `function _setPrototypeOf... { _setPrototypeOf = ... }` |
+| `nunjucks` | `_setPrototypeOf` | `node_modules/nunjucks/src/environment.js:4`: `function _setPrototypeOf... { _setPrototypeOf = ... }` |
+| `expect` | `_interopRequireWildcard` | `node_modules/expect/build/index.js:28`: `function _interopRequireWildcard... { return (_interopRequireWildcard = function ...)(...) }` |
+| `class-validator` | `_typeof` | `node_modules/validator/lib/isRgbColor.js:9`: `function _typeof... { return _typeof = ... }` |
+| `@mswjs/data` | `_typeof` | reproduced as `_typeof`; package path routes through validator/Babel helper dependency in the installed graph |
+| `pino-pretty` | `_typeof` | reproduced as `_typeof`; package path routes through validator/Babel helper dependency in the installed graph |
+| `sequelize` | `_interopRequireWildcard` | reproduced as `_interopRequireWildcard`; installed graph contains the same generated helper shape in Babel/Jest-style helpers |
+
+Minimal mechanism smoke:
+
+```js
+function _setPrototypeOf(o, p) {
+  _setPrototypeOf = Object.setPrototypeOf ? Object.setPrototypeOf.bind() : function (o, p) {
+    return o;
+  };
+  return _setPrototypeOf(o, p);
+}
+_setPrototypeOf({}, null);
+```
+
+Node accepts this. Cruft throws
+`TypeError: Assignment to constant variable '_setPrototypeOf'`.
+
+### Current cruft ownership cross-reference
+
+- Runtime enforcement is not the immediate owner. `Op::StoreLocal` in
+  `pilots/rusty-js-runtime/derived/src/interp.rs` checks TDZ but does not
+  reject const reassignment itself.
+- The rejection is compiler-emitted. `compile_plain_assign` and compound
+  assignment lowering in
+  `pilots/rusty-js-bytecode/derived/src/compiler.rs` call
+  `is_const_binding(name)` and emit a TypeError when true.
+- The likely false-positive source is
+  `compile_function_proto_with_name_hint`: it allocates a self-name slot with
+  `VariableKind::Const` for named function expressions **and declarations**.
+  Babel helper declarations then see their own function name as const inside
+  the body, so the valid self-memoizing assignment compiles to a thrown
+  TypeError.
+- Top-level function declaration hoisting already allocates the outer
+  declaration binding as `VariableKind::Var`; the bug is the inner self-name
+  slot being applied too broadly or with the wrong mutability.
+
+### C4 result
+
+C4 reason-coherence **passes**. The inline cluster is coherent under one
+dominant mechanism:
+
+1. The top three helper names account for 22/26 rows.
+2. The inspected package source lines share the same operational shape:
+   generated helper function declaration self-reassignment.
+3. A minimal local smoke reproduces the same false positive without any loader
+   or package-manager complexity.
+4. Node/Bun-compatible behavior is to allow reassignment of a function
+   declaration's own binding in this helper shape.
+
+### Proposed Phase 3 move shape
+
+Single-rung compiler fix:
+
+1. Split named function expression self-name binding from function declaration
+   body binding in `compile_function_proto_with_name_hint`.
+2. Preserve `VariableKind::Const` for genuine named function expressions, whose
+   self-name binding is immutable per ECMAScript.
+3. For function declarations, either do not allocate the extra self-name slot
+   when the declaration binding/upvalue is already available, or allocate it as
+   `VariableKind::Var` so helper self-reassignment compiles normally.
+4. Gate with the minimal self-reassigning function-declaration smoke plus the
+   representative package import sample. Expected direct cluster reclaim:
+   most or all of the 22/26 helper rows; the singleton `_chalk`,
+   `_getRequireWildcardCache`, and `cov_toszyysar` rows need remeasurement
+   after the dominant fix before deciding if they are same-shape or residuals.
