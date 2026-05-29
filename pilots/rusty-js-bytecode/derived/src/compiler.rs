@@ -5219,19 +5219,42 @@ impl Compiler {
             kind: VariableKind::Var,
             depth: 0,
         }));
-        // Tier-Ω.5.kkkkk: self-name slot for named function expressions.
-        // Per ECMA-262 §15.2.5 named function expressions get an immutable
-        // self-name binding. Function declarations instead use their mutable
-        // declaration binding from the enclosing scope; adding a const self
-        // slot makes Babel-style helper declarations (`function f(){ f = ...}`)
-        // throw incorrectly.
+        // Tier-Ω.5.kkkkk: self-name slot for named function expressions /
+        // declarations. Both shapes get a self-name slot so the body can
+        // refer to itself for recursion + nested closures; the difference
+        // is mutability per ECMA-262:
+        //   • Named function expressions (§15.2.5) get an IMMUTABLE
+        //     self-name binding (Const). `let f = function g(){ g = 1 }`
+        //     correctly throws TypeError on `g = 1`.
+        //   • Function declarations (§15.2.6) have a MUTABLE binding in
+        //     the enclosing scope; the body's own reference to the name
+        //     must mirror that mutability so Babel-style helpers like
+        //     `function _setPrototypeOf(){ _setPrototypeOf = ... }` work
+        //     (the ATC-EXT 1 anchor). A Let slot satisfies both
+        //     mutability and the in-body self-reference (e.g. ramda's
+        //     `function _curryN(...){ return function(){ ... _curryN(...) } }`
+        //     where the inner closure captures `_curryN` via upvalue).
+        //
+        // ATC-EXT 1 (commit 99e6b1a9) originally removed the slot entirely
+        // for declarations on the theory that the enclosing-scope binding
+        // sufficed. ramda regressed: inner closures inside a function
+        // declaration body could not resolve the declaration's name from
+        // their upvalue chain when the body didn't host the slot, because
+        // upvalue resolution walks the lexical-parent function chain via
+        // the function's own locals, not the outer module/script scope.
+        // ATC-EXT 2 (2026-05-29 post-R11 sweep): restore self-name slot
+        // for declarations but make it Let so the body can rebind.
         let self_name_slot = if let Some(n) = &name {
             // Skip if a parameter already shadows the name — the param wins.
             let already = sub.locals.iter().any(|l| l.name == n.name);
-            if !already && matches!(self_name_mode, FunctionSelfNameMode::Expression) {
+            if !already {
+                let kind = match self_name_mode {
+                    FunctionSelfNameMode::Expression => VariableKind::Const,
+                    FunctionSelfNameMode::Declaration => VariableKind::Let,
+                };
                 Some(sub.alloc_local(LocalDescriptor {
                     name: n.name.clone(),
-                    kind: VariableKind::Const,
+                    kind,
                     depth: 0,
                 }))
             } else {
