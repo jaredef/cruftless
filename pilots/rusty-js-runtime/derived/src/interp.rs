@@ -15379,7 +15379,12 @@ impl Runtime {
             let p = crate::promise::new_promise(self);
             match body_result_v {
                 Ok(v) => crate::promise::resolve_promise(self, p, v),
-                Err(RuntimeError::Thrown(v)) => crate::promise::reject_promise(self, p, v),
+                Err(RuntimeError::Thrown(v)) => {
+                    self.enqueue_microtask("AsyncFunctionReject", move |rt| {
+                        crate::promise::reject_promise(rt, p, v);
+                        Ok(())
+                    });
+                }
                 Err(e) => {
                     let reason = match e {
                         RuntimeError::TypeError(msg) => {
@@ -15404,7 +15409,10 @@ impl Runtime {
                         }
                         other => Value::String(Rc::new(format!("{:?}", other))),
                     };
-                    crate::promise::reject_promise(self, p, reason);
+                    self.enqueue_microtask("AsyncFunctionReject", move |rt| {
+                        crate::promise::reject_promise(rt, p, reason);
+                        Ok(())
+                    });
                 }
             }
             return Ok(Value::Object(p));
@@ -15870,7 +15878,8 @@ fn eval_var_scoped_declarations_fallback(source: &str) -> EvalVarScopedDeclarati
 }
 
 fn keyword_at(source: &str, offset: usize, keyword: &str) -> bool {
-    if offset + keyword.len() > source.len() {
+    let end = offset + keyword.len();
+    if end > source.len() || !source.is_char_boundary(offset) || !source.is_char_boundary(end) {
         return false;
     }
     source[offset..].starts_with(keyword)
@@ -15879,7 +15888,7 @@ fn keyword_at(source: &str, offset: usize, keyword: &str) -> bool {
             .next_back()
             .map(|c| !is_identifier_continue(c))
             .unwrap_or(true)
-        && source[offset + keyword.len()..]
+        && source[end..]
             .chars()
             .next()
             .map(|c| !is_identifier_continue(c))

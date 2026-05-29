@@ -5131,90 +5131,18 @@ impl Runtime {
         });
         register_engine_helper(self, "__await", |rt, args| {
             let v = args.first().cloned().unwrap_or(Value::Undefined);
-            let id = match v {
-                Value::Object(id) => id,
-                other => return Ok(other),
-            };
-            let (is_promise, status, value) = {
-                let o = rt.obj(id);
-                if let InternalKind::Promise(ps) = &o.internal_kind {
-                    (true, ps.status, ps.value.clone())
-                } else {
-                    (
-                        false,
-                        crate::value::PromiseStatus::Pending,
-                        Value::Undefined,
-                    )
-                }
-            };
-            if !is_promise {
-                return Ok(Value::Object(id));
-            }
-            match status {
-                crate::value::PromiseStatus::Fulfilled => {
-                    rt.pending_unhandled.remove(&id);
-                    Ok(value)
-                }
-                crate::value::PromiseStatus::Rejected => {
-                    rt.pending_unhandled.remove(&id);
-                    Err(RuntimeError::Thrown(value))
-                }
-                crate::value::PromiseStatus::Pending => {
-                    // v1 stand-in for proper frame park/resume: pump the
-                    // event loop synchronously until the awaited Promise
-                    // settles. Real suspension is queued as its own rung;
-                    // this unblocks any program whose await target is
-                    // settleable by draining queues (Promise.allSettled,
-                    // Promise.race against resolved, await setTimeout).
-                    let max_pumps = 100_000usize;
-                    let mut pumps = 0usize;
-                    loop {
-                        let did_work = crate::job_queue::pump_one_tick(rt)?;
-                        // Re-check promise status.
-                        let (status, value) = {
-                            let o = rt.obj(id);
-                            if let InternalKind::Promise(ps) = &o.internal_kind {
-                                (ps.status, ps.value.clone())
-                            } else {
-                                return Err(RuntimeError::TypeError(
-                                    "await: lost-track on Promise during pump".into(),
-                                ));
-                            }
-                        };
-                        match status {
-                            crate::value::PromiseStatus::Fulfilled => {
-                                rt.pending_unhandled.remove(&id);
-                                return Ok(value);
-                            }
-                            crate::value::PromiseStatus::Rejected => {
-                                rt.pending_unhandled.remove(&id);
-                                return Err(RuntimeError::Thrown(value));
-                            }
-                            crate::value::PromiseStatus::Pending => {}
-                        }
-                        if !did_work {
-                            // Try poll_io once before declaring idle.
-                            let progressed = if let Some(poll) = rt.host_hooks.poll_io.take() {
-                                let p = poll(rt)?;
-                                rt.host_hooks.poll_io = Some(poll);
-                                p
-                            } else {
-                                false
-                            };
-                            if !progressed {
-                                return Err(RuntimeError::TypeError(
-                                    "await: Promise never settled (event loop idle)".into(),
-                                ));
-                            }
-                        }
-                        pumps += 1;
-                        if pumps > max_pumps {
-                            return Err(RuntimeError::TypeError(
-                                "await: max-pump bound exceeded (likely self-pending promise cycle)".into()));
-                        }
-                    }
+            await_settled_value(rt, v)
+        });
+        register_engine_helper(self, "__async_from_sync_value", |rt, args| {
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if let Value::Object(id) = v.clone() {
+                let is_promise = matches!(rt.obj(id).internal_kind, InternalKind::Promise(_));
+                if is_promise {
+                    let key = Value::String(Rc::new("constructor".into()));
+                    rt.reflect_get_via(&Value::Object(id), &key)?;
                 }
             }
+            await_settled_value(rt, v)
         });
         // Tier-Ω.5.P26.E1.webassembly-stub: minimum-viable WebAssembly
         // global so packages that capture WebAssembly.compile / .instantiate
@@ -22399,6 +22327,87 @@ where
     let fn_obj = make_native(name, f);
     let fn_id = rt.alloc_object(fn_obj);
     define_global_property(rt, name, Value::Object(fn_id));
+}
+
+
+fn await_settled_value(rt: &mut Runtime, v: Value) -> Result<Value, RuntimeError> {
+    let id = match v {
+        Value::Object(id) => id,
+        other => return Ok(other),
+    };
+    let (is_promise, status, value) = {
+        let o = rt.obj(id);
+        if let InternalKind::Promise(ps) = &o.internal_kind {
+            (true, ps.status, ps.value.clone())
+        } else {
+            (
+                false,
+                crate::value::PromiseStatus::Pending,
+                Value::Undefined,
+            )
+        }
+    };
+    if !is_promise {
+        return Ok(Value::Object(id));
+    }
+    match status {
+        crate::value::PromiseStatus::Fulfilled => {
+            rt.pending_unhandled.remove(&id);
+            Ok(value)
+        }
+        crate::value::PromiseStatus::Rejected => {
+            rt.pending_unhandled.remove(&id);
+            Err(RuntimeError::Thrown(value))
+        }
+        crate::value::PromiseStatus::Pending => {
+            let max_pumps = 100_000usize;
+            let mut pumps = 0usize;
+            loop {
+                let did_work = crate::job_queue::pump_one_tick(rt)?;
+                let (status, value) = {
+                    let o = rt.obj(id);
+                    if let InternalKind::Promise(ps) = &o.internal_kind {
+                        (ps.status, ps.value.clone())
+                    } else {
+                        return Err(RuntimeError::TypeError(
+                            "await: lost-track on Promise during pump".into(),
+                        ));
+                    }
+                };
+                match status {
+                    crate::value::PromiseStatus::Fulfilled => {
+                        rt.pending_unhandled.remove(&id);
+                        return Ok(value);
+                    }
+                    crate::value::PromiseStatus::Rejected => {
+                        rt.pending_unhandled.remove(&id);
+                        return Err(RuntimeError::Thrown(value));
+                    }
+                    crate::value::PromiseStatus::Pending => {}
+                }
+                if !did_work {
+                    let progressed = if let Some(poll) = rt.host_hooks.poll_io.take() {
+                        let p = poll(rt)?;
+                        rt.host_hooks.poll_io = Some(poll);
+                        p
+                    } else {
+                        false
+                    };
+                    if !progressed {
+                        return Err(RuntimeError::TypeError(
+                            "await: Promise never settled (event loop idle)".into(),
+                        ));
+                    }
+                }
+                pumps += 1;
+                if pumps > max_pumps {
+                    return Err(RuntimeError::TypeError(
+                        "await: max-pump bound exceeded (likely self-pending promise cycle)".into(),
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn register_global_fn<F>(rt: &mut Runtime, name: &str, f: F)

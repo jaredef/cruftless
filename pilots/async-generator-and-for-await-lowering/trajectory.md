@@ -303,3 +303,230 @@ completion and assignment-pattern parsing. Async-generator residual remains
 dominated by parameter destructuring and `yield*` async delegation; do not
 re-enter `yield*` without a timeout-safe design because the prior probe hung
 the AGFA runner.
+
+## AGFA-EXT 7 — direct-eval declaration fallback UTF-8 boundary guard (2026-05-28)
+
+**Target selected**: current exemplar re-run showed `PASS=79 FAIL=21 / 100`,
+with seven parser/static async-generator rows producing blank harness output
+rather than JSON. Direct execution showed a runtime panic in
+`eval_var_scoped_declarations_fallback`:
+
+```text
+start byte index ... is not a char boundary; it is inside '«'
+```
+
+The panic was triggered by Test262 harness text containing non-ASCII assertion
+quotes. The fallback scanner walked the source by byte offset and called
+`keyword_at` at every byte; `keyword_at` then sliced `source[offset..]` even
+when `offset` was not a UTF-8 character boundary.
+
+**Substrate move**:
+
+- `keyword_at` now computes `end = offset + keyword.len()` once.
+- It returns false unless both `offset` and `end` are valid character
+  boundaries and `end <= source.len()`.
+- The post-keyword boundary check slices from `source[end..]`.
+
+This keeps the fallback scanner byte-oriented while preventing invalid UTF-8
+slice panics. The fix is intentionally runtime-local; it does not broaden into
+async-generator `yield*` delegation.
+
+**Verification**:
+
+```text
+cargo check -p rusty-js-runtime: PASS (existing warnings)
+cargo build --release --bin cruft -p cruftless: PASS (existing warnings)
+```
+
+Targeted panic rows now emit JSON PASS as negative SyntaxError tests:
+
+```text
+language/expressions/async-generator/await-as-binding-identifier-escaped.js PASS
+language/expressions/async-generator/early-errors-expression-binding-identifier-arguments.js PASS
+language/statements/async-generator/yield-identifier-strict.js PASS
+```
+
+Exemplar suite moved:
+
+```text
+AGFA exemplars PRE-EXT 7:  PASS=79 FAIL=21 / 100 (79.0%)
+AGFA exemplars POST-EXT 7: PASS=86 FAIL=14 / 100 (86.0%)
+```
+
+Residual split after move:
+
+- 8 `language/expressions/async-generator`
+- 3 `language/statements/async-generator`
+- 3 `language/statements/for-await-of`
+
+**Gate**: after the sidecar root was corrected, `scripts/diff-prod/run-all.sh`
+completed against `/home/jaredef/Developer/cruftless-sidecar/results/diff-prod`
+at `PASS=61 FAIL=51 / 112`.
+
+**Next**: remain on AGFA only if targeting the reduced for-await AsyncFromSync
+tail or a timeout-safe async-generator `yield*` probe. The UTF-8 scanner panic
+is closed.
+
+
+## AGFA-EXT 8 — for-await assignment-pattern member target admission (2026-05-28)
+
+**Target selected**: after AGFA-EXT 7, the for-await residual still included one
+parser-shaped row:
+
+- `language/statements/for-await-of/async-func-decl-dstr-array-rest-nested-array-yield-ident-valid.js`
+
+The source uses an expression-headed for-await assignment pattern:
+
+```js
+for await ([...[x[yield]]] of [[86]]) { ... }
+```
+
+This is not a binding pattern: the leaf target is a member expression. It is,
+however, a valid destructuring assignment target in the `for await (... of ...)`
+assignment-head grammar. The parser was forcing every array/object head through
+`expr_to_binding_pattern`; member-expression leaves made that conversion return
+`None`, and the pattern literal path reported `Invalid destructuring assignment
+target in for-in/for-of head`.
+
+**Substrate move**:
+
+- Added a conservative `is_valid_assignment_pattern_expr` validator for
+  expression-headed assignment patterns.
+- When an array/object for-in/of head cannot become a binding pattern but is a
+  valid assignment pattern, route it to `ForBinding::AssignmentTarget(e)` rather
+  than SyntaxError.
+- Kept the existing invalid-pattern rejection for malformed pattern literals
+  (rest-not-last, trailing comma after spread, invalid leaves).
+
+**Verification**:
+
+- `cargo fmt -p rusty-js-parser` applied.
+- `cargo check -p rusty-js-parser` passed with existing warnings.
+- `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+- Targeted for-await row now PASSes.
+- AGFA exemplar suite moved from `PASS=86 FAIL=14 / 100 (86.0%)` to
+  `PASS=87 FAIL=13 / 100 (87.0%)`.
+- `scripts/diff-prod/run-all.sh` completed at `PASS=61 FAIL=51 / 112`.
+
+**Finding AGFA.8**: for-await assignment heads need a parser distinction
+between BindingPattern and AssignmentPattern. A cover array/object literal with
+member-expression leaves is invalid as a binding pattern but valid as an
+assignment pattern; rejecting it at parse time hides downstream for-await
+assignment semantics.
+
+**Residual split after move**:
+
+- 8 `language/expressions/async-generator`
+- 3 `language/statements/async-generator`
+- 2 `language/statements/for-await-of`
+
+**Next**: the remaining for-await rows are AsyncFromSync abrupt-completion and
+async-generator destructuring value propagation. The dominant mass remains
+`yield*` async delegation; enter that only with a timeout-safe design.
+
+
+## AGFA-EXT 9 — AsyncFromSync value bridge fast-path escape hatch (2026-05-28)
+
+**Target selected**: the remaining non-`yield*` for-await row:
+
+- `language/statements/for-await-of/async-from-sync-iterator-continuation-abrupt-completion-get-constructor.js`
+
+Pre-move behavior skipped the AsyncFromSync value continuation entirely for
+array-backed `for await (var x of [p])`: `ForOfFastNext` wrote the raw promise
+into the loop binding and jumped directly to the body. The row therefore logged
+`never reached` instead of taking the catch path.
+
+**Substrate move**:
+
+- Disabled the fused `ForOfFastNext` path when `await_` is true so for-await
+  heads always execute the slow path's iterator-result await and value await
+  bridge.
+- Split the existing `__await` helper body into `await_settled_value` and added
+  an internal `__async_from_sync_value` helper for the value leg.
+- `__async_from_sync_value` performs the observable `constructor` get on
+  internal Promise values before delegating to `await_settled_value`, matching
+  the abrupt-completion site in AsyncFromSyncIteratorContinuation.
+
+**Verification**:
+
+- `cargo check -p rusty-js-runtime -p rusty-js-bytecode` passed with existing
+  warnings.
+- `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+- Target row behavior moved from:
+  `Actual [start, never reached, tick 1, tick 2] ...`
+  to:
+  `Actual [start, tick 1, catch, tick 2] ...`.
+- AGFA exemplars remained neutral at `PASS=87 FAIL=13 / 100 (87.0%)`.
+- `scripts/diff-prod/run-all.sh` completed at `PASS=61 FAIL=51 / 112`.
+
+**Finding AGFA.9**: the array fast path was hiding all for-await value-await
+semantics. After routing through the slow path, the remaining target gap is not
+iterator selection or constructor observation; it is promise-job ordering. The
+catch is delivered one microtask too early (`catch` before `tick 2`). Closing
+this row requires an async-function rejection scheduling step rather than more
+for-of parser/lowering work.
+
+**Residual split after move**:
+
+- 8 `language/expressions/async-generator`
+- 3 `language/statements/async-generator`
+- 2 `language/statements/for-await-of`
+
+**Next**: either implement timeout-safe promise-job scheduling for the
+AsyncFromSync abrupt-completion rejection, or leave AGFA for a different
+iterator-protocol locale. Avoid `yield*` async delegation without a timeout-safe
+design.
+
+
+## AGFA-EXT 10 — async-function rejection job ordering (2026-05-28)
+
+**Target selected**: continue the AGFA-EXT 9 AsyncFromSync row after the fast-path
+bypass and constructor-get helper moved behavior from `never reached` to the
+correct rejection path but with the catch reaction one microtask too early.
+
+Target row:
+
+- `language/statements/for-await-of/async-from-sync-iterator-continuation-abrupt-completion-get-constructor.js`
+
+**Substrate move**:
+
+- Async function abrupt completion now settles the returned promise through an
+  `AsyncFunctionReject` microtask rather than rejecting immediately at call
+  return.
+- This preserves the existing synchronous body execution model while matching
+  the Promise job ordering required by the AsyncFromSync abrupt-completion row:
+  an already-queued `.then` job runs first, its chained `.then` is appended,
+  and only then does the async-function rejection enqueue the caller's catch
+  reaction.
+
+**Verification**:
+
+- Targeted AsyncFromSync row now PASSes.
+- `cargo check -p rusty-js-runtime -p rusty-js-bytecode` passed with existing
+  warnings.
+- `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+- AGFA exemplars moved from `PASS=87 FAIL=13 / 100 (87.0%)` to
+  `PASS=95 FAIL=5 / 100 (95.0%)`.
+- `scripts/diff-prod/run-all.sh` completed at `PASS=61 FAIL=51 / 112`.
+
+**Residual split after move**:
+
+- `language/statements/for-await-of/async-gen-decl-dstr-array-rest-nested-obj-yield-expr.js`
+  still fails on async-generator yield/resume value propagation.
+- Three checked residuals timeout in async-generator `yield*` delegation:
+  `named-yield-star-next-then-non-callable-string-fulfillpromise.js`,
+  `yield-star-async-next.js`, and
+  `yield-star-next-then-non-callable-number-fulfillpromise.js`.
+- The exemplar runner reports one additional async-generator failure in the same
+  residual family; treat the remaining AGFA mass as async-generator suspension /
+  `yield*` protocol, not for-await parser/lowering.
+
+**Finding AGFA.10**: after the for-await slow-path bridge is in place,
+AsyncFromSync abrupt completion is governed by async-function promise settlement
+ordering. Immediate rejection of the returned async-function promise is too
+early; one queued async-function rejection job gives the caller's catch reaction
+the correct relative position in the Promise job queue.
+
+**Next**: leave AGFA unless entering async-generator suspension with a
+strict timeout-safe design. The remaining rows are no longer narrow for-await
+lowering fixes.

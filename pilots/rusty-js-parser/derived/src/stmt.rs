@@ -149,6 +149,54 @@ fn is_valid_for_assignment_target(e: &Expr) -> bool {
     }
 }
 
+fn is_valid_assignment_pattern_expr(e: &Expr) -> bool {
+    match e {
+        Expr::Identifier { .. } | Expr::Member { .. } => true,
+        Expr::Parenthesized { expr, .. } => is_valid_assignment_pattern_expr(expr),
+        Expr::Array {
+            elements,
+            trailing_comma_after_spread,
+            ..
+        } => {
+            if *trailing_comma_after_spread {
+                return false;
+            }
+            let n = elements.len();
+            elements.iter().enumerate().all(|(i, el)| match el {
+                ArrayElement::Elision { .. } => true,
+                ArrayElement::Expr(expr) => match expr {
+                    Expr::Assign {
+                        operator: rusty_js_ast::AssignOp::Assign,
+                        target,
+                        ..
+                    } => is_valid_assignment_pattern_expr(target),
+                    other => is_valid_assignment_pattern_expr(other),
+                },
+                ArrayElement::Spread { expr, .. } => {
+                    i + 1 == n && is_valid_assignment_pattern_expr(expr)
+                }
+            })
+        }
+        Expr::Object { properties, .. } => {
+            let n = properties.len();
+            properties.iter().enumerate().all(|(i, prop)| match prop {
+                ObjectProperty::Property { value, .. } => match value {
+                    Expr::Assign {
+                        operator: rusty_js_ast::AssignOp::Assign,
+                        target,
+                        ..
+                    } => is_valid_assignment_pattern_expr(target),
+                    other => is_valid_assignment_pattern_expr(other),
+                },
+                ObjectProperty::Spread { expr, .. } => {
+                    i + 1 == n && matches!(expr, Expr::Identifier { .. })
+                }
+            })
+        }
+        _ => false,
+    }
+}
+
 impl<'src> Parser<'src> {
     fn parse_assignment_expression_no_in(&mut self) -> Result<Expr, ParseError> {
         let saved_in_disallowed = self.in_disallowed;
@@ -1715,6 +1763,9 @@ impl<'src> Parser<'src> {
                             // (eval/arguments) and generator (yield) rules.
                             self.check_pattern_binding_ids(&pat, span_fallback)?;
                             ForBinding::Pattern(pat)
+                        }
+                        None if is_pattern_literal && is_valid_assignment_pattern_expr(&e) => {
+                            ForBinding::AssignmentTarget(e)
                         }
                         None if is_pattern_literal => {
                             return Err(ParseError {

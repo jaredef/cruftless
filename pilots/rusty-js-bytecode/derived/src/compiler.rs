@@ -2275,12 +2275,13 @@ impl Compiler {
                 // mismatch. Two patch sites: done_offset (i32 at +4) and
                 // next_iter_offset (i16 at +8). Patched after the slow
                 // path + body are emitted.
-                let ipbr_op_off = if per_iter_fresh || assign_target.is_some() {
+                let ipbr_op_off = if *await_ || per_iter_fresh || assign_target.is_some() {
                     // The fused fast path writes the loop binding and jumps
                     // directly to the body. Lexical for-of heads need the
                     // ResetLocalCell prologue below so closures capture a
                     // fresh per-iteration cell; assignment targets need the
-                    // post-store PutValue bridge below.
+                    // post-store PutValue bridge below. For-await heads need
+                    // the slow path's result/value Await bridge.
                     None
                 } else {
                     let off = self.bytecode.len();
@@ -2336,7 +2337,9 @@ impl Compiler {
                 if let Some(slot) = forawait_tmp {
                     encode_op(&mut self.bytecode, Op::StoreLocal);
                     encode_u16(&mut self.bytecode, slot);
-                    let await_nm = self.constants.intern(Constant::String("__await".into()));
+                    let await_nm = self
+                        .constants
+                        .intern(Constant::String("__async_from_sync_value".into()));
                     encode_op(&mut self.bytecode, Op::LoadGlobal);
                     encode_u16(&mut self.bytecode, await_nm);
                     encode_op(&mut self.bytecode, Op::LoadLocal);
