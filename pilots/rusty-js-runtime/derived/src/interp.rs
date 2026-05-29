@@ -747,7 +747,67 @@ impl Runtime {
             continuation: None,
             yielded_value: None,
         });
-        self.alloc_object(obj)
+        let generator = self.alloc_object(obj);
+        self.install_generator_lifecycle_methods(generator);
+        generator
+    }
+
+    fn new_generator_with_continuation(&mut self, snapshot: FrameSnapshot) -> ObjectRef {
+        let generator = self.new_generator_scaffold();
+        if let crate::value::InternalKind::Generator(g) = &mut self.obj_mut(generator).internal_kind
+        {
+            g.continuation = Some(Box::new(snapshot));
+        }
+        generator
+    }
+
+    fn install_generator_lifecycle_methods(&mut self, generator: ObjectRef) {
+        let next_fn = crate::intrinsics::make_native("next", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let sent = args.first().cloned().unwrap_or(Value::Undefined);
+            rt.generator_next_scaffold(this_id, sent)
+        });
+        let next_id = self.alloc_object(next_fn);
+        self.set_engine_sentinel(generator, "next", Value::Object(next_id));
+
+        let return_fn = crate::intrinsics::make_native("return", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let value = args.first().cloned().unwrap_or(Value::Undefined);
+            rt.generator_return_scaffold(this_id, value)
+        });
+        let return_id = self.alloc_object(return_fn);
+        self.set_engine_sentinel(generator, "return", Value::Object(return_id));
+
+        let throw_fn = crate::intrinsics::make_native("throw", |rt, args| {
+            let this_id = match rt.current_this() {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let thrown = args.first().cloned().unwrap_or(Value::Undefined);
+            rt.generator_throw_scaffold(this_id, thrown)
+        });
+        let throw_id = self.alloc_object(throw_fn);
+        self.set_engine_sentinel(generator, "throw", Value::Object(throw_id));
+
+        let self_iter = generator;
+        let iter_fn = crate::intrinsics::make_native("@@iterator", move |_rt, _args| {
+            Ok(Value::Object(self_iter))
+        });
+        let iter_id = self.alloc_object(iter_fn);
+        self.set_engine_sentinel(generator, "@@iterator", Value::Object(iter_id));
+    }
+
+    fn generator_result_object(&mut self, value: Value, done: bool) -> Value {
+        let mut o = Object::new_ordinary();
+        o.set_own("value".into(), value);
+        o.set_own("done".into(), Value::Boolean(done));
+        Value::Object(self.alloc_object(o))
     }
 
     pub fn with_active_generator_for_yield<F, T>(
@@ -769,46 +829,123 @@ impl Runtime {
         generator: ObjectRef,
         _sent: Value,
     ) -> Result<Value, RuntimeError> {
-        self.generator_entry_scaffold(generator, "Generator.prototype.next")
+        let snapshot = {
+            let obj = self.obj_mut(generator);
+            match &mut obj.internal_kind {
+                crate::value::InternalKind::Generator(g) => {
+                    if matches!(g.state, crate::value::GeneratorState::Executing) {
+                        return Err(RuntimeError::TypeError(
+                            "Generator.prototype.next: generator is already executing".into(),
+                        ));
+                    }
+                    if matches!(g.state, crate::value::GeneratorState::Completed) {
+                        return Ok(self.generator_result_object(Value::Undefined, true));
+                    }
+                    g.state = crate::value::GeneratorState::Executing;
+                    g.yielded_value = None;
+                    g.continuation.take()
+                }
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "Generator.prototype.next: receiver is not a Generator object".into(),
+                    ))
+                }
+            }
+        };
+        let Some(snapshot) = snapshot else {
+            if let crate::value::InternalKind::Generator(g) =
+                &mut self.obj_mut(generator).internal_kind
+            {
+                g.state = crate::value::GeneratorState::Completed;
+            }
+            return Ok(self.generator_result_object(Value::Undefined, true));
+        };
+
+        let mut frame = Frame::from(snapshot.as_ref());
+        let result = self.with_active_generator_for_yield(generator, |rt| rt.run_frame(&mut frame));
+        match result {
+            Ok(value) => {
+                let yielded = match &self.obj(generator).internal_kind {
+                    crate::value::InternalKind::Generator(g)
+                        if matches!(g.state, crate::value::GeneratorState::SuspendedYield) =>
+                    {
+                        true
+                    }
+                    _ => false,
+                };
+                if yielded {
+                    Ok(self.generator_result_object(value, false))
+                } else {
+                    if let crate::value::InternalKind::Generator(g) =
+                        &mut self.obj_mut(generator).internal_kind
+                    {
+                        g.state = crate::value::GeneratorState::Completed;
+                        g.continuation = None;
+                    }
+                    Ok(self.generator_result_object(value, true))
+                }
+            }
+            Err(e) => {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                }
+                Err(e)
+            }
+        }
     }
 
     pub fn generator_throw_scaffold(
         &mut self,
         generator: ObjectRef,
-        _thrown: Value,
+        thrown: Value,
     ) -> Result<Value, RuntimeError> {
-        self.generator_entry_scaffold(generator, "Generator.prototype.throw")
+        match &mut self.obj_mut(generator).internal_kind {
+            crate::value::InternalKind::Generator(g) => {
+                if matches!(g.state, crate::value::GeneratorState::Executing) {
+                    return Err(RuntimeError::TypeError(
+                        "Generator.prototype.throw: generator is already executing".into(),
+                    ));
+                }
+                g.state = crate::value::GeneratorState::Completed;
+                g.continuation = None;
+                g.yielded_value = None;
+            }
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Generator.prototype.throw: receiver is not a Generator object".into(),
+                ))
+            }
+        }
+        Err(RuntimeError::Thrown(thrown))
     }
 
     pub fn generator_return_scaffold(
         &mut self,
         generator: ObjectRef,
-        _value: Value,
+        value: Value,
     ) -> Result<Value, RuntimeError> {
-        self.generator_entry_scaffold(generator, "Generator.prototype.return")
-    }
-
-    fn generator_entry_scaffold(
-        &mut self,
-        generator: ObjectRef,
-        method_name: &str,
-    ) -> Result<Value, RuntimeError> {
-        let state = match &self.obj(generator).internal_kind {
-            crate::value::InternalKind::Generator(g) => g.state,
+        match &mut self.obj_mut(generator).internal_kind {
+            crate::value::InternalKind::Generator(g) => {
+                if matches!(g.state, crate::value::GeneratorState::Executing) {
+                    return Err(RuntimeError::TypeError(
+                        "Generator.prototype.return: generator is already executing".into(),
+                    ));
+                }
+                g.state = crate::value::GeneratorState::Completed;
+                g.continuation = None;
+                g.yielded_value = None;
+            }
             _ => {
                 return Err(RuntimeError::TypeError(format!(
                     "{}: receiver is not a Generator object",
-                    method_name
+                    "Generator.prototype.return"
                 )))
             }
-        };
-        if matches!(state, crate::value::GeneratorState::Executing) {
-            return Err(RuntimeError::TypeError(format!(
-                "{}: generator is already executing",
-                method_name
-            )));
         }
-        Ok(Value::Undefined)
+        Ok(self.generator_result_object(value, true))
     }
 
     /// IHI-EXT 2 (2026-05-24): table-indexed cached intrinsic-ObjectId
@@ -15286,16 +15423,6 @@ impl Runtime {
         }
         let proto = proto_opt.expect("closure branch implies proto");
         let is_generator = proto.is_generator;
-        let gen_yields_id = if is_generator {
-            // Tier-Ω.5.gggggg: push fresh yields-array on generator entry.
-            let yields_arr = self.alloc_object(Object::new_array());
-            self.object_set(yields_arr, "length".into(), Value::Number(0.0));
-            self.gen_yields_stack.push(yields_arr);
-            self.gen_async_stack.push(proto.is_async);
-            Some(yields_arr)
-        } else {
-            None
-        };
         let args = effective_args;
         // EXT 73: ECMA-262 §10.2.1.2 OrdinaryCallBindThis. For non-arrow,
         // non-strict function code, a null/undefined thisArg is replaced
@@ -15451,6 +15578,30 @@ impl Runtime {
             back_edge_counts: HashMap::new(),
             osr_cache: HashMap::new(),
             ic_dispatch_cache: HashMap::new(),
+        };
+        if is_generator && !proto.is_async && !function_proto_uses_yield_delegate(&proto) {
+            if proto.param_prologue_end > 0 {
+                let prologue_end = proto.param_prologue_end.min(proto.bytecode.len());
+                inner.bytecode = &proto.bytecode[..prologue_end];
+                self.run_frame(&mut inner)?;
+                inner.bytecode = &proto.bytecode;
+                inner.pc = prologue_end;
+            }
+            let snapshot = FrameSnapshot::from_frame(&inner, Some(proto.clone()));
+            let generator = self.new_generator_with_continuation(snapshot);
+            return Ok(Value::Object(generator));
+        }
+        let gen_yields_id = if is_generator {
+            // Tier-Ω.5.gggggg: push fresh yields-array on legacy generator
+            // entry. Plain sync generators return above as suspended
+            // GeneratorObject instances; this remains for async/legacy paths.
+            let yields_arr = self.alloc_object(Object::new_array());
+            self.object_set(yields_arr, "length".into(), Value::Number(0.0));
+            self.gen_yields_stack.push(yields_arr);
+            self.gen_async_stack.push(proto.is_async);
+            Some(yields_arr)
+        } else {
+            None
         };
         let body_result = if is_generator && proto.param_prologue_end > 0 {
             let prologue_end = proto.param_prologue_end.min(proto.bytecode.len());
@@ -16667,6 +16818,15 @@ impl<'a> From<&'a FrameSnapshot> for Frame<'a> {
     }
 }
 
+fn function_proto_uses_yield_delegate(proto: &rusty_js_bytecode::compiler::FunctionProto) -> bool {
+    proto.constants.entries().iter().any(|constant| {
+        matches!(
+            constant,
+            rusty_js_bytecode::Constant::String(name) if name.contains("yield_delegate")
+        )
+    })
+}
+
 /// OSR-EXT 2 (2026-05-23): threshold for OSR JIT-attempt trigger.
 /// Reserved for OSR-EXT 3+ consumption; consulted at OSR-EXT 4 first.
 pub const OSR_BACK_EDGE_THRESHOLD: u32 = 1000;
@@ -17573,6 +17733,15 @@ mod gcs_tests {
     use super::*;
     use rusty_js_bytecode::op::{encode_op, Op};
 
+    fn run_js_runtime(src: &str) -> Result<Runtime, RuntimeError> {
+        let module = rusty_js_bytecode::compile_module(src)
+            .map_err(|e| RuntimeError::CompileError(e.message))?;
+        let mut rt = Runtime::new();
+        rt.install_intrinsics();
+        rt.run_module(&module)?;
+        Ok(rt)
+    }
+
     #[test]
     fn yield_opcode_captures_active_generator_frame_snapshot() {
         let mut rt = Runtime::new();
@@ -17644,6 +17813,58 @@ mod gcs_tests {
             }
             _ => panic!("expected generator internal kind"),
         }
+    }
+
+    #[test]
+    fn generator_lifecycle_yields_lazily_across_next_calls() {
+        let rt = run_js_runtime(
+            r#"
+            let trace = 0;
+            function* g() {
+              trace = trace + 1;
+              yield 1;
+              trace = trace + 10;
+              yield 2;
+            }
+            const it = g();
+            const before = trace;
+            const a = it.next();
+            const afterA = trace;
+            const b = it.next();
+            const afterB = trace;
+            const c = it.next();
+            globalThis.result = before * 100000
+              + a.value * 10000
+              + (a.done ? 1000 : 0)
+              + afterA * 100
+              + b.value * 10
+              + (b.done ? 5 : 0)
+              + (c.done ? 1 : 0)
+              + afterB;
+            "#,
+        )
+        .expect("generator lifecycle exemplar should run");
+        let result = rt.global_get("result");
+        assert!(matches!(result, Value::Number(n) if n == 10132.0));
+    }
+
+    #[test]
+    fn infinite_generator_does_not_hang_at_construction() {
+        let rt = run_js_runtime(
+            r#"
+            function* inf() {
+              let i = 0;
+              while (true) yield i++;
+            }
+            const it = inf();
+            const a = it.next();
+            const b = it.next();
+            globalThis.result = a.value * 10 + b.value;
+            "#,
+        )
+        .expect("infinite generator should be lazy");
+        let result = rt.global_get("result");
+        assert!(matches!(result, Value::Number(n) if n == 1.0));
     }
 }
 

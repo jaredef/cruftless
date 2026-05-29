@@ -109,3 +109,34 @@ Added `interp::gcs_tests::yield_opcode_captures_active_generator_frame_snapshot`
 ### Finding
 
 **Finding GCS.3**: `Yield` can be introduced as a dual-mode opcode. EXT 2c should not need another compiler rewrite for plain `yield`; it needs lifecycle routing that constructs a real `GeneratorObject`, installs it as `active_generator_for_yield` while running/resuming the saved frame, and replaces the eager `call_function` generator branch.
+
+## GCS-EXT 2c - plain generator lifecycle wiring (2026-05-29)
+
+**Directive**: replace the eager collect-then-iterate path for plain sync generators with the `GeneratorObject` + `FrameSnapshot` lifecycle introduced by EXT 1, EXT 2a, and EXT 2b. `next(value)`, `throw(value)`, `return(value)`, async generators, and `yield*` remain follow-on scope.
+
+### Substrate
+
+Plain generator calls now construct a `GeneratorObject` in `SuspendedStart` with an initial `FrameSnapshot` instead of executing the body at construction time. The old `gen_yields_stack` path remains for async/legacy generator paths that still execute eagerly, and this rung conservatively leaves `yield*` bodies on that legacy path because delegation semantics are explicitly EXT 6 scope.
+
+`Generator.prototype.next` resumes the saved snapshot under `active_generator_for_yield`, transitions `Executing -> SuspendedYield` when `Op::Yield` captures the frame, and returns ordinary `{ value, done }` result objects. Completion clears the continuation and moves the generator to `Completed`.
+
+The lifecycle methods are installed directly on the generated object for this rung: `next`, `return`, `throw`, and `@@iterator`. `return` and `throw` are conservative terminal scaffolds pending the later rungs that feed values/exceptions through the suspended frame.
+
+### Exemplar
+
+Added runtime-library tests for:
+
+- lazy execution across `g().next()` calls, including a side-effect trace proving construction does not execute the body
+- infinite generator construction, proving `function* inf(){ while(true) yield i++; }` no longer hangs before the first `next()`
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib gcs_tests -- --nocapture` PASS.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 56 passed, 1 ignored.
+- CLI smoke: `function* g(){ yield 1; yield 2; }` returns `1 false`, `2 false`, then `undefined true`; `function* inf(){ let i = 0; while (true) yield i++; }` returns `0`, then `1`, without hanging at construction.
+- Post-EPSUA for-of/generator slice measurement: 34 PASS / 35 FAIL / 0 SKIP from 69 baseline FAIL rows. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-ext2c-forof-generators-20260529T150231Z/summary.json`. The gain is partial because `next(value)`, `throw`, `return`, `yield*`, and destructuring iterator-close semantics remain deferred.
+
+### Finding
+
+**Finding GCS.4**: the initial generator suspension boundary is enough to make plain `.next()` lazy and finite/infinite generators resumable, but the next semantic wall is sent-value/abrupt-completion injection. EXT 3 should wire `next(value)` into the suspended `yield` expression before `throw`, `return`, or `yield*` delegation.
