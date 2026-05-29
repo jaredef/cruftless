@@ -151,26 +151,44 @@ When the agent runtime does NOT support a file-watch / task-notification primiti
 
 "Start of each response" and "end of each substrate-shaped-work phase" are NOT reliable trigger points for runtimes without inline interruption support (a Codex session cannot enforce "start of each response" automatically). Use the two trigger points above; rely on the cybernetic bridge (§V) for everything else.
 
-## V. Cybernetic bridge for Codex (and similar runtimes)
+## V. Cybernetic bridge for agent runtimes without native task-notification
 
-When the agent runtime lacks native file-watch / task-notification (the OpenAI Codex CLI does, as of 2026-05; inotify/fswatch may not be installed; Claude Code's Monitor is not available), the apparatus provides a **terminal-multiplexer bridge** at `apparatus/scripts/caacp-tmux-bridge.sh` that injects a short directive into the tmux pane running the session via `tmux send-keys`.
+When the agent runtime lacks native file-watch / task-notification (OpenAI Codex CLI, etc.; inotify/fswatch may not be installed; Claude Code's Monitor is not available), the apparatus provides two operator-started bridges. Choose by the runtime: prefer V.1 when the session is controlled by Codex Desktop or any runtime exposing a programmatic wake primitive; fall back to V.2 when only a terminal pane is available.
 
-**Operator-started only**. The bridge is not invoked from any other repo script automatically; injecting text into an interactive pane is powerful and context-sensitive. The keeper (or a helmsman-with-keeper-blessing) starts the bridge for a specific session, in a separate tmux/screen pane:
+### V.1 Codex Desktop app-server bridge — primary
+
+`apparatus/scripts/caacp-codex-app-bridge.mjs` (Node ESM). Uses the Codex Desktop local app-server's WebSocket `turn/start` method to **wake the same thread** the operator is controlling from Codex Desktop / iOS. This is the canonical wake primitive on Codex Desktop: `turn/start` opens a real user turn (vs. `thread/inject_items` which only appends history). The thread receives the `**CAACP NEW** ...` directive as if the operator had submitted it, processes per the agent's normal turn loop, and reads the inbox before continuing.
 
 ```sh
-apparatus/scripts/caacp-tmux-bridge.sh <role> <tmux-target> [poll-interval]
+node apparatus/scripts/caacp-codex-app-bridge.mjs <role> <thread-id> [poll-interval] [--once]
+# example:
+node apparatus/scripts/caacp-codex-app-bridge.mjs watcher 019e710c-4100-7db2-aff2-b36f3c323848 5
+```
+
+The bridge reads the app-server token from the local Codex installation (`~/.codex/remote-control/ios-token` by default), maintains a seen-cache at `apparatus/caacp-server/data/bridge-<role>-codex-app-seen.json`, and logs to `apparatus/caacp-server/data/bridge-<role>-codex-app.log`. Use `--once` to process one poll cycle and exit (smoke-test path).
+
+**Operator-started only**. Programmatically waking a thread is powerful and context-sensitive; the operator decides which thread is bridged.
+
+Per the watcher's design discovery + landing (Telegram 10278 / 10280, substrate `a7836947`): this is the **preferred** wake primitive for any session reachable via Codex Desktop, including remote iOS-controlled threads. It is strictly superior to terminal-pane injection because it reaches the actual agent process, not just the displaying terminal.
+
+### V.2 tmux send-keys bridge — fallback
+
+`apparatus/scripts/caacp-tmux-bridge.sh`. For runtimes that do not have a programmatic wake API but DO run inside a tmux/screen pane reachable from the local machine. Injects the `**CAACP NEW** ...` directive into the pane via `tmux send-keys`. The session sees the directive arrive as keyboard input.
+
+```sh
+bash apparatus/scripts/caacp-tmux-bridge.sh <role> <tmux-target> [poll-interval]
 # example: bash apparatus/scripts/caacp-tmux-bridge.sh watcher codex-watcher:0.0 5
 ```
 
-The bridge polls `http://127.0.0.1:7777/local/inbox?role=<role>` every poll-interval (default 5s), maintains a seen-cache at `apparatus/caacp-server/data/bridge-<role>-seen.json`, and on new PENDING messages injects:
+Same operator-started discipline + same `**CAACP NEW**` directive format + same seen-cache pattern (at `apparatus/caacp-server/data/bridge-<role>-seen.json`) + same pre-flight (verifies tmux target exists; logs + exits non-zero if not). Maintained as the fallback for environments where V.1 isn't available (terminal-only Codex CLI without the desktop app; older versions; non-Codex agent runtimes that nonetheless run in a tmux pane).
+
+### Directive format (both bridges)
 
 ```
 **CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.
 ```
 
-The session interprets the `**CAACP NEW**` prefix as a directive to (a) drop its current micro-step, (b) `curl /local/inbox?role=<role>` to fetch full message metadata + body, (c) decide whether to act on the incoming message or defer per its own discipline. The bridge logs activity to `apparatus/caacp-server/data/bridge-<role>.log`.
-
-Pre-flight: the bridge verifies the tmux target exists before entering its loop; logs and exits non-zero if not.
+The session interprets the `**CAACP NEW**` prefix as a directive to (a) drop its current micro-step, (b) `curl /local/inbox?role=<role>` to fetch full message metadata + body, (c) decide whether to act on the incoming message or defer per its own discipline.
 
 ## VI. Failure modes
 

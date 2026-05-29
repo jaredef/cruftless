@@ -63,3 +63,12 @@ apparatus/caacp-server/
 ## Init protocol
 
 Agents bootstrap into the cybernetic loop via `apparatus/docs/agent-init-protocol.md`. AGENTS.md / CLAUDE.md route to that doc on every session entry.
+
+## Cybernetic bridges (for runtimes without native task-notification)
+
+Two operator-started bridges convert sidecar inbox state into agent-session wake events:
+
+- **`apparatus/scripts/caacp-codex-app-bridge.mjs`** (primary for Codex Desktop / app-server reachable runtimes). Uses Codex's app-server `turn/start` WebSocket method to wake the target thread. The canonical wake primitive on Codex Desktop; reaches the actual agent process, not just the terminal.
+- **`apparatus/scripts/caacp-tmux-bridge.sh`** (fallback for any agent running in a tmux pane without a programmatic wake API). Uses `tmux send-keys` to inject the directive into the pane.
+
+Both bridges poll `/local/inbox?role=<role>`, maintain a seen-cache under `apparatus/caacp-server/data/`, and inject the shared `**CAACP NEW** role=<role> count=<N> latest=<sender>/<intent>/<slug>. Check sidecar inbox before continuing.` directive. See agent-init-protocol §V for usage + the per-bridge selection rationale.
