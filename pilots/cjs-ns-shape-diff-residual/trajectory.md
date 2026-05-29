@@ -94,3 +94,44 @@ Recommended Phase 3 split:
 3. **Extra-in-rb filter rung** only after the missing family: extra exposure lacks C4 on this cluster (18/56 combined, 32.1%), but has obvious local patterns such as function metadata/static leakage and object/process shim overexposure.
 
 Estimated closure: two to three substrate rungs. First rung should be a design probe against missing-default/null namespace rows before any broad namespace filter is attempted.
+
+## 2026-05-29 - CNSDR-EXT 1 - Missing-default design probe
+
+### Directive
+
+Helmsman directed a design-only probe for the 20 missing-default rows surfaced in CNSDR-EXT 0, with explicit discrimination between null namespace/load failures and CJS default synthesis. No runtime substrate edit was authorized.
+
+### Probe Result
+
+The 20 missing-default rows split before implementation:
+
+| Bucket | Count | Packages |
+|---|---:|---|
+| `rb_kc: null` plus missing `default` | 16 | `prettier-plugin-organize-imports`, `elliptic`, `secp256k1`, `ethereumjs-util`, `cz-customizable`, `ethereumjs-tx`, `ethereumjs-wallet`, `playwright-core`, `testing-library`, `keycloak-connect`, `typescript`, `core-js`, `sass`, `argon2`, `bcrypt`, `ejs-render` |
+| `rb_kc: 0` plus missing `default` | 4 | `reflect-metadata`, `joi-extract-type`, `nx`, `express-async-errors` |
+| `rb_kc > 0` plus missing `default` | 0 | none |
+
+The zero-key subfamily is the CJS default-synthesis candidate. The null-count subfamily is not: those rows are missing substantial named namespace surfaces too, so a `default` patch cannot close them without first recovering load/eval/resolve completion.
+
+### Code Path Reading
+
+`cruftless/src/module_ns.rs` is an ESM namespace finalization hook and explicitly routes CJS-shimmed packages to runtime CJS namespace handling. The relevant implementation is `pilots/rusty-js-runtime/derived/src/module.rs`:
+
+- direct CJS default import already returns raw `module.exports`;
+- namespace import calls `cjs_namespace_view_at`;
+- evaluated CJS modules refresh a placeholder via `populate_cjs_namespace_view_at`;
+- default is synthesized only when `exports_reassigned || exports_has_user_keys || has_explicit_default`, except for transpiled-ESM explicit-default preservation.
+
+That policy deliberately excludes unwritten initial `exports` objects. CNSDR-EXT 1 shows that exclusion is not complete enough to explain Bun's default-only behavior for four side-effect/empty-object packages, but broadening it blindly risks regressing the prior no-default empty-export cases recorded in the code comments.
+
+### Recommendation
+
+Authoritative design note: `pilots/cjs-ns-shape-diff-residual/design.md`.
+
+Recommended Phase 4 order:
+
+1. **CJS empty-exports default policy probe**: positive fixtures `reflect-metadata`, `joi-extract-type`, `nx`, `express-async-errors`; negative fixtures from the prior comment, especially abortcontroller-polyfill and ts-toolbelt. Expected CNSDR closure if accepted: 4/56.
+2. **Null namespace load-completion probe**: trace resolved URL, package condition path, module kind, CJS wrapper parse/compile/eval status, `module_post_eval_trace`, and final namespace population for the 16 null rows. Expected immediate PASS flips: none; it is a classifier rung.
+3. **ESM finalize only if traced**: do not modify `cruftless/src/module_ns.rs` for this family unless a package demonstrably reaches ESM finalization.
+
+The missing-default family is therefore a two-rung plan, not a one-patch 20-row closure claim.
