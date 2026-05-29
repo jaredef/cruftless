@@ -402,7 +402,7 @@ pub struct Runtime {
     /// the compile site so subsequent ESM compiles inside this Runtime
     /// revert to Module semantics.
     pub pending_script_mode: bool,
-    pub pending_eval_super_context: Option<rusty_js_bytecode::EvalSuperContext>,
+    pub pending_direct_eval_super_context: Option<rusty_js_bytecode::DirectEvalSuperContext>,
     pub pending_eval_this: Option<Value>,
     pub pending_eval_derived_initial_this: Option<Value>,
     pub pending_eval_new_target: Option<Value>,
@@ -678,7 +678,7 @@ impl Runtime {
             napi_keepalive: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             caps: std::sync::Arc::new(crate::caps::CapDispatcher::compat()),
             pending_script_mode: false,
-            pending_eval_super_context: None,
+            pending_direct_eval_super_context: None,
             pending_eval_this: None,
             pending_eval_derived_initial_this: None,
             pending_eval_new_target: None,
@@ -14098,10 +14098,12 @@ impl Runtime {
         }
 
         // Integration: GBSU unified surface.
+        let direct_eval_super_context = self.pending_direct_eval_super_context.take();
         let stash_key = format!("__eval_out_{}", n);
         let expr_source = format!("{} = ({});", stash_key, source);
         let global_this = self.global_get("globalThis");
         let saved_this = std::mem::replace(&mut self.current_this, global_this);
+        self.pending_direct_eval_super_context = direct_eval_super_context.clone();
         let expr_ok = self.evaluate_script(&expr_source, &url).is_ok();
         if expr_ok {
             self.current_this = saved_this;
@@ -14113,6 +14115,7 @@ impl Runtime {
         }
 
         let stmt_url = format!("file://<eval:{}:stmt>", n);
+        self.pending_direct_eval_super_context = direct_eval_super_context;
         let result = self.evaluate_script(&source, &stmt_url);
         self.current_this = saved_this;
         match result {
@@ -14166,6 +14169,8 @@ impl Runtime {
             }
         }
 
+        let direct_eval_super_context = self.direct_eval_super_context_from_frame(caller);
+
         let mut overlay: Vec<DirectEvalOverlay> = Vec::new();
         for (slot, desc) in caller.upvalue_names.iter().enumerate() {
             if let Some(name) = Self::eval_overlay_binding_name(&desc.name) {
@@ -14187,6 +14192,28 @@ impl Runtime {
                 });
             }
         }
+        if let Some(ctx) = &direct_eval_super_context {
+            for name in [
+                ctx.super_ctor_name.as_deref(),
+                ctx.super_proto_name.as_deref(),
+                ctx.super_home_name.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if overlay.iter().any(|entry| entry.name == name) {
+                    continue;
+                }
+                if let Some((value, target)) = Self::direct_eval_exact_binding(caller, name) {
+                    overlay.push(DirectEvalOverlay {
+                        name: name.to_string(),
+                        value,
+                        target,
+                    });
+                }
+            }
+        }
+
         if !caller.eval_var_env_is_global
             && self
                 .global_object
@@ -14235,7 +14262,7 @@ impl Runtime {
             const DIRECT_EVAL_HOME_NAME: &str = "<direct.eval.home>";
             match super_context.as_mut() {
                 None => {
-                    super_context = Some(rusty_js_bytecode::EvalSuperContext {
+                    super_context = Some(rusty_js_bytecode::DirectEvalSuperContext {
                         super_home_name: Some(DIRECT_EVAL_HOME_NAME.to_string()),
                         ..Default::default()
                     });
@@ -14269,19 +14296,19 @@ impl Runtime {
             self.define_global_property(&entry.name, entry.value.clone());
             saved.push((entry, prev));
         }
-        let saved_eval_super_context = self.pending_eval_super_context.clone();
+        let saved_direct_eval_super_context = self.pending_direct_eval_super_context.take();
         let saved_eval_this = self.pending_eval_this.clone();
         let saved_eval_derived_initial_this = self.pending_eval_derived_initial_this.clone();
         let saved_eval_new_target = self.pending_eval_new_target.clone();
         let saved_eval_private_home = self.pending_eval_private_home;
-        self.pending_eval_super_context = super_context;
+        self.pending_direct_eval_super_context = super_context;
         self.pending_eval_this = Some(caller.this_value_for_eval());
         self.pending_eval_derived_initial_this = caller.derived_initial_this.clone();
         self.pending_eval_new_target = caller.new_target.clone();
         self.pending_eval_private_home = caller.private_home;
         let result = self
             .eval_source_globalish_with_global_declarations(source, caller.eval_var_env_is_global);
-        self.pending_eval_super_context = saved_eval_super_context;
+        self.pending_direct_eval_super_context = saved_direct_eval_super_context;
         self.pending_eval_this = saved_eval_this;
         self.pending_eval_derived_initial_this = saved_eval_derived_initial_this;
         self.pending_eval_new_target = saved_eval_new_target;
@@ -14397,6 +14424,57 @@ impl Runtime {
         self.global_object
             .map(|gt| self.obj(gt).has_own_str(name))
             .unwrap_or(false)
+    }
+
+    fn direct_eval_super_context_from_frame(
+        &self,
+        frame: &Frame<'_>,
+    ) -> Option<rusty_js_bytecode::DirectEvalSuperContext> {
+        let super_ctor_name = Self::find_direct_eval_super_binding(frame, ".super.ctor");
+        let super_proto_name = Self::find_direct_eval_super_binding(frame, ".super.proto");
+        let super_home_name = Self::find_direct_eval_super_binding(frame, ".home");
+        if super_ctor_name.is_none() && super_proto_name.is_none() && super_home_name.is_none() {
+            return None;
+        }
+        Some(rusty_js_bytecode::DirectEvalSuperContext {
+            super_ctor_name,
+            super_proto_name,
+            super_home_name,
+            in_constructor: frame.derived_initial_this.is_some() || frame.is_arrow,
+            is_static: false,
+        })
+    }
+
+    fn find_direct_eval_super_binding(frame: &Frame<'_>, needle: &str) -> Option<String> {
+        frame
+            .locals_names
+            .iter()
+            .map(|d| &d.name)
+            .chain(frame.upvalue_names.iter().map(|d| &d.name))
+            .find(|name| name.contains(needle))
+            .cloned()
+    }
+
+    fn direct_eval_exact_binding(
+        frame: &Frame<'_>,
+        name: &str,
+    ) -> Option<(Value, DirectEvalOverlayTarget)> {
+        for (slot, desc) in frame.upvalue_names.iter().enumerate() {
+            if desc.name == name {
+                if let Some(cell) = frame.upvalues.get(slot) {
+                    return Some((
+                        cell.borrow().clone(),
+                        DirectEvalOverlayTarget::Upvalue(cell.clone()),
+                    ));
+                }
+            }
+        }
+        for (slot, desc) in frame.locals_names.iter().enumerate() {
+            if desc.name == name {
+                return Some((frame.read_local(slot), DirectEvalOverlayTarget::Local(slot)));
+            }
+        }
+        None
     }
 
     fn eval_overlay_binding_name(name: &str) -> Option<String> {
@@ -15644,7 +15722,9 @@ fn caller_has_lexical_binding(frame: &Frame<'_>, name: &str) -> bool {
     })
 }
 
-fn direct_eval_super_context(frame: &Frame<'_>) -> Option<rusty_js_bytecode::EvalSuperContext> {
+fn direct_eval_super_context(
+    frame: &Frame<'_>,
+) -> Option<rusty_js_bytecode::DirectEvalSuperContext> {
     let mut out = None;
     for desc in frame.upvalue_names {
         direct_eval_super_context_visit(&mut out, &desc.name);
@@ -15659,11 +15739,11 @@ fn direct_eval_super_context(frame: &Frame<'_>) -> Option<rusty_js_bytecode::Eva
 }
 
 fn direct_eval_super_context_visit(
-    out: &mut Option<rusty_js_bytecode::EvalSuperContext>,
+    out: &mut Option<rusty_js_bytecode::DirectEvalSuperContext>,
     name: &str,
 ) {
     let ctx = if name.contains(".super.") || name.contains(".home>") {
-        out.get_or_insert_with(rusty_js_bytecode::EvalSuperContext::default)
+        out.get_or_insert_with(rusty_js_bytecode::DirectEvalSuperContext::default)
     } else {
         return;
     };

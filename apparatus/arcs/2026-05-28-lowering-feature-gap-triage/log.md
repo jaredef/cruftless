@@ -99,3 +99,18 @@
 - Focused delete-super rows moved `PASS=0/4` to `PASS=4/4`.
 - Full SRL child suite moved `PASS=9 FAIL=13` to `PASS=13 FAIL=9`.
 - Verification: `cargo build --bin cruft -p cruftless`.
+
+## 2026-05-28 — SRL-EXT 6 direct-eval `super` context bridge
+
+- Added a bytecode/runtime bridge for direct-eval `super` context:
+  transient `DirectEvalSuperContext`, forced capture of synthetic super locals
+  when a method body contains direct eval, runtime overlay of those synthetic
+  bindings, and eval compile seeding with the caller's super context.
+- Full SRL child suite moved `PASS=13 FAIL=9` to `PASS=17 FAIL=5`.
+- The remaining five rows now expose deeper runtime mechanisms rather than the
+  original compile diagnostics: object-literal HomeObject liveness after
+  `Object.setPrototypeOf`, class-field/arrow super receiver/private lookup, and
+  derived-constructor direct-eval `super()` this rebinding.
+- `cargo check -p rusty-js-bytecode`, `cargo check -p rusty-js-runtime`, and
+  `cargo build --release --bin cruft -p cruftless` passed with existing warnings.
+- `scripts/diff-prod/run-all.sh` completed against the sidecar results path: `PASS=61 FAIL=51 / 112`.

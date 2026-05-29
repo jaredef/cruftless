@@ -399,6 +399,15 @@ struct ClassFrame {
     is_static: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct DirectEvalSuperContext {
+    pub super_ctor_name: Option<String>,
+    pub super_proto_name: Option<String>,
+    pub super_home_name: Option<String>,
+    pub in_constructor: bool,
+    pub is_static: bool,
+}
+
 // Ω.5.P03.E2.enclosing-locals-rc: `locals` is held by `Rc` so a single
 // snapshot of the parent's locals can be shared across every nested
 // function compile inside a given parent. Pre-substrate this field was
@@ -839,7 +848,7 @@ impl Compiler {
         self.script_global_env_alias = m;
     }
 
-    pub fn set_eval_super_context(&mut self, ctx: EvalSuperContext) {
+    pub fn set_direct_eval_super_context(&mut self, ctx: DirectEvalSuperContext) {
         self.class_stack.push(ClassFrame {
             super_ctor_name: ctx.super_ctor_name,
             super_proto_name: ctx.super_proto_name,
@@ -4973,6 +4982,17 @@ impl Compiler {
             for upvalue in &self.upvalues {
                 if upvalue.name.contains(".super.") || upvalue.name.contains(".home>") {
                     names.push(upvalue.name.clone());
+                }
+            }
+            if let Some(frame) = self.class_stack.last() {
+                if let Some(name) = &frame.super_ctor_name {
+                    names.push(name.clone());
+                }
+                if let Some(name) = &frame.super_proto_name {
+                    names.push(name.clone());
+                }
+                if let Some(name) = &frame.super_home_name {
+                    names.push(name.clone());
                 }
             }
             names

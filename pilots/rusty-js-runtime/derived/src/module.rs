@@ -961,12 +961,12 @@ impl Runtime {
             None
         };
         let script_mode = std::mem::replace(&mut self.pending_script_mode, false);
-        let eval_super_context = self.pending_eval_super_context.clone();
+        let direct_eval_super_context = self.pending_direct_eval_super_context.take();
         let bytecode = if script_mode {
             rusty_js_bytecode::compile_script_with_url_and_super_context(
                 source,
                 url,
-                eval_super_context,
+                direct_eval_super_context,
             )
         } else {
             rusty_js_bytecode::compile_module_with_url(source, url)

@@ -11,7 +11,7 @@ pub mod disasm;
 pub mod op;
 
 pub use compiler::{
-    CompileError, CompiledModule, Compiler, EvalSuperContext, ExportBinding, ImportBinding,
+    CompileError, CompiledModule, Compiler, DirectEvalSuperContext, ExportBinding, ImportBinding,
     ImportBindingKind, LocalDescriptor, UpvalueDescriptor, UpvalueSource,
 };
 pub use constants::{Constant, ConstantsPool};
@@ -55,7 +55,7 @@ pub fn compile_script_with_url(src: &str, url: &str) -> Result<CompiledModule, C
 pub fn compile_script_with_url_and_super_context(
     src: &str,
     url: &str,
-    super_context: Option<EvalSuperContext>,
+    super_context: Option<DirectEvalSuperContext>,
 ) -> Result<CompiledModule, CompileError> {
     // ES-EXT 2: set script_mode on the Compiler so top-level `var`
     // declarations route to StoreGlobal at compile time, attaching to the
@@ -70,7 +70,7 @@ pub fn compile_script_with_url_and_super_context(
     c.set_source_url(url.to_string());
     c.set_script_mode(true);
     if let Some(ctx) = super_context {
-        c.set_eval_super_context(ctx);
+        c.set_direct_eval_super_context(ctx);
     }
     c.compile_module(&ast)
 }
