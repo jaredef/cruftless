@@ -18,7 +18,7 @@
 // HTTP surface (localhost only):
 //   POST /local/register {role, instance_id?, callback_url?}
 //     → {token, role, instance_id, sidecar_port, notification_file}
-//   POST /local/send {sender, sender_token, recipient, intent, slug, body, related_to?}
+//   POST /local/send {sender, sender_token, recipient, intent, slug, body, related_to?, target_instance_id?}
 //     → {message_id, state, server_timestamp}
 //   POST /local/ack {original_message_id, ack_author_token, ack_state, body}
 //     → {ack_id, message_id, state, server_timestamp}
@@ -165,8 +165,11 @@ function findAgentByToken(token: string): AgentRecord | undefined {
 async function handleSend(req: Request): Promise<Response> {
   const body = await req.json().catch(() => null);
   if (!body) return json(400, { error: "invalid JSON body" });
-  const { sender, sender_token, recipient, intent, slug, body: msgBody, related_to } = body as any;
+  const { sender, sender_token, recipient, intent, slug, body: msgBody, related_to, target_instance_id } = body as any;
   if (!sender_token) return json(400, { error: "missing sender_token" });
+  if (target_instance_id !== undefined && target_instance_id !== null && typeof target_instance_id !== "string") {
+    return json(400, { error: "target_instance_id must be a string or null" });
+  }
   const agent = findAgentByToken(sender_token);
   if (!agent) return json(403, { error: "unknown sender_token; agent not registered" });
   if (sender && sender !== agent.role) return json(403, { error: `sender (${sender}) does not match token role (${agent.role})` });
@@ -182,6 +185,7 @@ async function handleSend(req: Request): Promise<Response> {
     intent,
     slug,
     related_to: related_to ?? null,
+    target_instance_id: target_instance_id ?? null,
     content_sha,
     body: msgBody ?? null,
   }, agent.token);

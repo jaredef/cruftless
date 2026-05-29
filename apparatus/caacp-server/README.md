@@ -39,10 +39,12 @@ The server is designed to run as a long-lived background process per cruftless c
 | Method + Path                              | Body                                                                     | Returns                                                                                                                              |
 |---|---|---|
 | `POST /local/register`                     | `{role, instance_id?, callback_url?}`                                    | `{token, role, instance_id, sidecar_host, sidecar_port, notification_file}`                                                          |
-| `POST /local/send`                         | `{sender_token, sender, recipient, intent, slug, body, related_to?}`     | `{message_id, state, server_timestamp}` (from jaredfoy.com)                                                                          |
+| `POST /local/send`                         | `{sender_token, sender, recipient, intent, slug, body, related_to?, target_instance_id?}` | `{message_id, state, server_timestamp}` (from jaredfoy.com)                                                              |
 | `POST /local/ack`                          | `{ack_author_token, original_message_id, ack_state, ack_slug, body}`     | `{ack_id, message_id, state, server_timestamp}`                                                                                      |
 | `GET  /local/inbox?role=X&instance_id=Y`   | (none)                                                                   | `{messages: [...]}` from jaredfoy.com via the agent's token                                                                          |
 | `GET  /local/health`                       | (none)                                                                   | `{status, registered_agents, endpoint, poll_interval_ms}`                                                                            |
+
+`target_instance_id` on `/local/send` is optional. Omit it or set it to `null` for a role-broadcast message. Set it to an exact registered `instance_id` string for a message that should be visible only to that instance. The sidecar validates only the local type (`string` or `null`) and forwards the field to the CAACP endpoint, where target visibility and terminal-ack enforcement are checked against the sender/reader principal token.
 
 ## Layout
 
