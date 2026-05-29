@@ -1,12 +1,12 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 215,
-    "top_level": 128,
+    "locales": 216,
+    "top_level": 129,
     "nested": 87,
-    "warnings": 1
+    "warnings": 0
   },
   "locales": [
     {
@@ -258,7 +258,7 @@
       "parent": null,
       "scope": "async-generator-and-for-await-lowering",
       "depth": 1,
-      "rung_count": 7,
+      "rung_count": 13,
       "status": null
     },
     {
@@ -312,7 +312,7 @@
       "parent": null,
       "scope": "cruft-lowering-feature-gaps",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 6,
       "status": "FOUNDED 2026-05-28 under"
     },
     {
@@ -321,7 +321,7 @@
       "parent": "L.cruft-lowering-feature-gaps",
       "scope": "for-in-destructure-head",
       "depth": 2,
-      "rung_count": 0,
+      "rung_count": 2,
       "status": "FOUNDED 2026-05-28 as second sub-locale under `pilots/cruft-lowering-feature-gaps/`, parallel to `super-reference-lowering/`. Enrolled under arc `apparatus/arcs/2026-05-28-lowering-feature-gap-triage/`."
     },
     {
@@ -330,7 +330,7 @@
       "parent": "L.cruft-lowering-feature-gaps",
       "scope": "super-reference-lowering",
       "depth": 2,
-      "rung_count": 6,
+      "rung_count": 7,
       "status": "FOUNDED 2026-05-28 as the first child of"
     },
     {
@@ -429,7 +429,7 @@
       "parent": null,
       "scope": "eval-var-function-env-instantiation",
       "depth": 1,
-      "rung_count": 5,
+      "rung_count": 6,
       "status": null
     },
     {
@@ -557,6 +557,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": null
+    },
+    {
+      "coord": "host-262-shim",
+      "tag": "L.host-262-shim",
+      "parent": null,
+      "scope": "host-262-shim",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED at H262S-EXT 0. Phase-2 baseline probe complete; substrate landing not yet authorized."
     },
     {
       "coord": "html-like-comment-lexing",
@@ -1945,11 +1954,5 @@
       "status": null
     }
   ],
-  "warnings": [
-    {
-      "coord": "cruft-lowering-feature-gaps/for-in-destructure-head",
-      "tag": "L.cruft-lowering-feature-gaps.for-in-destructure-head",
-      "warning": "seed.md present but trajectory.md missing"
-    }
-  ]
+  "warnings": []
 }
