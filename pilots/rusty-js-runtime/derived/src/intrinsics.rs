@@ -20102,6 +20102,10 @@ impl Runtime {
                         Ok(_) => Ok(Value::Boolean(true)),
                         Err(RuntimeError::TypeError(msg))
                             if msg.contains("Cannot redefine")
+                                || msg.contains("Cannot define property")
+                                || msg.contains("Cannot define out-of-bounds TypedArray index")
+                                || msg.contains("Invalid TypedArray index property descriptor")
+                                || msg.contains("Invalid TypedArray numeric index")
                                 || msg.contains("Cannot add property")
                                 || msg.contains("not extensible") =>
                         {
@@ -20116,6 +20120,10 @@ impl Runtime {
                 Ok(_) => Ok(Value::Boolean(true)),
                 Err(RuntimeError::TypeError(msg))
                     if msg.contains("Cannot redefine")
+                        || msg.contains("Cannot define property")
+                        || msg.contains("Cannot define out-of-bounds TypedArray index")
+                        || msg.contains("Invalid TypedArray index property descriptor")
+                        || msg.contains("Invalid TypedArray numeric index")
                         || msg.contains("Cannot add property")
                         || msg.contains("not extensible") =>
                 {
