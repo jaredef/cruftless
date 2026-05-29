@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 219,
-    "top_level": 132,
+    "locales": 220,
+    "top_level": 133,
     "nested": 87,
     "warnings": 0
   },
@@ -523,12 +523,21 @@
       "status": null
     },
     {
+      "coord": "for-of-typedarray-iterator-shape",
+      "tag": "L.for-of-typedarray-iterator-shape",
+      "parent": null,
+      "scope": "for-of-typedarray-iterator-shape",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "FOUNDED at FOTIS-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no runtime substrate lands in this founding round."
+    },
+    {
       "coord": "generator-coroutine-suspension",
       "tag": "L.generator-coroutine-suspension",
       "parent": null,
       "scope": "generator-coroutine-suspension",
       "depth": 1,
-      "rung_count": 6,
+      "rung_count": 8,
       "status": null
     },
     {
@@ -789,7 +798,7 @@
       "parent": null,
       "scope": "object-defineProperty-edge-cases",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 3,
       "status": "Founded for read-only Phase 0/2 probe. No substrate source edits have landed in this locale yet."
     },
     {
