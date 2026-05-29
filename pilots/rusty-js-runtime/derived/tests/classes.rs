@@ -209,3 +209,18 @@ fn t16_event_emitter_shape() {
     // (10+1) + (10*2) = 11 + 20 = 31
     assert_eq!(run(src), Value::Number(31.0));
 }
+
+// 17. super(...) over a native constructor binds the derived receiver.
+#[test]
+fn t17_native_super_constructor_binds_this() {
+    let src = r#"
+        class B extends EventTarget {
+            constructor() {
+                super();
+                this.ok = 1;
+            }
+        }
+        return new B().ok;
+    "#;
+    assert_eq!(run(src), Value::Number(1.0));
+}
