@@ -1317,7 +1317,14 @@ impl Runtime {
                 }
                 Ok(Value::Object(self.alloc_object(o)))
             }
-            Value::Symbol(_) => Ok(v.clone()),
+            Value::Symbol(s) => {
+                let mut o = crate::value::Object::new_ordinary();
+                o.set_own_internal("__primitive__".into(), Value::Symbol(s.clone()));
+                if let Some(p) = self.symbol_prototype {
+                    o.proto = Some(p);
+                }
+                Ok(Value::Object(self.alloc_object(o)))
+            }
         }
     }
 
@@ -6666,7 +6673,15 @@ impl Runtime {
 
     /// Array.prototype.sort(comparefn) per ECMA §23.1.3.29.
     pub fn array_proto_sort_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let id = crate::prototype::to_array_this(self)?;
+        let obj = self.to_object(&self.current_this())?;
+        let id = match obj {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Array.prototype.sort: ToObject did not produce an object".into(),
+                ))
+            }
+        };
         let target = Value::Object(id);
         let cmp_arg = args.first().cloned();
         let comparator = match cmp_arg {

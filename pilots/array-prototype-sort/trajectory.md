@@ -133,3 +133,40 @@ Five sort-directory rows remain after APS-EXT 1:
 - `comparefn-grow.js`, `comparefn-shrink.js`, `comparefn-resizable-buffer.js`, `resizable-buffer-default-comparator.js`: resizable ArrayBuffer / typed-array-adjacent sort behavior outside this Array.prototype.sort precise sparse/accessor rung.
 
 The named 19-row precise bucket and adjacent sparse deletion bucket are closed.
+
+## 2026-05-29 - APS-EXT 2 - Primitive receiver ToObject for sort
+
+### Directive
+
+Helmsman directed R3 to close the remaining APS target residual `call-with-primitive.js`: `Array.prototype.sort` must perform `ToObject(this value)` for primitive receivers, including BigInt and Symbol, and return the wrapper object.
+
+### Scope Decision
+
+The broader pattern is real: most Array.prototype helpers still enter through `prototype::to_array_this`, which carries an older Array-method ToObject clone and rejects BigInt/Symbol. APS-EXT 2 stays sort-local per directive: `array_proto_sort_via` now calls the canonical runtime `to_object(current_this)` directly. The broader Array-method primitive receiver cleanup should be a follow-up rung, not hidden inside APS.
+
+One shared substrate correction was necessary: `Runtime::to_object` already boxed Boolean/Number/String/BigInt but returned Symbol primitives unchanged. APS-EXT 2 adds Symbol wrapper allocation with `%Symbol.prototype%` so `[].sort.call(Symbol()) instanceof Symbol` observes the correct wrapper result. This is a general `ToObject(Symbol)` correction, but it is minimal and required by the sort-local rung.
+
+### Measurement
+
+Build:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+
+Targeted probes:
+
+| Probe | APS-EXT 1 | APS-EXT 2 |
+|---|---:|---:|
+| `call-with-primitive.js` | FAIL | PASS |
+| Post-EPSUA 26-row `Array.prototype.sort` set | 25 PASS / 1 FAIL | 26 PASS / 0 FAIL |
+| Full `built-ins/Array/prototype/sort/*.js` mirror | 49 PASS / 5 FAIL | 50 PASS / 4 FAIL |
+
+### Residuals
+
+The APS target cluster is closed. The remaining full sort-directory failures are:
+
+- `comparefn-grow.js`
+- `comparefn-shrink.js`
+- `comparefn-resizable-buffer.js`
+- `resizable-buffer-default-comparator.js`
+
+All four are resizable ArrayBuffer / typed-array-adjacent sort behavior and remain outside APS-EXT 2.
