@@ -4104,7 +4104,7 @@ impl Runtime {
         iter_v: Value,
         cap_reject: &Value,
     ) -> Result<Option<Vec<Value>>, RuntimeError> {
-        match crate::intrinsics::collect_iterable(self, iter_v) {
+        match self.promise_collect_iterable(iter_v) {
             Ok(entries) => Ok(Some(entries)),
             Err(e) => {
                 let rejection = match e {
@@ -4139,6 +4139,51 @@ impl Runtime {
                 Ok(None)
             }
         }
+    }
+
+    fn promise_collect_iterable(&mut self, src: Value) -> Result<Vec<Value>, RuntimeError> {
+        let id = match src {
+            Value::Object(id) => id,
+            Value::Undefined | Value::Null => {
+                return Err(RuntimeError::TypeError(
+                    "iterable: cannot iterate undefined or null".into(),
+                ));
+            }
+            ref other => match self.to_object(other)? {
+                Value::Object(id) => id,
+                _ => return Ok(Vec::new()),
+            },
+        };
+        let iterator_key =
+            crate::value::PropertyKey::Symbol(Rc::new("@@iterator".to_string()));
+        let method = match self.read_property_pk(id, &iterator_key)? {
+            Value::Undefined => self.object_get(id, "@@iterator"),
+            other => other,
+        };
+        let iter = self.call_function(method, Value::Object(id), Vec::new())?;
+        let iter_id = match iter {
+            Value::Object(id) => id,
+            _ => return Err(RuntimeError::TypeError("iterator is not an object".into())),
+        };
+        let next = self.spec_get(&Value::Object(iter_id), "next")?;
+        let mut out = Vec::new();
+        loop {
+            let result = self.call_function(next.clone(), Value::Object(iter_id), Vec::new())?;
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "iterator next did not return an object".into(),
+                    ))
+                }
+            };
+            let done = to_boolean(&self.spec_get(&Value::Object(rid), "done")?);
+            if done {
+                break;
+            }
+            out.push(self.spec_get(&Value::Object(rid), "value")?);
+        }
+        Ok(out)
     }
 
     pub fn promise_all_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {

@@ -203,3 +203,48 @@ Two broader thenable-value smoke rows remain pre-existing failures and were not 
 ### Finding
 
 PIND-EXT 3 closes the C.resolve bucket but surfaces one final non-C.resolve Promise iterator-acquisition residual. A follow-up Rung 4c is warranted only if Helmsman widens scope to the `@@iterator` accessor-getter path: either Promise-local acquisition must call `spec_get(..., "@@iterator")`, or global `collect_iterable` must be lifted to accessor-aware GetIterator semantics after auditing non-Promise consumers.
+
+## 2026-05-29 - PIND-EXT 4 - Closure decision + accessor-aware local GetIterator
+
+### Directive
+
+Helmsman directed R3 to make the closure decision for the last PIND residual, `built-ins/Promise/allSettled/iter-arg-is-poisoned.js`. Authorized options were either a narrow Rung 4c Promise-local accessor-aware `@@iterator` lookup or chapter close with a residual carve-out.
+
+### Decision
+
+Chose Rung 4c. The residual was coherent with the Promise-local acquisition path and narrow enough to close without lifting global `crate::intrinsics::collect_iterable`. The global helper still has broad consumers across for-of, destructuring, spread, Array.from-style surfaces, and intrinsic helpers; changing it would be a larger iterator-protocol workstream. PIND's last cell only required Promise combinator acquisition semantics.
+
+### Substrate Move
+
+Replaced the Promise-local wrapper's direct call to global `collect_iterable` with a Promise-local `Runtime::promise_collect_iterable` helper:
+
+- ToObject-wraps non-null/undefined primitives like the global helper.
+- Reads `@@iterator` through `read_property_pk` so accessor getters on `Symbol.iterator` are invoked and user-thrown values are captured by `promise_collect_iterable_or_reject`.
+- Falls back to `object_get(id, "@@iterator")` when the PropertyKey lookup misses, preserving existing string-keyed/data Symbol behavior.
+- Reads iterator `next`, `done`, and `value` via accessor-aware `spec_get`.
+- Leaves global `crate::intrinsics::collect_iterable` unchanged.
+
+### Measurement
+
+Build gate:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS
+
+Targeted test262 measurement against `/home/jaredef/test262`:
+
+- Named 40-row PIND cluster after Rung 4c: 40 PASS / 0 FAIL.
+- Final residual `Promise.allSettled/iter-arg-is-poisoned.js`: PASS, +1 against the Rung 4b targeted result.
+
+Adjacent regression smoke:
+
+- PASS: `Promise.all/resolve-non-thenable.js`
+- PASS: `Promise.all/iter-arg-is-string-resolve.js`
+- PASS: `Promise.allSettled/resolves-to-array.js`
+- PASS: `Promise.allSettled/resolved-all-fulfilled.js`
+- PASS: `Promise.allSettled/resolved-all-mixed.js`
+- PASS: `Promise.race/S25.4.4.3_A4.1_T1.js`
+- PASS: `Promise.race/iter-arg-is-string-resolve.js`
+
+### Chapter Close
+
+PIND is chapter-closed at 40/40 for the named Promise.all/allSettled/race `Symbol.iterator` + not-callable cluster. No deferrals-ledger entry is needed for this chapter: the global accessor-aware `collect_iterable` lift remains a broader possible iterator-protocol improvement, but it is not a surfaced-but-unfounded candidate required to close PIND.
