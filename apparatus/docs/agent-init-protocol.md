@@ -260,6 +260,25 @@ Each substrate-resolver authors, commits, and pushes its own substrate work. The
 - Author post-round retrospectives noting landing-pipeline friction points.
 - The deputy never authors a substrate commit, a proposal commit, or an archive commit.
 
+**Deputy apparatus-artifact commit carve-out** (per keeper Telegram 10343, surfaced by deputy on 2026-05-29 topology round):
+
+The above "deputy does not commit" rule applies to substrate, proposal, and archive commits — the commits that ride the substrate-landing pipeline. It does NOT cover deputy-authored apparatus artifacts that have no other commit path. Without a carve-out, these artifacts strand as untracked files in the worktree (observed: `apparatus/deputy/fleet-state/2026-05-28T210804-0700-initial.md` + `apparatus/deputy/fleet-state/2026-05-28T214705-0700-arc-alignment.md` sat untracked for ~9 hours because no role had authority to commit them).
+
+The carve-out:
+- Deputy MAY commit files **only within `apparatus/deputy/`** under deputy authorship.
+- Commit messages prefixed `apparatus(deputy):` for grep-distinguishability.
+- No proposal+decision pair required for deputy apparatus-artifact commits (these are not substrate; the pre-push hook should be configured to recognize this scope; until configured, deputy uses `CRUFTLESS_HOOK_BYPASS=apparatus-deputy-artifact-only` per the emergency-override convention).
+- Helmsman approval is NOT required for in-scope commits (fleet-state snapshots are deputy's role-scope authorship; gating them on helmsman authorization would re-collapse the role separation).
+- Helmsman approval IS still required for any deputy commit that touches files outside `apparatus/deputy/` — in which case the resolver-as-committer rule applies and the deputy should hand the file off to the appropriate resolver instead.
+- Push: deputy may push deputy-scope commits directly via `git push origin HEAD:main` from its worktree (whether common or per-instance depending on topology).
+
+Why a carve-out instead of routing through helmsman/a resolver:
+- Helmsman-as-committer for deputy artifacts would violate the "authorizer not committer" principle (asymmetric authority).
+- Resolver-as-committer for deputy artifacts would break attribution (the fleet-state snapshot was authored by deputy; the commit author should match).
+- A narrowly-scoped carve-out preserves both principles without stranding apparatus artifacts.
+
+Failure mode this rule prevents: apparatus artifacts (fleet-state snapshots, deputy retrospectives) authored by deputy but stranded as untracked files because no commit path exists. Observed in the 2026-05-29 topology round when deputy fleet-state files from 2026-05-28T21:08 + T21:47 had been waiting hours for a commit path that §V.6 (as originally written) didn't provide.
+
 ## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.
