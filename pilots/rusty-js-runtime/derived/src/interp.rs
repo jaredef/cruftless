@@ -332,6 +332,7 @@ pub struct Runtime {
     /// Nested generators (yield inside a generator that yields a generator)
     /// stack correctly.
     pub gen_yields_stack: Vec<rusty_js_gc::ObjectId>,
+    pub gen_async_stack: Vec<bool>,
     /// Tier-Ω.5.P23.E1.live-import-bindings: per-source-URL registry of
     /// import-bindings whose source module was still Linking at evaluate-
     /// time. When the source module's evaluation completes, the registry
@@ -665,6 +666,7 @@ impl Runtime {
             async_generator_prototype: None,
             async_generator_function_prototype: None,
             gen_yields_stack: Vec::new(),
+            gen_async_stack: Vec::new(),
             pending_live_bindings: HashMap::new(),
             fd_table: HashMap::new(),
             next_fd: 3,
@@ -10142,6 +10144,17 @@ impl Runtime {
         Ok(self.object_get(id, key))
     }
 
+    pub fn read_property_pk(
+        &mut self,
+        id: ObjectRef,
+        key: &crate::value::PropertyKey,
+    ) -> Result<Value, RuntimeError> {
+        if let Some(getter) = self.find_getter_pk(id, key) {
+            return self.call_function(getter, Value::Object(id), Vec::new());
+        }
+        Ok(self.object_get_pk(id, key))
+    }
+
     /// Ω.5.P61.E13: HasProperty per ECMA §10.1.7.1 — walks own +
     /// prototype chain for the key. Used by Array.prototype iteration
     /// methods to skip sparse holes (a property present along the chain,
@@ -15006,6 +15019,7 @@ impl Runtime {
             let yields_arr = self.alloc_object(Object::new_array());
             self.object_set(yields_arr, "length".into(), Value::Number(0.0));
             self.gen_yields_stack.push(yields_arr);
+            self.gen_async_stack.push(proto.is_async);
             Some(yields_arr)
         } else {
             None
@@ -15185,6 +15199,7 @@ impl Runtime {
                 .gen_yields_stack
                 .pop()
                 .expect("gen_yields_stack underflow");
+            self.gen_async_stack.pop();
             let _ = gen_yields_id;
             if let Err(RuntimeError::SyntaxError(msg)) = body_result.as_ref() {
                 return Err(RuntimeError::SyntaxError(msg.clone()));

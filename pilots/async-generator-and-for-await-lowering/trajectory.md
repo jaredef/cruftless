@@ -367,7 +367,6 @@ at `PASS=61 FAIL=51 / 112`.
 tail or a timeout-safe async-generator `yield*` probe. The UTF-8 scanner panic
 is closed.
 
-
 ## AGFA-EXT 8 — for-await assignment-pattern member target admission (2026-05-28)
 
 **Target selected**: after AGFA-EXT 7, the for-await residual still included one
@@ -476,6 +475,110 @@ for-of parser/lowering work.
 AsyncFromSync abrupt-completion rejection, or leave AGFA for a different
 iterator-protocol locale. Avoid `yield*` async delegation without a timeout-safe
 design.
+
+## AGFA-EXT 10 — async-generator yield* protocol selection and error propagation (2026-05-28)
+
+**Target selected**: the larger async-generator `yield*` residual cluster after
+AGFA-EXT 9 left the suite at `PASS=87 FAIL=13 / 100`.
+
+Representative pre-move rows:
+
+- `language/expressions/async-generator/yield-star-getiter-async-returns-number-throw.js`
+- `language/expressions/async-generator/yield-star-getiter-sync-returns-number-throw.js`
+- `language/expressions/async-generator/yield-star-next-not-callable-undefined-throw.js`
+
+The compiler lowers `yield* expr` to `__yield_delegate__(expr)`. The helper was
+still a v1 eager collector: it always looked up `@@iterator`, used raw
+`object_get` instead of accessor-aware `Get`, and swallowed iterator protocol
+errors by breaking the loop. Async-generator `yield*` therefore missed
+`@@asyncIterator`, skipped abrupt getters, and converted protocol violations
+into later synthetic failures.
+
+**Substrate move**:
+
+- Added a parallel `Runtime::gen_async_stack` beside `gen_yields_stack`, pushed
+  on generator entry and popped on exit, so helper code can distinguish async
+  generator delegation from sync generator delegation without changing the
+  bytecode ABI.
+- Updated `__yield_delegate__` to use `@@asyncIterator` first for async
+  generators, falling back to `@@iterator` only when absent.
+- Routed iterator method/`next`/result property reads through `read_property`
+  so getters are observable.
+- Propagated iterator protocol errors instead of swallowing them as loop
+  termination.
+
+**Verification**:
+
+- `cargo build --release --bin cruft -p cruftless` passed with existing
+  warnings.
+- Targeted TypeError rows now PASS:
+  - `yield-star-getiter-async-returns-number-throw.js`
+  - `yield-star-getiter-sync-returns-number-throw.js`
+  - `yield-star-next-not-callable-undefined-throw.js`
+- AGFA exemplar suite moved from `PASS=87 FAIL=13 / 100 (87.0%)` to
+  `PASS=91 FAIL=9 / 100 (91.0%)`.
+- `scripts/diff-prod/run-all.sh` completed at the existing baseline
+  `PASS=61 FAIL=51 / 112`.
+
+**Residual split after move**:
+
+- 5 `language/expressions/async-generator`
+- 2 `language/statements/async-generator`
+- 2 `language/statements/for-await-of`
+
+Two remaining yield-star rows still produce no JSON under the bounded
+per-row loop and should be treated as timeout-shaped until the delegation
+coroutine model is deeper than this eager-collector helper.
+
+## AGFA-EXT 11 — yield* well-known symbol accessors and terminal value get (2026-05-28)
+
+**Target selected**: the remaining abrupt-completion `yield*` rows where the
+helper still missed accessor throws and terminal `value` throws:
+
+- `language/expressions/async-generator/named-yield-star-getiter-async-get-abrupt.js`
+- `language/expressions/async-generator/named-yield-star-getiter-sync-get-abrupt.js`
+- `language/statements/async-generator/yield-star-getiter-async-undefined-sync-get-abrupt.js`
+- `language/expressions/async-generator/named-yield-star-next-call-value-get-abrupt.js`
+
+After AGFA-EXT 10, direct JS `obj[Symbol.asyncIterator]` accessor reads were
+correct, but `__yield_delegate__` still probed only the transitional string
+aliases (`"@@asyncIterator"` / `"@@iterator"`). Computed well-known-symbol
+accessors installed under the actual Symbol key were therefore skipped and the
+generator body continued to the sentinel `Test262Error`.
+
+The terminal-value row exposed a second ordering gap: the helper read `done`
+and broke before reading `value`, but `yield*` must perform `IteratorValue` on
+the terminal result.
+
+**Substrate move**:
+
+- Added `Runtime::read_property_pk`, a PropertyKey-aware accessor-dispatching
+  get that mirrors `read_property` for symbol keys.
+- Taught `__yield_delegate__` to resolve `Symbol.asyncIterator` /
+  `Symbol.iterator` from the global `Symbol` constructor and use
+  `read_property_pk`, with the old string aliases as fallback.
+- Read iterator result `value` before checking `done` so terminal value getters
+  are observable.
+
+**Verification**:
+
+- `cargo build --release --bin cruft -p cruftless` passed with existing
+  warnings.
+- The four targeted abrupt rows now PASS.
+- AGFA exemplar suite moved from `PASS=91 FAIL=9 / 100 (91.0%)` to
+  `PASS=96 FAIL=4 / 100 (96.0%)`.
+- `scripts/diff-prod/run-all.sh` stayed at the existing baseline
+  `PASS=61 FAIL=51 / 112`.
+
+**Residual split after move**:
+
+- 2 `language/expressions/async-generator` timeout-shaped rows
+- 1 `language/statements/async-generator` timeout-shaped row
+- 1 `language/statements/for-await-of` async-generator destructuring resume row
+
+**Next**: the remaining yield-star rows are coroutine/thenable scheduling
+shape, while the for-await row still requires async-generator resume values to
+flow through destructuring initializer `yield`.
 
 
 ## AGFA-EXT 10 — async-function rejection job ordering (2026-05-28)

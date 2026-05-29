@@ -3834,8 +3834,7 @@ impl Compiler {
                             match property.as_ref() {
                                 rusty_js_ast::MemberProperty::Identifier { name, .. }
                                 | rusty_js_ast::MemberProperty::Private { name, .. } => {
-                                    let idx =
-                                        self.constants.intern(Constant::String(name.clone()));
+                                    let idx = self.constants.intern(Constant::String(name.clone()));
                                     encode_op(&mut self.bytecode, Op::PushConst);
                                     encode_u16(&mut self.bytecode, idx);
                                 }

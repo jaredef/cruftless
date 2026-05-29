@@ -29,7 +29,6 @@ Next event candidate: per-locale chapter-close in one of the OPEN locales (gener
 - After the sidecar root was corrected, `scripts/diff-prod/run-all.sh`
   completed at `PASS=61 FAIL=51 / 112`.
 
-
 ## 2026-05-28 — AGFA-EXT 8 for-await assignment-pattern parser distinction
 
 Continued AGFA residual reduction under the iterator-protocol arc. The selected
@@ -65,6 +64,46 @@ Result: the row no longer reaches the loop body, but remains FAIL because the
 catch handler is scheduled before `tick 2` rather than after it. AGFA exemplars
 were neutral at `87/100`; diff-prod remained `61/112`. Arc finding: the next
 AsyncFromSync step is promise-job ordering, not iterator fast-path selection.
+
+## 2026-05-28 — AGFA-EXT 10 async-generator yield* protocol delegation
+
+Continued AGFA against the `yield*` residual mass with bounded per-row harness
+runs. The v1 `__yield_delegate__` helper still treated all generator delegation
+as sync iteration: it read `@@iterator`, skipped accessor semantics via raw
+`object_get`, and swallowed iterator protocol errors as ordinary loop exits.
+
+Added a `gen_async_stack` alongside the generator yields stack so the helper can
+distinguish async-generator delegation. `__yield_delegate__` now prefers
+`@@asyncIterator` for async generators, falls back to `@@iterator` only when
+absent, reads protocol properties through `read_property`, and propagates
+protocol TypeErrors instead of breaking the loop.
+
+Result: representative TypeError rows for non-object async iterator results,
+non-object sync fallback results, and non-callable `next` now PASS. AGFA moved
+from `87/100` to `91/100`; residual split is 5 expression async-generator, 2
+statement async-generator, and 2 for-await rows. Diff-prod stayed at the known
+`61/112` baseline. Two remaining yield-star rows are still timeout-shaped under
+the bounded failure-list loop, so deeper delegation coroutine work remains
+separate from this eager-helper correction.
+
+## 2026-05-28 — AGFA-EXT 11 yield* well-known symbol accessors and terminal value
+
+Continued the async-generator `yield*` residuals after AGFA-EXT 10. Direct JS
+`obj[Symbol.asyncIterator]` accessor reads were already correct, but
+`__yield_delegate__` still looked up only the transitional string aliases. That
+missed computed well-known-symbol accessors and let the generator body continue
+to the sentinel `Test262Error` instead of rejecting with the thrown reason.
+
+Added `Runtime::read_property_pk` for PropertyKey-aware accessor dispatch and
+changed `__yield_delegate__` to resolve `Symbol.asyncIterator` / `Symbol.iterator`
+from the global Symbol constructor before falling back to `"@@..."` strings.
+Also moved iterator-result `value` reading before the `done` break so terminal
+`IteratorValue` abrupt completions are observable.
+
+Result: four abrupt-completion yield-star rows now PASS and AGFA moved from
+`91/100` to `96/100`; diff-prod remained at `61/112`. Residual AGFA is now four
+rows: three timeout-shaped yield-star coroutine/thenable cases and one
+for-await async-generator destructuring-resume case.
 
 
 ## 2026-05-28 — AGFA-EXT 10 async-function rejection job ordering

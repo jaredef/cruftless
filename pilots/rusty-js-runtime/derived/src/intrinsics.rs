@@ -6466,49 +6466,74 @@ impl Runtime {
                 Some(a) => a,
                 None => return Ok(Value::Undefined),
             };
+            let is_async_gen = rt.gen_async_stack.last().copied().unwrap_or(false);
             let it_arg = args.first().cloned().unwrap_or(Value::Undefined);
             // Iterate via Symbol.iterator / @@iterator / array length.
             let it_obj = match &it_arg {
                 Value::Object(id) => *id,
                 _ => return Ok(Value::Undefined),
             };
-            // If the iterable is itself an array-like with length, walk indices.
-            // Otherwise, try @@iterator and .next() repeatedly.
-            let try_iter = rt.object_get(it_obj, "@@iterator");
-            let iter_obj = if matches!(try_iter, Value::Object(_)) {
-                match rt.call_function(try_iter, Value::Object(it_obj), Vec::new()) {
-                    Ok(Value::Object(id)) => Some(id),
-                    _ => None,
+            let get_well_known = |rt: &mut Runtime,
+                                  obj: crate::value::ObjectRef,
+                                  symbol_name: &str,
+                                  fallback: &str|
+             -> Result<Value, RuntimeError> {
+                let key = match rt.global_get("Symbol") {
+                    Value::Object(symbol_ctor) => match rt.object_get(symbol_ctor, symbol_name) {
+                        Value::Symbol(rc) => crate::value::PropertyKey::Symbol(rc),
+                        _ => crate::value::PropertyKey::String(fallback.to_string()),
+                    },
+                    _ => crate::value::PropertyKey::String(fallback.to_string()),
+                };
+                rt.read_property_pk(obj, &key)
+            };
+            let method = if is_async_gen {
+                let async_method = get_well_known(rt, it_obj, "asyncIterator", "@@asyncIterator")?;
+                if matches!(async_method, Value::Undefined | Value::Null) {
+                    get_well_known(rt, it_obj, "iterator", "@@iterator")?
+                } else {
+                    async_method
                 }
             } else {
-                None
+                get_well_known(rt, it_obj, "iterator", "@@iterator")?
             };
-            if let Some(iter_id) = iter_obj {
-                let next = rt.object_get(iter_id, "next");
-                if matches!(next, Value::Object(_)) {
-                    loop {
-                        let step = match rt.call_function(
-                            next.clone(),
-                            Value::Object(iter_id),
-                            Vec::new(),
-                        ) {
-                            Ok(v) => v,
-                            Err(_) => break,
-                        };
-                        let step_id = match step {
-                            Value::Object(id) => id,
-                            _ => break,
-                        };
-                        if matches!(rt.object_get(step_id, "done"), Value::Boolean(true)) {
-                            break;
-                        }
-                        let v = rt.object_get(step_id, "value");
-                        let len = rt.array_length(target_arr);
-                        rt.object_set(target_arr, len.to_string(), v);
-                        rt.object_set(target_arr, "length".into(), Value::Number((len + 1) as f64));
+            if matches!(method, Value::Object(_)) {
+                let iter = rt.call_function(method, Value::Object(it_obj), Vec::new())?;
+                let iter_id = match iter {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "yield* iterator is not an object".into(),
+                        ))
                     }
-                    return Ok(Value::Undefined);
+                };
+                let next = rt.read_property(iter_id, "next")?;
+                if !rt.is_callable(&next) {
+                    return Err(RuntimeError::TypeError(
+                        "yield* iterator next is not callable".into(),
+                    ));
                 }
+                loop {
+                    let step =
+                        rt.call_function(next.clone(), Value::Object(iter_id), Vec::new())?;
+                    let step_id = match step {
+                        Value::Object(id) => id,
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "yield* iterator result is not an object".into(),
+                            ))
+                        }
+                    };
+                    let done = abstract_ops::to_boolean(&rt.read_property(step_id, "done")?);
+                    let v = rt.read_property(step_id, "value")?;
+                    if done {
+                        break;
+                    }
+                    let len = rt.array_length(target_arr);
+                    rt.object_set(target_arr, len.to_string(), v);
+                    rt.object_set(target_arr, "length".into(), Value::Number((len + 1) as f64));
+                }
+                return Ok(Value::Undefined);
             }
             // Fallback: array-like.
             let len = rt.array_length(it_obj);
@@ -22328,7 +22353,6 @@ where
     let fn_id = rt.alloc_object(fn_obj);
     define_global_property(rt, name, Value::Object(fn_id));
 }
-
 
 fn await_settled_value(rt: &mut Runtime, v: Value) -> Result<Value, RuntimeError> {
     let id = match v {
