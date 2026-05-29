@@ -29,6 +29,12 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 - [`apparatus/docs/cybernetic-agentic-communication-protocol.md`](apparatus/docs/cybernetic-agentic-communication-protocol.md) — Cybernetic Agentic Communication Protocol (CAACP). Closed-loop inter-resolver communication via inbox/outbox + explicit state machine + intent typology + remote enforcement endpoint at jaredfoy.com authenticated by `CAACP_TOKEN` env var. Stage A landed; Stage B (endpoint deployment) pending keeper provision.
 - Per-role engagement docs (read only the one for your appointed role): [`apparatus/docs/engagement-doc-{helmsman,arbiter,watcher,deputy}.md`](apparatus/docs/). The keeper engagement doc at [`apparatus/docs/engagement-doc-keeper.md`](apparatus/docs/engagement-doc-keeper.md) is for hypostatic agents only and should not be consumed by LLM resolvers.
 
+## Agent init protocol — read first on session entry
+
+**Every LLM resolver session entering this engagement MUST execute the init protocol** at [`apparatus/docs/agent-init-protocol.md`](apparatus/docs/agent-init-protocol.md) on session entry. The protocol bootstraps your participation in the cybernetic-agentic-communication-protocol (CAACP) loop: verifies the local sidecar is running, registers your per-instance token (substrate resolvers) or singleton role token (appointed roles), arms notification channels, reports session-ready. Without this bootstrap, you cannot send or receive inter-agent messages.
+
+Substrate resolvers (the default role per the section below): follow §II of the init protocol (six steps). Appointed roles: follow your role-load skill at `apparatus/skills/<role>-load.md`, which integrates the CAACP registration step.
+
 ## Resolver role discipline
 
 An LLM resolver entering this engagement operates as the **substrate resolver** by default (per keeper directive Telegram 10225–10226). The substrate resolver is the apparatus's worker tier: per-rung substrate work within an appointed scope, no governance authority, no push-tier authority, no coordination authority over other resolvers. See `apparatus/docs/engagement-doc-substrate-resolver.md` for the default-role frame.
