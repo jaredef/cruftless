@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless-r4/pilots",
   "totals": {
-    "locales": 221,
-    "top_level": 134,
+    "locales": 222,
+    "top_level": 135,
     "nested": 87,
     "warnings": 0
   },
@@ -287,6 +287,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": null
+    },
+    {
+      "coord": "class-inheritance-tdz-parser-tail",
+      "tag": "L.class-inheritance-tdz-parser-tail",
+      "parent": null,
+      "scope": "class-inheritance-tdz-parser-tail",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "**SPAWNED / PHASE-2 BLOCKED**. Phase 0 scaffold exists. Complete Phase 2 C4 is blocked because the directive's required source file is absent locally: `/media/jaredef/T7/rusty-bun/parity-results/parity-results-top500-20260529T111702-refined.json`."
     },
     {
       "coord": "compartment-primitive",
