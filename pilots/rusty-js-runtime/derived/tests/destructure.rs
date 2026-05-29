@@ -96,6 +96,33 @@ fn t10_forof_destructure_head() {
     assert_eq!(last(&rt), Value::Number(10.0));
 }
 
+// 10b. for-of destructure over Object.entries must initialize the lexical
+// head binding instead of treating the declaration write as a TDZ read.
+#[test]
+fn t10b_forof_object_entries_destructure_head() {
+    let rt = run_rt(
+        "let out = ''; \
+         for (const [name, value] of Object.entries({a: 1, b: 2})) { out += name + value; } \
+         __record(out);",
+    );
+    assert_eq!(last(&rt), Value::String("a1b2".to_string().into()));
+}
+
+// 10c. for-in head TDZ seeding must not make zero-iteration lexical heads
+// trip a false-positive ReferenceError when the body mentions the head name.
+#[test]
+fn t10c_forin_empty_lexical_head_does_not_false_tdz() {
+    let rt = run_rt(
+        "let out = 0; \
+         for (let outer = 0; outer < 2; outer++) { \
+           const keys = {}; \
+           for (const key in keys) { out += key.length; } \
+         } \
+         __record(out);",
+    );
+    assert_eq!(last(&rt), Value::Number(0.0));
+}
+
 // 11. Object rest collects remaining keys.
 #[test]
 fn t11_object_rest() {

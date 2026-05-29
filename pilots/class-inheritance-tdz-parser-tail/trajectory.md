@@ -303,3 +303,224 @@ The package cluster is not closed by the object-rest init-site fix:
 
 The next rung should target the lexical/module evaluation-order layer directly,
 not the destructuring rest helper path.
+
+## CITPT-EXT 3 — for-in/for-of head TDZ seeding uses InitLocal, package TDZ tail largely clears (2026-05-29)
+
+Directive: `helmsman/request/citpt-ext-3-module-lexical-tdz-r4-replacement`.
+
+**Worktree inventory**
+
+- Verified expected worktree: `/home/jaredef/Developer/cruftless-r4` on `resolver-r4-main`.
+- Rebased cleanly onto `origin/main`.
+- Per §V.8, session start exposed pre-existing dirty R4 work in:
+  - `pilots/rusty-js-bytecode/derived/src/compiler.rs`
+  - `pilots/rusty-js-runtime/derived/tests/destructure.rs`
+- The dirty compiler diff was load-bearing for this rung: it changed the
+  `for-of` / `for-in` head TDZ seeding sites from `StoreLocal` to `InitLocal`.
+  The dirty test diff added a focused `Object.entries()` destructure-head
+  regression.
+
+**Sampled package failures and root discrimination**
+
+Sampled the requested package set (`arktype`, `prettier`, `csso`, `redis`) plus
+ the repeated upstream `css-tree` rows and confirmed the package-level TDZ tail
+ had shifted onto loop-head lexical names:
+
+- `prettier` -> `<scoped@13>printerName` at `prettier/index.mjs:18193`
+- `csso` -> `<scoped@28>name` at `css-tree/lib/syntax/config/mix.js:112`
+- prior snapshot + local temp traces showed `stylelint` / `svgo` on the same
+  `css-tree` shape and `arktype` on `<scoped@16>rIndex` in
+  `@ark/schema/out/roots/union.js`
+
+This is not module-import cycle TDZ. The repeated failing names are lexical
+`for-in` / `for-of` head bindings that are TDZ-seeded before iteration begins.
+
+**Root cause**
+
+The compiler already writes the per-iteration loop value with `Op::InitLocal`,
+but the earlier head seeding step still used `Op::StoreLocal`:
+
+- `for-of` head TDZ seeding at `compiler.rs` around the IR-EXT 24 site
+- `for-in` head TDZ seeding at the symmetric site
+
+Once TDZ-on-assign enforcement exists on `StoreLocal`, those seed writes are
+wrong: they are declaration-time initialization writes, not ordinary
+assignments. Using `StoreLocal` can therefore route a legitimate seed/update
+through the TDZ-on-assign fault path and surface false-positive
+`Cannot access '<scoped@...>' before initialization` reads later in package
+execution.
+
+**Closure**
+
+Changed both loop-head TDZ seeding sites from:
+
+```text
+PushTDZ; StoreLocal <head-slot>
+```
+
+to:
+
+```text
+PushTDZ; InitLocal <head-slot>
+```
+
+This keeps the head binding in the TDZ state for iterable/key evaluation while
+preserving the invariant that declaration/per-iteration initialization writes do
+not use the TDZ-on-assign opcode path.
+
+**Regression coverage**
+
+- Existing dirty regression retained:
+  - `t10b_forof_object_entries_destructure_head`
+- New focused regression added:
+  - `t10c_forin_empty_lexical_head_does_not_false_tdz`
+
+The new test locks the zero-iteration `for-in` false-positive surface: the body
+mentions the lexical head name, but an empty key set must not trigger a TDZ
+fault.
+
+**Measurements**
+
+- `cargo build --release --bin cruft -p cruftless` — PASS
+- `cargo test --release -p rusty-js-runtime --lib` — PASS (`71 passed`, `1 ignored`)
+- `cargo test --release -p rusty-js-runtime --test destructure t10b_forof_object_entries_destructure_head -- --nocapture` — PASS
+- `cargo test --release -p rusty-js-runtime --test destructure t11_object_rest -- --nocapture` — PASS
+
+**9-cell package smoke (cruft-side outcome, rebuilt binary)**
+
+The parity harness could not execute Bun in this shell, so the summary's
+PASS/FAIL percentage is not usable as a parity number. The cruft-side outcomes
+are still decisive for this rung:
+
+- **TDZ cells cleared to OK**: `prettier`, `csso`, `rehype`, `puppeteer-core`,
+  `svgo`, `config`
+- **Residual non-TDZ cells**:
+  - `arktype` -> `ParseError: 'generic' is unresolvable`
+  - `redis` -> package.json read path failure under `@redis/client`
+  - `stylelint` -> `readFileSync` file-path failure in `FileCache.mjs`
+
+Net effect on the targeted tail: the module/lexical TDZ root is closed for
+`6/9` cells; the residual three cells are no longer `Cannot access ... before
+initialization` failures.
+
+**Disposition**
+
+Scope-down succeeded. The dominant lexical loop-head TDZ root is closed. The
+remaining cells split into at least three non-TDZ follow-up surfaces:
+
+1. `arktype` name resolution / parse surface (`'generic' is unresolvable`)
+2. `redis` package.json resolution path
+3. `stylelint` file-path / readFileSync substrate
+
+**Operational blocker**
+
+The apparatus landing protocol requested three commits + landing/push, but this
+session remains under the standing user-authorization rule that forbids commits
+without explicit user approval. Substrate closure and verification are complete;
+commit/push remains blocked on authorization.
+
+## CITPT-EXT 3 — destructured lexical for-of head initialization closure (2026-05-29)
+
+Directive: `helmsman/request/citpt-ext-3-module-lexical-tdz-r4-replacement`.
+
+**Initial reproduction and scope correction**
+
+Re-sampled the named package set on current `origin/main` before editing:
+
+- 5-package smoke (`arktype`, `prettier`, `csso`, `rehype`, `redis`) at
+  `/home/jaredef/Developer/cruftless-sidecar/results/citpt-ext3-five.json`
+  produced `2/5` PASS.
+- The live failures were:
+  - `csso` — `ReferenceError("Cannot access '<scoped@29>name' before initialization")`
+    at `css-tree/lib/syntax/config/mix.js:112:17`
+  - `arktype` — `ParseError: 'generic' is unresolvable`
+  - `redis` — package.json resolution failure under `@redis/client`
+- `prettier` and `rehype` already PASS on current main, so the stale
+  9-cell story had partially collapsed upstream.
+
+The actionable surviving TDZ row was therefore `css-tree`'s:
+
+```js
+for (const [name, value] of Object.entries(dest[key] || {})) {
+```
+
+That row is not module-instantiation ordering. It is a lexical declaration
+write in a destructured `for-of` head.
+
+**Root cause**
+
+The compiler's `for-of` / `for-in` head TDZ seeding path still emitted:
+
+```text
+PushTDZ
+StoreLocal
+```
+
+for every lexical head slot allocated before evaluating the iterable/key
+source. That is correct for preserving the TDZ during RHS evaluation, but the
+subsequent declaration write is an initialization, not an ordinary assignment.
+For destructured lexical heads, the runtime therefore treated the legitimate
+binding write as a TDZ read and raised the false-positive
+`Cannot access '<scoped@N>name' before initialization`.
+
+This is the same class of init-site bug as CITPT-EXT 2's object-rest closure,
+but on the loop-head substrate rather than the destructure helper path.
+
+**Closure**
+
+Changed the lexical head-slot seeding sites in
+`pilots/rusty-js-bytecode/derived/src/compiler.rs`:
+
+- `for-of` head seed: `PushTDZ + InitLocal`
+- `for-in` head seed: `PushTDZ + InitLocal`
+
+This preserves TDZ during RHS evaluation while allowing the declaration write
+that begins iteration to overwrite the sentinel legally.
+
+Added regression `t10b_forof_object_entries_destructure_head` to
+`pilots/rusty-js-runtime/derived/tests/destructure.rs` covering:
+
+```js
+for (const [name, value] of Object.entries({a: 1, b: 2})) { ... }
+```
+
+**Measurements**
+
+- `cargo build --release --bin cruft -p cruftless` — PASS.
+- `cargo test --release -p rusty-js-runtime --lib` — PASS (`71 passed`, `1 ignored`).
+- `cargo test --release -p rusty-js-runtime --test destructure t10b_forof_object_entries_destructure_head -- --nocapture` — PASS.
+- `cargo test --release -p rusty-js-runtime --test destructure t11_object_rest -- --nocapture` — PASS (CITPT-EXT 2 preserved).
+
+Package measurements:
+
+- 5-package resample after fix:
+  `/home/jaredef/Developer/cruftless-sidecar/results/citpt-ext3-five-after-serial.json`
+  — `3/5` PASS; `csso` flipped to PASS; residuals `arktype`, `redis`.
+- 9-package smoke after fix:
+  `/home/jaredef/Developer/cruftless-sidecar/results/citpt-ext3-nine-after.json`
+  — `6/9` PASS.
+
+Pass set in the 9-package smoke:
+
+- `prettier`
+- `csso`
+- `rehype`
+- `puppeteer-core`
+- `svgo`
+- `config`
+
+Residuals after the closure are no longer TDZ rows:
+
+- `arktype` — parser/import resolution residual: `ParseError: 'generic' is unresolvable`
+- `redis` — package.json resolution residual under `@redis/client`
+- `stylelint` — filesystem/file-cache residual:
+  `readFileSync: No such file or directory`
+
+**Finding**
+
+The dominant surviving CITPT lexical false-positive on current main was not a
+module/lexical declaration-instantiation bug. It was a narrower compiler-layer
+init-site bug: destructured lexical loop heads in `for-of`/`for-in` still used
+assignment semantics at the TDZ seed site. Closing that path returned the live
+`css-tree` family cell and, on the current package set, met the requested
+`5+`-closed threshold (`6/9` PASS).
