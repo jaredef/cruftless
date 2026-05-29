@@ -238,6 +238,28 @@ When the helmsman approves a substrate-resolver landing plan (or any cybernetic-
 
 **Deferred apparatus enhancement**: sidecar polling could be extended to surface outbox-ack-changes when ack bodies carry substantive content (length threshold or explicit `surface_to_recipient=true` flag). Tracked as Stage-C deferral; until landed, the helmsman discipline above is the workaround.
 
+### V.6 Resolver-as-committer discipline (mandatory; per keeper 10325 + 10327)
+
+Each substrate-resolver authors, commits, and pushes its own substrate work. The substrate-landing pipeline's final phase (commit → proposal+decision → push → archive) runs in the resolver's clone, with the resolver as commit author. The helmsman authorizes the landing via approval; the helmsman does NOT commit on the resolver's behalf. The deputy is a fleet-communication relay and fleet-state-snapshot author; the deputy does NOT commit on resolvers' behalf either.
+
+**Why this discipline**:
+1. **Substrate authorship traceability**: the commit author + trajectory entry + proposal+decision pair form a closed attestation chain linking a specific resolver-instance to the substrate move it made. Centralizing commits through helmsman or deputy fractures this chain.
+2. **Locale-as-coordinate fidelity** (Doc 737): each rung is a Pin-Art move at a coordinate; the resolver IS the worker at that coordinate. Commit-and-push is the final phase of the five-phase substrate-shaped-work pipeline. Severing the commit from the worker fractures the pipeline.
+3. **Triumvirate role separation** (apparatus/docs/triumvirate-protocol-keeper-helmsman-arbiter.md): helmsman = substrate-steering + push-authority *authorization*; substrate-resolver = substrate work + landing; deputy = fleet-communication relay. A role that commits on another role's behalf collapses two role surfaces into one.
+4. **Pre-push hook gating works per-clone**: the hook fires in the resolver's clone where proposal+decision files are local. Routing commits through another role would require shipping those files cross-clone before push, adding a coordination round-trip per landing.
+
+**Worktree-hygiene discipline** (per the "Git Add Scope" feedback rule):
+- Never `git add -A` or `git add .` — enumerate specific files for each commit. A resolver's clone may carry dirty state from prior rungs, sibling resolvers (if shared-clone), or apparatus scratch files.
+- The 3-commit dance per landing — (1) substrate + trajectory, (2) proposal + decision, (3) archive — must each enumerate its files explicitly.
+- If a rebase is required between commits (2) and (3) due to upstream changes, the substrate commit SHA in proposal+decision must be updated and the proposal+decision recommitted (soft reset is the canonical mechanism). Never amend a substrate commit with proposal+decision in the same commit — the proposal+decision references the substrate SHA, so they cannot co-author the same commit (chicken-and-egg).
+- Shared-clone scenarios (multiple resolvers on the same checkout) are currently unsupported by this discipline; each resolver should run in its own clone (or its own `git worktree add`) to avoid cross-resolver dirty-state contamination. If shared-clone becomes operationally necessary, the discipline upgrade is per-rung `git worktree add` rather than stash-juggling (stash is brittle under partial-failure as observed in the 2026-05-29 EPSUA round).
+
+**Deputy commit-coordination scope** (NOT commit-authorship scope):
+- Author fleet-state snapshots that inventory which resolvers landed which commits at which rungs.
+- Surface cross-resolver rebase storms or push-collision patterns to helmsman.
+- Author post-round retrospectives noting landing-pipeline friction points.
+- The deputy never authors a substrate commit, a proposal commit, or an archive commit.
+
 ## VI. Failure modes
 
 - **Sidecar unreachable**: substrate work continues without CAACP coordination; you operate per the legacy artifact-passing convention (write to `apparatus/proposals/`, `apparatus/watcher/notifications/`, etc.) and rely on keeper-Telegram routing per the pre-CAACP discipline.
