@@ -9,7 +9,15 @@ pub fn install(rt: &mut Runtime) {
     let host = new_object(rt);
     register_method(rt, host, "detachArrayBuffer", |rt, args| {
         let id = match args.first() {
-            Some(Value::Object(id)) => *id,
+            Some(Value::Object(id)) if rt.array_buffers.contains_key(id) => *id,
+            Some(Value::Object(id)) => match rt.typed_array_views.get(id) {
+                Some(view) => view.buffer,
+                None => {
+                    return Err(RuntimeError::TypeError(
+                        "$262.detachArrayBuffer: argument must be an ArrayBuffer".into(),
+                    ))
+                }
+            },
             _ => {
                 return Err(RuntimeError::TypeError(
                     "$262.detachArrayBuffer: argument must be an ArrayBuffer".into(),

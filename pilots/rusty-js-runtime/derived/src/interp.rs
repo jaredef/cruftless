@@ -10825,6 +10825,20 @@ impl Runtime {
                 });
             }
         }
+        if key == "byteOffset" {
+            if let Some(view) = self.typed_array_views.get(&id) {
+                return Value::Number(if self.typed_array_view_out_of_bounds(id) {
+                    0.0
+                } else {
+                    view.byte_offset as f64
+                });
+            }
+        }
+        if key == "buffer" {
+            if let Some(view) = self.typed_array_views.get(&id) {
+                return Value::Object(view.buffer);
+            }
+        }
         // TAMM-EXT 1: ArrayBuffer.prototype.{maxByteLength, resizable,
         // detached, immutable} accessor surface. Per ECMA-262 §25.1
         // ArrayBuffer extensions (ES2024 resizable/transferable buffers):

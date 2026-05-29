@@ -191,3 +191,52 @@ adjacent ArrayBuffer/DataView regression sweep listed above
 ### Status
 
 H262S-EXT 1 complete for the approved detach subcluster. Remaining host-hook rows stay deferred for separate approval.
+
+## 2026-05-29 - H262S-EXT 2 - detachArrayBuffer typed-array view bridge
+
+### Directive
+
+Helmsman targeted R4 for the TAPD detached-buffer residual surfaced by R2 in TAPD-EXT 2/3, naming `built-ins/TypedArray/prototype/lastIndexOf/detached-buffer-during-fromIndex-returns-minus-one-for-undefined.js` as the concrete exemplar.
+
+### Phase 2 - Baseline Inspect
+
+The named exemplar already passed on current R4/main before this rung:
+
+```
+built-ins/TypedArray/prototype/lastIndexOf/detached-buffer-during-fromIndex-returns-minus-one-for-undefined.js: PASS
+```
+
+The broader direct detached-buffer TypedArray prototype sweep showed the actual host-shim hole: some `testTypedArray.js` `makeArrayBuffer` harness paths construct a TypedArray over an ArrayBuffer and then pass `sample.buffer` to `$DETACHBUFFER`. Cruftless's ArrayBuffer-backed typed-array constructor path stored the backing buffer only in `Runtime::typed_array_views`, without exposing `.buffer` through `object_get`, so `$262.detachArrayBuffer` received `undefined` and rejected it as not an ArrayBuffer.
+
+Pre-fix sweep over 89 `built-ins/TypedArray/prototype/**/detached-buffer*.js` rows:
+
+```
+PASS 8 / FAIL 81
+shim argument failures: 13
+```
+
+### Phase 4 - Land
+
+Substrate landed:
+
+- `cruftless/src/test262_host.rs`: `$262.detachArrayBuffer` still accepts ArrayBuffer objects directly, and now also accepts TypedArray view objects by resolving their backing buffer through `Runtime::typed_array_views`.
+- `pilots/rusty-js-runtime/derived/src/interp.rs`: `Runtime::object_get` now exposes TypedArray view `.buffer` and `.byteOffset` from the view record. This is the missing host-exercisability bridge for ArrayBuffer-backed typed arrays.
+
+The host hook remains guarded by `T262_TEST_PATH`.
+
+### Phase 5 - Chapter-Close Inspect
+
+Post-fix checks:
+
+```
+cargo build --release --bin cruft -p cruftless: PASS
+built-ins/TypedArray/prototype/lastIndexOf/detached-buffer-during-fromIndex-returns-minus-one-for-undefined.js: PASS
+89-row TypedArray detached sweep: PASS 61 / FAIL 28
+shim argument failures: 0
+```
+
+The remaining 28 failures are no longer host-shim availability failures. They are runtime TypedArray detached semantics still owned by TAPD follow-up work: detached receiver TypeError routing for some methods, detached-mid-fromIndex behavior for `includes`/`indexOf`/`lastIndexOf`, `join` detached-mid-separator behavior, `slice` species/custom-constructor detached ordering, and `subarray` detached handling.
+
+### Finding
+
+**Finding H262S.3**: For test262 detached-buffer rows, `$262.detachArrayBuffer` availability composes with TypedArray view accessor fidelity. The host hook can be present and still non-exercisable if `sample.buffer` does not expose the backing ArrayBuffer for views constructed from ArrayBuffer input. H262S therefore owns only the host/accessor bridge; method-level detached semantics remain TAPD substrate.
