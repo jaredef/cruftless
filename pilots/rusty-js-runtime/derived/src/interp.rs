@@ -898,6 +898,13 @@ impl Runtime {
         args: Vec<Value>,
     ) -> Result<(bool, Value), RuntimeError> {
         let result = self.call_function(next, Value::Object(iterator), args)?;
+        self.yield_delegate_result_done_value(result)
+    }
+
+    fn yield_delegate_result_done_value(
+        &mut self,
+        result: Value,
+    ) -> Result<(bool, Value), RuntimeError> {
         let result = match result {
             Value::Object(id) => id,
             _ => {
@@ -909,6 +916,73 @@ impl Runtime {
         let done = crate::abstract_ops::to_boolean(&self.object_get(result, "done"));
         let value = self.object_get(result, "value");
         Ok((done, value))
+    }
+
+    fn iterator_close_object(&mut self, iterator: ObjectRef) -> Result<(), RuntimeError> {
+        let ret = self.object_get(iterator, "return");
+        if matches!(ret, Value::Undefined | Value::Null) {
+            return Ok(());
+        }
+        if !self.is_callable(&ret) {
+            return Ok(());
+        }
+        let result = self.call_function(ret, Value::Object(iterator), Vec::new())?;
+        if !matches!(result, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "IteratorClose return method returned non-object".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn resume_generator_after_delegate_completion(
+        &mut self,
+        generator: ObjectRef,
+        snapshot: &FrameSnapshot,
+        value: Value,
+    ) -> Result<Value, RuntimeError> {
+        let mut frame = Frame::from(snapshot);
+        frame.pc = frame.pc.saturating_add(1);
+        if !frame.operand_stack.is_empty() {
+            let _ = frame.pop()?;
+        }
+        frame.push(value);
+        let result = self.with_active_generator_for_yield(generator, |rt| rt.run_frame(&mut frame));
+        match result {
+            Ok(mut out) => {
+                let yielded = matches!(
+                    &self.obj(generator).internal_kind,
+                    crate::value::InternalKind::Generator(g)
+                        if matches!(g.state, crate::value::GeneratorState::SuspendedYield)
+                );
+                if yielded {
+                    Ok(self.generator_result_object(out, false))
+                } else {
+                    if let crate::value::InternalKind::Generator(g) =
+                        &mut self.obj_mut(generator).internal_kind
+                    {
+                        g.state = crate::value::GeneratorState::Completed;
+                        g.continuation = None;
+                        g.delegate = None;
+                        if let Some(return_value) = g.pending_return.take() {
+                            out = return_value;
+                        }
+                    }
+                    Ok(self.generator_result_object(out, true))
+                }
+            }
+            Err(e) => {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                    g.pending_return = None;
+                    g.delegate = None;
+                }
+                Err(e)
+            }
+        }
     }
 
     pub fn with_active_generator_for_yield<F, T>(
@@ -1017,7 +1091,7 @@ impl Runtime {
         generator: ObjectRef,
         thrown: Value,
     ) -> Result<Value, RuntimeError> {
-        let snapshot = {
+        let (snapshot, delegate) = {
             let obj = self.obj_mut(generator);
             match &mut obj.internal_kind {
                 crate::value::InternalKind::Generator(g) => {
@@ -1036,7 +1110,7 @@ impl Runtime {
                     }
                     g.state = crate::value::GeneratorState::Executing;
                     g.yielded_value = None;
-                    g.continuation.take()
+                    (g.continuation.take(), g.delegate.clone())
                 }
                 _ => {
                     return Err(RuntimeError::TypeError(
@@ -1055,6 +1129,51 @@ impl Runtime {
             }
             return Err(RuntimeError::Thrown(thrown));
         };
+
+        if let Some(delegate) = delegate {
+            let throw_method = self.object_get(delegate.iterator, "throw");
+            if matches!(throw_method, Value::Undefined | Value::Null) {
+                self.iterator_close_object(delegate.iterator)?;
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                    g.pending_return = None;
+                    g.delegate = None;
+                }
+                return Err(RuntimeError::Thrown(thrown));
+            }
+            if !self.is_callable(&throw_method) {
+                return Err(RuntimeError::TypeError(
+                    "yield* iterator throw is not callable".into(),
+                ));
+            }
+            let result =
+                self.call_function(throw_method, Value::Object(delegate.iterator), vec![thrown])?;
+            let (done, value) = self.yield_delegate_result_done_value(result)?;
+            if done {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.delegate = None;
+                }
+                return self.resume_generator_after_delegate_completion(
+                    generator,
+                    snapshot.as_ref(),
+                    value,
+                );
+            }
+            if let crate::value::InternalKind::Generator(g) =
+                &mut self.obj_mut(generator).internal_kind
+            {
+                g.state = crate::value::GeneratorState::SuspendedYield;
+                g.yielded_value = Some(value.clone());
+                g.continuation = Some(snapshot);
+                g.delegate = Some(delegate);
+            }
+            return Ok(self.generator_result_object(value, false));
+        }
 
         let mut frame = Frame::from(snapshot.as_ref());
         if let Err(e) = inject_throw_into_frame(&mut frame, thrown) {
@@ -1112,7 +1231,7 @@ impl Runtime {
         generator: ObjectRef,
         value: Value,
     ) -> Result<Value, RuntimeError> {
-        let snapshot = {
+        let (snapshot, delegate) = {
             let obj = self.obj_mut(generator);
             match &mut obj.internal_kind {
                 crate::value::InternalKind::Generator(g) => {
@@ -1132,7 +1251,7 @@ impl Runtime {
                     g.state = crate::value::GeneratorState::Executing;
                     g.yielded_value = None;
                     g.pending_return = Some(value.clone());
-                    g.continuation.take()
+                    (g.continuation.take(), g.delegate.clone())
                 }
                 _ => {
                     return Err(RuntimeError::TypeError(format!(
@@ -1152,6 +1271,52 @@ impl Runtime {
             }
             return Ok(self.generator_result_object(value, true));
         };
+
+        if let Some(delegate) = delegate {
+            let return_method = self.object_get(delegate.iterator, "return");
+            if matches!(return_method, Value::Undefined | Value::Null) {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                    g.pending_return = None;
+                    g.delegate = None;
+                }
+                return Ok(self.generator_result_object(value, true));
+            }
+            if !self.is_callable(&return_method) {
+                return Err(RuntimeError::TypeError(
+                    "yield* iterator return is not callable".into(),
+                ));
+            }
+            let result = self.call_function(
+                return_method,
+                Value::Object(delegate.iterator),
+                vec![value.clone()],
+            )?;
+            let (done, out) = self.yield_delegate_result_done_value(result)?;
+            if done {
+                if let crate::value::InternalKind::Generator(g) =
+                    &mut self.obj_mut(generator).internal_kind
+                {
+                    g.state = crate::value::GeneratorState::Completed;
+                    g.continuation = None;
+                    g.pending_return = None;
+                    g.delegate = None;
+                }
+                return Ok(self.generator_result_object(out, true));
+            }
+            if let crate::value::InternalKind::Generator(g) =
+                &mut self.obj_mut(generator).internal_kind
+            {
+                g.state = crate::value::GeneratorState::SuspendedYield;
+                g.yielded_value = Some(out.clone());
+                g.continuation = Some(snapshot);
+                g.delegate = Some(delegate);
+            }
+            return Ok(self.generator_result_object(out, false));
+        }
 
         let mut frame = Frame::from(snapshot.as_ref());
         if !inject_return_into_frame(&mut frame) {
@@ -18601,6 +18766,93 @@ mod gcs_tests {
         .expect("yield* should complete with inner return value");
         let result = rt.global_get("result");
         assert!(matches!(&result, Value::String(s) if s.as_ref() == "a false b true"));
+    }
+
+    #[test]
+    fn generator_yield_star_forwards_throw_to_delegate() {
+        let rt = run_js_runtime(
+            r#"
+            function* inner() {
+              try {
+                yield "a";
+              } catch (e) {
+                yield "caught:" + e;
+              }
+            }
+            function* outer() {
+              yield* inner();
+            }
+            const it = outer();
+            const a = it.next();
+            const b = it.throw("boom");
+            const c = it.next();
+            globalThis.result =
+              a.value + " " + a.done + " "
+              + b.value + " " + b.done + " "
+              + c.value + " " + c.done;
+            "#,
+        )
+        .expect("yield* should forward throw to delegate");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "a false caught:boom false undefined true"));
+    }
+
+    #[test]
+    fn generator_yield_star_closes_delegate_without_throw() {
+        let rt = run_js_runtime(
+            r#"
+            let closed = false;
+            const inner = {
+              next() { return { value: "a", done: false }; },
+              return() { closed = true; return { done: true }; },
+              [Symbol.iterator]() { return this; }
+            };
+            function* outer() {
+              yield* inner;
+            }
+            const it = outer();
+            const a = it.next();
+            let thrown;
+            try {
+              it.throw("boom");
+            } catch (e) {
+              thrown = e;
+            }
+            globalThis.result = a.value + " " + closed + " " + thrown;
+            "#,
+        )
+        .expect("yield* throw should IteratorClose delegates without throw");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "a true boom"));
+    }
+
+    #[test]
+    fn generator_yield_star_forwards_return_to_delegate() {
+        let rt = run_js_runtime(
+            r#"
+            function* inner() {
+              try {
+                yield "a";
+              } finally {
+                yield "cleanup";
+              }
+            }
+            function* outer() {
+              yield* inner();
+            }
+            const it = outer();
+            const a = it.next();
+            const b = it.return("done");
+            const c = it.next();
+            globalThis.result =
+              a.value + " " + a.done + " "
+              + b.value + " " + b.done + " "
+              + c.value + " " + c.done;
+            "#,
+        )
+        .expect("yield* should forward return to delegate");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "a false cleanup false done true"));
     }
 }
 

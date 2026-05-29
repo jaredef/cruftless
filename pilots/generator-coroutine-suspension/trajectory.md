@@ -304,3 +304,57 @@ where the second `outer().next()` completes with value `"b"`.
 ### Finding
 
 **Finding GCS.8**: `yield*` needs an opcode-owned delegation loop because the frame must resume at the delegation site, not after it, until the inner iterator completes. The saved-frame pc rewrite to the opcode site plus a generator-owned delegate record is enough for lazy array delegation, sent-value forwarding via `next(value)`, and inner generator return-value propagation. The remaining slice residuals are now outside the basic delegate pump: abrupt forwarding through delegate `throw`/`return`, IteratorClose, and destructuring iterator-close interactions.
+
+## GCS residuals - delegate abrupt forwarding (2026-05-29)
+
+**Directive**: close the consolidated GCS residuals if tractable, with explicit scope-down permission to land the delegate-abrupt path first if the four residual sub-items balloon.
+
+### Substrate
+
+This rung takes the scope-down path and closes delegate-abrupt forwarding through `yield*`.
+
+When `Generator.prototype.throw(value)` reaches a suspended `yield*` site, the outer generator now checks the active `GeneratorDelegate` before injecting into the outer frame. If the inner iterator has a callable `throw`, the runtime calls it with the thrown value and interprets the returned iterator result. A non-done result becomes the outer `throw()` result and keeps the outer generator suspended at the same delegate site. A done result clears the delegate and resumes the outer frame after `Op::YieldDelegate` with the inner completion value. If the inner iterator has no `throw`, the runtime performs IteratorClose through the delegate `return` method when present, then rethrows the original value and completes the outer generator.
+
+When `Generator.prototype.return(value)` reaches a suspended `yield*` site, the outer generator now forwards to the inner iterator's `return(value)` when present. A non-done result is yielded by the outer `return()` call while preserving the active delegate. A done result completes the outer generator with the inner return result's value. If the inner iterator has no `return`, the outer generator completes immediately with the requested return value.
+
+The attempted compiler-side expansion for generic for-of IteratorClose on abrupt break/continue/return/throw was reverted before commit: it regressed the 69-row for-of/generator slice by one. That residual needs a separate compiler-control-flow rung rather than being bundled into the delegate-abrupt runtime path.
+
+### Exemplar
+
+Added runtime-library coverage for:
+
+```js
+function* inner() {
+  try { yield "a"; } catch (e) { yield "caught:" + e; }
+}
+function* outer() { yield* inner(); }
+const it = outer();
+it.next();          // { value:"a", done:false }
+it.throw("boom");  // { value:"caught:boom", done:false }
+```
+
+and for:
+
+```js
+function* inner() {
+  try { yield "a"; } finally { yield "cleanup"; }
+}
+function* outer() { yield* inner(); }
+const it = outer();
+it.next();          // { value:"a", done:false }
+it.return("done"); // { value:"cleanup", done:false }
+it.next();          // { value:"done", done:true }
+```
+
+### Verification
+
+- Focused GCS tests: `cargo test --release -p rusty-js-runtime --lib interp::gcs_tests -- --nocapture` PASS: 12 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 65 passed, 1 ignored.
+- For-of/generator slice: 50 PASS / 19 FAIL from the 69-row slice, +0 over GCS-EXT 6. Artifact: `/home/jaredef/Developer/cruftless-sidecar/results/gcs-residuals-delegate-abrupt-20260529T163839Z/summary.json`.
+- `built-ins/GeneratorPrototype/return/*`: 13 PASS / 10 FAIL from 23 tests, +0 over GCS-EXT 5.
+- Delegate-related sync `yield-star` test262 slice: 2 PASS / 2 FAIL from 4 tests; remaining failures are ASI syntax rows, not delegate abrupt forwarding.
+
+### Finding
+
+**Finding GCS.9**: delegate abrupt forwarding belongs at the generator lifecycle method boundary, before frame-level throw/return injection. The active delegate record is the discriminant: if present, `throw`/`return` target the inner iterator protocol first; only after the delegate reports done does control return to the outer frame. Generic for-of IteratorClose and destructuring-close residuals are compiler-control-flow closures and should land as a follow-up, because naive loop-exit close emission can regress the current for-of/generator slice.
