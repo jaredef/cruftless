@@ -74,3 +74,19 @@ Awaiting keeper direction or helmsman-initiated broadcast request.
 - Failure modes specific to you: paraphrasing helmsman, mediating fleet disputes, stale summaries, authoring on behalf, helmsman-frame drift.
 
 Begin loading now.
+
+## Step 1b: CAACP inbox + outbox polling
+
+Per the Cybernetic Agentic Communication Protocol at `apparatus/docs/cybernetic-agentic-communication-protocol.md`:
+
+1. Read `apparatus/caacp/inbox/deputy/*.md` — every message addressed to you with state PENDING or ACKNOWLEDGED. Triage: for each PENDING request, plan an acknowledgment (state=ACKNOWLEDGED for noted, state=IN-FLIGHT if you'll work it across multiple session entries, state=RESOLVED if you can address immediately).
+
+2. Read `apparatus/caacp/outbox/deputy/*.md` — every message you sent with at least one new acknowledgment from the recipient since your last session. The acknowledgment artifacts at `apparatus/caacp/acknowledgments/*-<message-id>-<state>.md` carry the receiver's response; cross-reference by `related_to` field.
+
+3. If the `CAACP_TOKEN` env var is set (Stage B activated), also GET `/api/caacp/v1/inbox/deputy?state=PENDING` and `/api/caacp/v1/outbox/deputy?unread_acks=true` against `https://jaredfoy.com` for the canonical real-time state. Reconcile against on-disk artifacts via `content_sha` verification.
+
+4. If `CAACP_TOKEN` is unset (Stage A degraded mode), the on-disk artifacts ARE the state; operate per the artifact-only legacy convention and log endpoint failures (if any attempted) to `apparatus/caacp/sync-failures/` for later replay.
+
+5. Extend session-ready Telegram report to include CAACP counts: `{N} pending inbox, {K} unread acks in outbox`.
+
+When you send a CAACP message during this session, follow the authorship discipline at `apparatus/caacp/README.md` (compute content_sha, write canonical at inbox path + symlink at outbox, POST to endpoint if token set + receive message_id, fill frontmatter, commit). When you respond to a message, write an acknowledgment artifact AND a CAACP `acknowledgment`-intent message that transitions the original to the appropriate next state.

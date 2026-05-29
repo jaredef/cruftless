@@ -361,6 +361,8 @@ Once Stage B has run cleanly for some engagement cycles, the Telegram escalation
 
 ## XI. Status
 
-**PROSPECTIVE** — primary articulation per keeper directive Telegram 10239. Pending: (1) keeper review and approval of design calls; (2) keeper authorization for Stage A promotion to `apparatus/docs/`; (3) keeper provision of the jaredfoy.com endpoint + `CAACP_TOKEN` for Stage B activation; (4) keeper directive for Stage C Telegram demotion.
+**CANONICAL at apparatus tier 2026-05-29** per keeper directive Telegram 10241 ("Begin stage A. Keep legacy channels"). Stage A landed: this doc promoted to `apparatus/docs/`; `apparatus/caacp/` scaffolding created with READMEs; four role-load skills extended with CAACP polling steps; `env.example` extended with `CAACP_TOKEN`; CLAUDE.md / AGENTS.md required-reading lists extended; `triumvirate-operational-protocol.md` updated per §VIII integration points.
 
-When approved, Stage A landing bundles this doc + updates to `triumvirate-operational-protocol.md` (§II proposal workflow extended with CAACP request authorship; §III Telegram-discipline gains a "scope" subsection noting routine vs. escalation; §VII deployment stages extended) + extensions to the four role-load skills (each adds a CAACP inbox/outbox polling step at the end of step 1) + `env.example` row for `CAACP_TOKEN` + `apparatus/caacp/{inbox,outbox,acknowledgments,archive,sync-failures}/` scaffolding with READMEs documenting the per-directory discipline.
+Pending: (1) **Stage B** — keeper provision of the jaredfoy.com endpoint + `CAACP_TOKEN` value in `env.local`; first end-to-end cybernetic loop exercise (likely the next proposal+veto cycle); (2) **Stage C** — Telegram demotion to keeper Rung-2 escalation only, after Stage B has run cleanly for some engagement cycles.
+
+Legacy artifact channels preserved per the keeper's Stage A directive: `apparatus/proposals/{pending,decided,archived}/`, `apparatus/watcher/notifications/`, `apparatus/deputy/{fleet-state,broadcasts}/` remain the content tier under CAACP coordination per §VIII.
