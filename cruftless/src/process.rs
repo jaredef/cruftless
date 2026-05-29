@@ -154,6 +154,15 @@ pub fn install(rt: &mut Runtime, argv: Vec<String>) {
     );
     set_constant(rt, process, "versions", Value::Object(versions));
     set_constant(rt, process, "pid", Value::Number(std::process::id() as f64));
+    // MILF-EXT 2: legacy Node package init probes call process.umask()
+    // to compute mkdir defaults. Cruftless does not mutate process-wide
+    // permissions here; return the conventional Linux mask.
+    register_method(rt, process, "umask", |_rt, _args| {
+        Ok(Value::Number(0o022 as f64))
+    });
+    let features = new_object(rt);
+    rt.object_set(features, "require_module".into(), Value::Boolean(true));
+    set_constant(rt, process, "features", Value::Object(features));
     // Tier-Ω.5.nnnnnn: process.stdout / stderr / stdin minimal shapes
     // — many libs check isTTY + fd at module-load to choose color/style.
     for (name, fd_num) in [("stdout", 1.0), ("stderr", 2.0), ("stdin", 0.0)] {
