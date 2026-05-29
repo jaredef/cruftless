@@ -3356,7 +3356,9 @@ impl Compiler {
                     let slot = self
                         .resolve_local(&rest_id.name)
                         .expect("object-rest binding slot pre-allocated by caller");
-                    encode_op(&mut self.bytecode, Op::StoreLocal);
+                    // Object-rest is a declarator init site, so it must
+                    // overwrite the TDZ sentinel seeded for the binding.
+                    encode_op(&mut self.bytecode, Op::InitLocal);
                     encode_u16(&mut self.bytecode, slot);
                 }
             }
