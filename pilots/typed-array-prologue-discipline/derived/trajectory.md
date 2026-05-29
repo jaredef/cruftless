@@ -95,3 +95,22 @@
 - Adjacent TAPD regression sample: 50 PASS / 0 FAIL. Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung4-adjacent-final-20260529T152510Z/`.
 
 **Findings**: the detached receiver and detached-mid-coercion subset closes cleanly as one substrate move. The remaining 13-row target residual is a different shape: `slice` species/custom-constructor detached ordering plus `subarray/byteoffset-with-detached-buffer.js`, both requiring real TypedArraySpeciesCreate argument-list support rather than more prologue routing. `subarray/coerced-begin-end-grow.js` remains PASS under the detached-only guard, confirming the Rung 3 boundary.
+
+## TAPD-EXT 5 — TypedArraySpeciesCreate argument list (2026-05-29)
+
+**Trigger**: Helmsman directive `tapd-rung-5-species-create-r2` targeted the 13 residual cells left by TAPD-EXT 4: `slice` species/custom-constructor detached ordering plus `subarray/byteoffset-with-detached-buffer.js`.
+
+**Move**:
+- lifted `make_typed_array_like` into explicit-argument-list construction via `make_typed_array_like_args`.
+- routed `slice` species creation through `[length]` and `subarray` through `[buffer, byteOffset, length]`.
+- changed SpeciesConstructor lookup to use accessor-aware `spec_get` for `constructor` and `@@species`, so detach-on-get rows observe the spec step.
+- made TypedArray constructors reject detached ArrayBuffer inputs and made species-created results validate as non-detached TypedArrays.
+- stopped overriding custom species results back to the source prototype in `slice`/`subarray`, preserving other-target constructor identity.
+
+**Verification**:
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- 13-row Rung 5 residual cluster: 13 PASS / 0 FAIL. Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung5-candidate3-20260529T153327Z/`.
+- Full 90-row TAPD detached/resizable target set: 90 PASS / 0 FAIL; +13 PASS and 0 regressions over TAPD-EXT 4. Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung5-final-20260529T153346Z/`.
+- Adjacent TAPD regression sample: 50 PASS / 0 FAIL. Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung5-adjacent-20260529T153347Z/`.
+
+**Findings**: the residual species rows were not additional prologue failures; they required preserving the exact TypedArraySpeciesCreate argument list and the returned object's prototype/constructor identity. With explicit constructor arguments and accessor-aware species lookup, the H262S-enabled detached TypedArray target set is closed.

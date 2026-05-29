@@ -18261,17 +18261,26 @@ impl Runtime {
             // TAMM-EXT 5: subarray shares the parent's underlying buffer
             // per §23.2.3.31. Propagate .buffer + adjust byteOffset.
             let parent_buf = rt.object_get(this_id, "buffer");
-            let parent_offset = match rt.object_get(this_id, "byteOffset") {
-                Value::Number(n) => n as usize,
-                _ => 0,
-            };
+            let parent_offset = rt
+                .typed_array_views
+                .get(&this_id)
+                .map(|v| v.byte_offset)
+                .unwrap_or(0);
             let bpe = rt
                 .typed_array_views
                 .get(&this_id)
                 .map(|v| v.bytes_per_element)
                 .unwrap_or(1);
             let new_offset = parent_offset + start * bpe;
-            let new_id = make_typed_array_like(rt, this_id, slice_len)?;
+            let species_args = match parent_buf.clone() {
+                Value::Object(_) => vec![
+                    parent_buf.clone(),
+                    Value::Number(new_offset as f64),
+                    Value::Number(slice_len as f64),
+                ],
+                _ => vec![Value::Number(slice_len as f64)],
+            };
+            let new_id = make_typed_array_like_args(rt, this_id, species_args)?;
             rt.object_set(new_id, "length".into(), Value::Number(slice_len as f64));
             rt.object_set(new_id, "__kind".into(), Value::String(Rc::new(kind)));
             if let Value::Object(_) = parent_buf {
@@ -18298,9 +18307,6 @@ impl Runtime {
                     },
                 );
             }
-            // Inherit prototype from the source so subarray methods chain.
-            let src_proto = rt.obj(this_id).proto;
-            rt.obj_mut(new_id).proto = src_proto;
             Ok(Value::Object(new_id))
         });
         register_method(self, ta_proto, "set", |rt, args| {
@@ -18377,15 +18383,14 @@ impl Runtime {
             })
             .min(len as i64) as usize;
             let slice_len = end.saturating_sub(start);
-            let mut o = Object::new_ordinary();
-            o.set_own("length".into(), Value::Number(slice_len as f64));
-            let new_id = rt.alloc_object(o);
+            let new_id = make_typed_array_like(rt, this_id, slice_len)?;
+            if slice_len > 0 && rt.typed_array_view_detached(this_id) {
+                return Err(RuntimeError::TypeError("slice: receiver is detached".into()));
+            }
             for i in 0..slice_len {
                 let v = rt.object_get(this_id, &(start + i).to_string());
                 rt.object_set(new_id, i.to_string(), v);
             }
-            let src_proto = rt.obj(this_id).proto;
-            rt.obj_mut(new_id).proto = src_proto;
             Ok(Value::Object(new_id))
         });
         // Tier-Ω.5.jjjjjj: TypedArray + Array @@iterator. for-of over
@@ -19654,6 +19659,16 @@ impl Runtime {
                         && n != "DataView"
                         && n != "SharedArrayBuffer"
                     {
+                        if rt
+                            .array_buffers
+                            .get(buf)
+                            .map(|buf| buf.detached)
+                            .unwrap_or(true)
+                        {
+                            return Err(RuntimeError::TypeError(
+                                "TypedArray constructor: buffer is detached".into(),
+                            ));
+                        }
                         let byte_offset = match args.get(1) {
                             Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
                             Some(v) => rt.coerce_to_number(v)? as usize,
@@ -21458,6 +21473,18 @@ fn make_typed_array_like(
     src: rusty_js_gc::ObjectId,
     len: usize,
 ) -> Result<rusty_js_gc::ObjectId, RuntimeError> {
+    make_typed_array_like_args(rt, src, vec![Value::Number(len as f64)])
+}
+
+fn make_typed_array_like_args(
+    rt: &mut Runtime,
+    src: rusty_js_gc::ObjectId,
+    args: Vec<Value>,
+) -> Result<rusty_js_gc::ObjectId, RuntimeError> {
+    let len = match args.first() {
+        Some(Value::Number(n)) => *n as usize,
+        _ => 0,
+    };
     let default_ctor = rt.object_get(src, "constructor");
     let ctor = rt.species_constructor(&Value::Object(src), default_ctor)?;
     if rt.is_callable(&ctor) {
@@ -21475,7 +21502,7 @@ fn make_typed_array_like(
         let this_obj = Value::Object(this_id);
         let prev_pending = rt.pending_new_target.take();
         rt.pending_new_target = Some(ctor.clone());
-        let constructed = rt.call_function(ctor.clone(), this_obj.clone(), vec![Value::Number(len as f64)]);
+        let constructed = rt.call_function(ctor.clone(), this_obj.clone(), args);
         rt.pending_new_target = prev_pending;
         let out = match constructed? {
             Value::Object(id) => id,
@@ -21486,6 +21513,11 @@ fn make_typed_array_like(
         {
             return Err(RuntimeError::TypeError(
                 "TypedArraySpeciesCreate: constructor did not create a TypedArray".into(),
+            ));
+        }
+        if rt.typed_array_view_detached(out) {
+            return Err(RuntimeError::TypeError(
+                "TypedArraySpeciesCreate: result buffer is detached".into(),
             ));
         }
         return Ok(out);

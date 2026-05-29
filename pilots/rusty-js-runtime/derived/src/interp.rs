@@ -2762,7 +2762,7 @@ impl Runtime {
                 ))
             }
         };
-        let c = self.object_get(o_id, "constructor");
+        let c = self.spec_get(&Value::Object(o_id), "constructor")?;
         if matches!(c, Value::Undefined) {
             return Ok(default_ctor);
         }
@@ -2774,7 +2774,7 @@ impl Runtime {
                 ))
             }
         };
-        let s = self.object_get(c_id, "@@species");
+        let s = self.spec_get(&Value::Object(c_id), "@@species")?;
         if matches!(s, Value::Undefined | Value::Null) {
             return Ok(default_ctor);
         }
