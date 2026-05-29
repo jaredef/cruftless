@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - 47f0509a97d93eada61c90b02a7fe5336c8bd6af
+  - 4ba9d47c28f5b066266aabcb94e75eca57f86a2e
 target_branch: main
 summary: GCS-EXT 6 - yield-star delegation opcode and suspended delegate state
 risk_class: substrate
