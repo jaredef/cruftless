@@ -538,7 +538,7 @@
       "scope": "for-of-typedarray-iterator-shape",
       "depth": 1,
       "rung_count": 0,
-      "status": "FOUNDED at FOTIS-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no runtime substrate lands in this founding round."
+      "status": "CHAPTER CLOSED at FOTIS-EXT 1. The 18-row `language.statements.for-of / feat:TypedArray;not-callable` cluster measures 18/18 PASS after exposing `%TypedArray%.prototype[@@iterator]` at the reached prototype level while preserving `values === @@iterator`."
     },
     {
       "coord": "generator-coroutine-suspension",

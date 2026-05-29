@@ -18498,6 +18498,13 @@ impl Runtime {
             });
             Ok(Value::Object(it_id))
         });
+        // FOTIS-EXT 1: spec exposes %TypedArray%.prototype.values and
+        // %TypedArray%.prototype[@@iterator] as the same function object.
+        // Keep the already-registered values implementation and alias
+        // @@iterator to it before the ta_proto -> ta_proto_proto mirror.
+        let typed_array_values = self.object_get(ta_proto, "values");
+        self.obj_mut(ta_proto)
+            .set_own_internal("@@iterator".into(), typed_array_values);
 
         // Tier-Ω.5.P28.E1.typedarray-iter-methods: common Array-shaped methods
         // missing from the TypedArray prototype. Surfaced via Ω.5.P24.E1
@@ -19190,6 +19197,7 @@ impl Runtime {
             "fill",
             "slice",
             "values",
+            "@@iterator",
             "keys",
             "entries",
             "reverse",

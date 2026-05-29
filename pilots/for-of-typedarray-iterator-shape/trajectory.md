@@ -91,3 +91,48 @@ C4 passes for a coherent Phase 3 move.
 Recommended Phase 3 move: mirror or install `%TypedArray%.prototype[@@iterator]` at the reached `ta_proto_proto` level, aliasing the existing values-iterator implementation. The narrowest fix is to add `@@iterator` to the `ta_proto` -> `ta_proto_proto` mirror list or register it directly on `ta_proto_proto` after the prototype split. The move should preserve `values === @@iterator` semantics and verify both non-mutating and mutating for-of fixtures.
 
 Estimated closure: one substrate rung. The named 18-row cluster should close if `@@iterator` becomes visible on the concrete TypedArray instance prototype chain. Adjacent probes should include `typedArray.values()` and direct `typedArray[Symbol.iterator]()` shape, because the implementation already has iterator next semantics and live index reads.
+
+## 2026-05-29 - FOTIS-EXT 1 - Expose `%TypedArray%.prototype[@@iterator]`
+
+### Directive
+
+Helmsman directed R3 to land the single-rung closure predicted by FOTIS-EXT 0: expose `%TypedArray%.prototype[@@iterator]` at the `ta_proto_proto` level, preserve `values === @@iterator`, verify the 18-row for-of TypedArray cluster, and close the chapter if measured.
+
+### Substrate Move
+
+`pilots/rusty-js-runtime/derived/src/intrinsics.rs` now aliases the existing TypedArray `values` function object as `@@iterator` before mirroring methods from `ta_proto` onto `ta_proto_proto`, then includes `@@iterator` in that mirror list.
+
+This keeps one function identity for:
+
+- `TypedArray.prototype.values`
+- `TypedArray.prototype[Symbol.iterator]`
+
+and makes concrete typed-array instances reach `@@iterator` through the current TAWR/TAMM prototype chain.
+
+### Measurement
+
+Build and tests:
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS, 63 passed / 1 ignored.
+
+Targeted FOTIS set:
+
+| Probe | Before FOTIS-EXT 1 | After FOTIS-EXT 1 |
+|---|---:|---:|
+| `language.statements.for-of / feat:TypedArray;not-callable` 18-row cluster | 0 PASS / 18 FAIL | 18 PASS / 0 FAIL |
+
+Adjacent probe:
+
+- `new Uint8Array([3,2,1]).values().next().value`: PASS.
+- `new Uint8Array([3,2,1])[Symbol.iterator]().next().value`: PASS.
+- `Uint8Array.prototype.values === Uint8Array.prototype[Symbol.iterator]`: PASS.
+- Existing `for (const x of new Uint8Array([3,2,1]))` use: PASS.
+
+Full runtime package tests note:
+
+- `cargo test --release -p rusty-js-runtime` fails in unrelated `tests/destructure.rs::t11_object_rest` with `ReferenceError("Cannot access 'rest' before initialization")`. This is not in FOTIS-touched files and is surfaced per §V.8 as a non-blocking unexplained existing package-test failure; the requested lib target passes.
+
+### Chapter Close
+
+The named 18-row FOTIS cluster is closed. Residual TypedArray iterator work, if any, should be founded from fresh matrix evidence rather than carried as FOTIS residual.

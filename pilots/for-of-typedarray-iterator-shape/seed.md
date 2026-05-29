@@ -2,7 +2,7 @@
 
 **Locale tag**: `L.for-of-typedarray-iterator-shape` (FOTIS).
 
-**Status**: FOUNDED at FOTIS-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no runtime substrate lands in this founding round.
+**Status**: CHAPTER CLOSED at FOTIS-EXT 1. The 18-row `language.statements.for-of / feat:TypedArray;not-callable` cluster measures 18/18 PASS after exposing `%TypedArray%.prototype[@@iterator]` at the reached prototype level while preserving `values === @@iterator`.
 
 **Parent arc**: Iterator protocol substrate, adjacent to TypedArray prototype-shape work. This locale is intentionally separate from TAPD: TAPD closed TypedArray method prologue/argument validation, while FOTIS targets `for-of` discovery of `%TypedArray%.prototype[@@iterator]`.
 
