@@ -38,6 +38,13 @@ pub fn install(rt: &mut Runtime) {
         rt.object_set(f, "enabled".into(), Value::Boolean(false));
         Ok(Value::Object(f))
     });
+    register_method(rt, util, "debug", |rt, _args| {
+        Ok(Value::Object(crate::register::make_callable(
+            rt,
+            "debug_fn",
+            |_rt, _args| Ok(Value::Undefined),
+        )))
+    });
     register_method(rt, util, "deprecate", |_rt, args| {
         // Returns the original function unchanged (skip deprecation wrapper).
         Ok(args.first().cloned().unwrap_or(Value::Undefined))
@@ -217,6 +224,35 @@ pub fn install(rt: &mut Runtime) {
             .set_own_frozen("prototype".into(), Value::Object(new_proto));
         Ok(Value::Undefined)
     });
+    register_method(rt, util, "inherit", |rt, args| {
+        let ctor_id = match args.first() {
+            Some(Value::Object(id)) => *id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "util.inherit: ctor must be an object".into(),
+                ))
+            }
+        };
+        let super_id = match args.get(1) {
+            Some(Value::Object(id)) => *id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "util.inherit: super must be an object".into(),
+                ))
+            }
+        };
+        rt.object_set(ctor_id, "super_".into(), Value::Object(super_id));
+        let super_proto = rt.object_get(super_id, "prototype");
+        let new_proto = rt.alloc_object(Object::new_ordinary());
+        if let Value::Object(sp) = super_proto {
+            rt.obj_mut(new_proto).proto = Some(sp);
+        }
+        rt.obj_mut(new_proto)
+            .set_own_internal("constructor".into(), Value::Object(ctor_id));
+        rt.obj_mut(ctor_id)
+            .set_own_frozen("prototype".into(), Value::Object(new_proto));
+        Ok(Value::Undefined)
+    });
 
     // Tier-Ω.5.ddd: promisify / callbackify v1 stub. Real semantics
     // (callback-style → Promise-returning wrapper) need a full Promise
@@ -233,6 +269,13 @@ pub fn install(rt: &mut Runtime) {
         // Return fn unchanged; v1 drops the deprecation warning.
         Ok(args.first().cloned().unwrap_or(Value::Undefined))
     });
+
+    if !matches!(rt.global_get("TextDecoder"), Value::Undefined) {
+        set_constant(rt, util, "TextDecoder", rt.global_get("TextDecoder"));
+    }
+    if !matches!(rt.global_get("TextEncoder"), Value::Undefined) {
+        set_constant(rt, util, "TextEncoder", rt.global_get("TextEncoder"));
+    }
 
     // types subobject with InternalKind-based checks.
     let types = new_object(rt);
