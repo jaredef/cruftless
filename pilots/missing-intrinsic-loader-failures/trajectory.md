@@ -237,3 +237,51 @@ PASS-gain accounting for the inline 30 cells:
 Status after inline measurement: scoped DataView intrinsic rung is landable, but
 the remaining MILF cluster should proceed by sub-coordinate rather than by
 error string.
+
+## 2026-05-29 — MILF-EXT 2 node-shim cluster
+
+### Trigger
+
+CAACP directive `7fd3f29c-a2e0-46fc-a5ab-d88e43fef338` targeted the Node shim
+sub-cluster from the MILF residual set:
+
+- `gulp`: `TextDecoder` undefined
+- `forever`: `process.umask` undefined
+- `release-it`: `util.debug` undefined
+- `mocha`: `features.require_module` missing
+- `aws-sdk`: `util.inherit` missing
+
+### Substrate Move
+
+The host shim surface is now present in the local worktree:
+
+- `cruftless/src/process.rs` installs `process.umask()` and `process.features.require_module`.
+- `cruftless/src/util.rs` exports `util.debug`, `util.inherit`, and forwards
+  `TextDecoder` / `TextEncoder` from the global surface when available.
+
+The node-shim rung is intentionally minimal:
+
+- `process.umask()` returns the conventional Linux mask `0o022`.
+- `util.debug()` returns a callable no-op logger.
+- `util.inherit(ctor, super_)` wires `ctor.prototype` to inherit from
+  `super_.prototype` and stamps `constructor`.
+- `process.features.require_module` is truthy.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS, 68 passed, 1 ignored.
+
+### Smoke Availability
+
+I was able to find local package trees for `chai`, `mongoose`, `mongodb`, and
+`file-type`, but not for the five directive packages as a complete local smoke
+set. Package availability is therefore the blocker for a strict `import()` smoke
+measurement on the exact named packages.
+
+### C4 Status
+
+C4 holds for the node-shim sub-coordinate: the named failures map to Node host
+compatibility, not to the earlier DataView or namespace-shape coordinates. The
+remaining work is package availability and, if needed, follow-up host-global
+surface tuning rather than a different intrinsic family.
