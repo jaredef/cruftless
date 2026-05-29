@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 216,
-    "top_level": 129,
+    "locales": 217,
+    "top_level": 130,
     "nested": 87,
     "warnings": 0
   },
@@ -845,6 +845,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": null
+    },
+    {
+      "coord": "promise-iterator-not-callable-discipline",
+      "tag": "L.promise-iterator-not-callable-discipline",
+      "parent": null,
+      "scope": "promise-iterator-not-callable-discipline",
+      "depth": 1,
+      "rung_count": 0,
+      "status": "FOUNDED at PIND-EXT 0. Phase 0 spawn plus Phase 2 baseline probe only; no substrate landing is authorized in the founding round."
     },
     {
       "coord": "realm-substrate",
