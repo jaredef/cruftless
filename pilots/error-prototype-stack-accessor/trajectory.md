@@ -128,6 +128,8 @@ Targeted test262 harness run over `/home/jaredef/test262/test/built-ins/Error/pr
 | Exact matrix cell: `Error.prototype.stack` / `feat:error-stack-accessor` | 0 PASS / 22 FAIL | 22 PASS / 0 FAIL |
 | Whole `Error.prototype.stack` directory | 0 PASS / 35 FAIL | 28 PASS / 7 FAIL |
 
+Rebased verification artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/epsa-ext1-verify-20260529T160657Z/`.
+
 Exact 22-cell rows now passing:
 
 - `getter-data-property-shadows.js`

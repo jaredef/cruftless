@@ -1,7 +1,7 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless-r2/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
     "locales": 221,
     "top_level": 134,
