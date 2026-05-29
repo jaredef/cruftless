@@ -35,6 +35,8 @@ Conflating the two breaks the dyadic operating model: `apparatus/` is rung-1 (ma
 
 Substrate resolvers (the default role per the section below): follow §II of the init protocol (six steps). Appointed roles: follow your role-load skill at `apparatus/skills/<role>-load.md`, which integrates the CAACP registration step.
 
+**Codex Desktop / iOS-controlled agents on a host configured with the app-server bridge** additionally consult [`apparatus/docs/codex-machine-onboarding-protocol.md`](apparatus/docs/codex-machine-onboarding-protocol.md) for the machine-local bootstrap: thread-id discovery, app-server bridge startup (`apparatus/scripts/caacp-codex-app-bridge.mjs`), and wake-path validation. The bridge calls `turn/start` on the configured Codex thread to wake the agent when a new CAACP message arrives — the canonical wake primitive on Codex Desktop, strictly preferred over terminal-pane injection or polling. The machine-local onboarding protocol is the runtime-specific companion to the general init protocol; do not skip it for Codex Desktop sessions.
+
 ## Resolver role discipline
 
 An LLM resolver entering this engagement operates as the **substrate resolver** by default (per keeper directive Telegram 10225–10226). The substrate resolver is the apparatus's worker tier: per-rung substrate work within an appointed scope, no governance authority, no push-tier authority, no coordination authority over other resolvers. See `apparatus/docs/engagement-doc-substrate-resolver.md` for the default-role frame.
