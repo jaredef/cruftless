@@ -18608,6 +18608,50 @@ mod gcs_tests {
     }
 
     #[test]
+    fn function_declaration_self_reassignment_is_mutable() {
+        let rt = run_js_runtime(
+            r#"
+            function _setPrototypeOf(o, p) {
+              _setPrototypeOf = Object.setPrototypeOf
+                ? Object.setPrototypeOf.bind()
+                : function (o, p) { return o; };
+              return typeof _setPrototypeOf;
+            }
+            globalThis.result = _setPrototypeOf({}, null);
+            "#,
+        )
+        .expect("function declaration self-reassignment should run");
+        let result = rt.global_get("result");
+        assert!(matches!(&result, Value::String(s) if s.as_ref() == "function"));
+    }
+
+    #[test]
+    fn named_function_expression_self_reassignment_stays_const() {
+        let rt = run_js_runtime(
+            r#"
+            let caught = "none";
+            const fn = function selfName() {
+              try {
+                selfName = function () {};
+              } catch (e) {
+                caught = e.name + ":" + e.message;
+              }
+            };
+            fn();
+            globalThis.result = caught;
+            "#,
+        )
+        .expect("named function expression self-reassignment should be catchable");
+        let result = rt.global_get("result");
+        assert!(matches!(
+            &result,
+            Value::String(s)
+                if s.as_ref().contains("TypeError")
+                    && s.as_ref().contains("Assignment to constant variable 'selfName'")
+        ));
+    }
+
+    #[test]
     fn infinite_generator_does_not_hang_at_construction() {
         let rt = run_js_runtime(
             r#"

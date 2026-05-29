@@ -216,3 +216,78 @@ Single-rung compiler fix:
    most or all of the 22/26 helper rows; the singleton `_chalk`,
    `_getRequireWildcardCache`, and `cov_toszyysar` rows need remeasurement
    after the dominant fix before deciding if they are same-shape or residuals.
+
+## ATC-EXT 1 — compiler split for function declarations vs expressions (2026-05-29)
+
+### Directive
+
+Helmsman directed R1 via CAACP message
+`552db138-bac1-4add-93d2-42fdc452b692` to land the Phase 3 compiler fix:
+preserve named function expression self-name immutability, but stop applying
+that const self-name slot to function declarations.
+
+### Substrate
+
+`pilots/rusty-js-bytecode/derived/src/compiler.rs` now threads an explicit
+`FunctionSelfNameMode` through `compile_function_proto` and
+`compile_function_proto_with_name_hint`.
+
+- `FunctionSelfNameMode::Expression` preserves the `VariableKind::Const`
+  self-name slot for genuine named function expressions.
+- `FunctionSelfNameMode::Declaration` suppresses the extra const self-name slot
+  for function declarations, letting the function body resolve the declaration
+  name through the already-hoisted mutable declaration binding.
+
+This keeps ECMA-262 §15.2.5 named function expression behavior while fixing the
+Babel/helper declaration pattern:
+
+```js
+function _setPrototypeOf(o, p) {
+  _setPrototypeOf = Object.setPrototypeOf
+    ? Object.setPrototypeOf.bind()
+    : function (o, p) { return o; };
+  return _setPrototypeOf(o, p);
+}
+```
+
+### Regression coverage
+
+Added focused runtime tests:
+
+- `function_declaration_self_reassignment_is_mutable`
+- `named_function_expression_self_reassignment_stays_const`
+
+The first verifies helper-style function declaration self-reassignment runs.
+The second verifies `const fn = function selfName(){ selfName = ... }` still
+throws `TypeError: Assignment to constant variable 'selfName'`.
+
+### Verification
+
+- Focused tests: `cargo test --release -p rusty-js-runtime --lib self_reassignment -- --nocapture` PASS: 2 passed.
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib` PASS: 68 passed, 1 ignored.
+- Declaration smoke: `/home/jaredef/Developer/cruftless-sidecar/results/atc-loader-phase2-r1-20260529T184429Z/function-reassign-smoke.js` now prints `after function`.
+- Named function expression smoke: `named-fn-expr-smoke.js` prints `TypeError:Assignment to constant variable 'selfName'`.
+
+### ATC cluster measurement
+
+Artifact:
+`/home/jaredef/Developer/cruftless-sidecar/results/atc-ext1-measure-20260529T191415Z/summary.json`.
+
+All 26 inline ATC packages are installed in the sidecar sandbox. The
+post-fix import runner found:
+
+- `Assignment to constant variable` failures: **0/26**.
+- ATC-specific reclaim versus inline baseline: **+26**.
+- Strict package-import PASS: **0/26** in this ad hoc runner, because each row
+  now advances to unrelated residuals (`toString`/`isPrototypeOf` globals,
+  `__filename`, TDZ residuals, callable/Promise-job residuals, or module-parent
+  metadata). Those are outside ATC-EXT 1.
+
+### Finding
+
+**Finding ATC.1**: generated helper package failures were not loader or
+runtime const-enforcement defects. They were a compiler binding-kind conflation:
+the named-function-expression const self-name slot was also applied to
+function declarations. Splitting the two modes clears the ATC symptom across
+the 26-row cluster while preserving named function expression immutability.

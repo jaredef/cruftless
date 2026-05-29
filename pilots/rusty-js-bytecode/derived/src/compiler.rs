@@ -789,6 +789,12 @@ fn class_member_name_contains_direct_eval(name: &ClassMemberName) -> bool {
     matches!(name, ClassMemberName::Computed { expr, .. } if expr_contains_direct_eval(expr))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FunctionSelfNameMode {
+    Declaration,
+    Expression,
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -1258,6 +1264,7 @@ impl Compiler {
                 if let Some(n) = name {
                     let proto = self.compile_function_proto(
                         Some(n.clone()),
+                        FunctionSelfNameMode::Declaration,
                         is_async,
                         is_generator,
                         params,
@@ -1511,6 +1518,7 @@ impl Compiler {
                     } => {
                         let proto = self.compile_function_proto(
                             name.clone(),
+                            FunctionSelfNameMode::Declaration,
                             *is_async,
                             *is_generator,
                             params,
@@ -2514,6 +2522,7 @@ impl Compiler {
             } => {
                 let proto = self.compile_function_proto(
                     name.clone(),
+                    FunctionSelfNameMode::Declaration,
                     *is_async,
                     *is_generator,
                     params,
@@ -3668,6 +3677,7 @@ impl Compiler {
                 let proto = self.compile_function_proto_with_name_hint(
                     None,
                     hint,
+                    FunctionSelfNameMode::Expression,
                     *is_async,
                     *is_generator,
                     params,
@@ -3697,6 +3707,7 @@ impl Compiler {
                 let proto = self.compile_function_proto_with_name_hint(
                     None,
                     hint,
+                    FunctionSelfNameMode::Expression,
                     *is_async,
                     false,
                     params,
@@ -4731,6 +4742,7 @@ impl Compiler {
             } => {
                 let proto = self.compile_function_proto(
                     name.clone(),
+                    FunctionSelfNameMode::Expression,
                     *is_async,
                     *is_generator,
                     params,
@@ -4755,8 +4767,14 @@ impl Compiler {
                         span: expr.span(),
                     }],
                 };
-                let proto =
-                    self.compile_function_proto(None, *is_async, false, params, &body_stmts)?;
+                let proto = self.compile_function_proto(
+                    None,
+                    FunctionSelfNameMode::Expression,
+                    *is_async,
+                    false,
+                    params,
+                    &body_stmts,
+                )?;
                 let captures = proto.upvalues.clone();
                 let idx = self.constants.intern(Constant::Function(Box::new(proto)));
                 encode_op(&mut self.bytecode, Op::MakeArrow);
@@ -4909,6 +4927,7 @@ impl Compiler {
     fn compile_function_proto(
         &mut self,
         name: Option<BindingIdentifier>,
+        self_name_mode: FunctionSelfNameMode,
         _is_async: bool,
         is_generator: bool,
         params: &[Parameter],
@@ -4917,6 +4936,7 @@ impl Compiler {
         self.compile_function_proto_with_name_hint(
             name,
             None,
+            self_name_mode,
             _is_async,
             is_generator,
             params,
@@ -4935,6 +4955,7 @@ impl Compiler {
         &mut self,
         name: Option<BindingIdentifier>,
         display_name_hint: Option<&str>,
+        self_name_mode: FunctionSelfNameMode,
         is_async: bool,
         is_generator: bool,
         params: &[Parameter],
@@ -5196,13 +5217,16 @@ impl Compiler {
             kind: VariableKind::Var,
             depth: 0,
         }));
-        // Tier-Ω.5.kkkkk: self-name slot for named function expressions /
-        // declarations. Populated by call_function with the closure object.
-        // Per ECMA-262 §15.2.5 the body sees its own name bound to itself.
+        // Tier-Ω.5.kkkkk: self-name slot for named function expressions.
+        // Per ECMA-262 §15.2.5 named function expressions get an immutable
+        // self-name binding. Function declarations instead use their mutable
+        // declaration binding from the enclosing scope; adding a const self
+        // slot makes Babel-style helper declarations (`function f(){ f = ...}`)
+        // throw incorrectly.
         let self_name_slot = if let Some(n) = &name {
             // Skip if a parameter already shadows the name — the param wins.
             let already = sub.locals.iter().any(|l| l.name == n.name);
-            if !already {
+            if !already && matches!(self_name_mode, FunctionSelfNameMode::Expression) {
                 Some(sub.alloc_local(LocalDescriptor {
                     name: n.name.clone(),
                     kind: VariableKind::Const,
@@ -5470,6 +5494,7 @@ impl Compiler {
             {
                 let proto = sub.compile_function_proto(
                     Some(n.clone()),
+                    FunctionSelfNameMode::Declaration,
                     *is_async,
                     *is_generator,
                     params,
@@ -7374,6 +7399,7 @@ impl Compiler {
         let ctor_proto = self.compile_function_proto_with_name_hint(
             None,
             class_display_name.as_deref(),
+            FunctionSelfNameMode::Expression,
             false,
             false,
             &ctor_params,
@@ -7547,6 +7573,7 @@ impl Compiler {
                         let m_proto = self.compile_function_proto_with_name_hint(
                             None,
                             method_key.as_deref(),
+                            FunctionSelfNameMode::Expression,
                             *is_async,
                             *is_generator,
                             params,
@@ -7696,6 +7723,7 @@ impl Compiler {
                                             }];
                                             let init_proto = self.compile_function_proto(
                                                 None,
+                                                FunctionSelfNameMode::Expression,
                                                 false,
                                                 false,
                                                 &[],
@@ -7747,6 +7775,7 @@ impl Compiler {
                                         }];
                                         let init_proto = self.compile_function_proto(
                                             None,
+                                            FunctionSelfNameMode::Expression,
                                             false,
                                             false,
                                             &[],
@@ -7811,8 +7840,14 @@ impl Compiler {
                             in_constructor: false,
                             is_static: true,
                         });
-                        let block_proto =
-                            self.compile_function_proto(None, false, false, &[], body)?;
+                        let block_proto = self.compile_function_proto(
+                            None,
+                            FunctionSelfNameMode::Expression,
+                            false,
+                            false,
+                            &[],
+                            body,
+                        )?;
                         self.class_stack.pop();
                         let captures = block_proto.upvalues.clone();
                         let idx = self
