@@ -18241,12 +18241,18 @@ impl Runtime {
         let ta_proto = self.alloc_object(Object::new_ordinary());
         register_method(self, ta_proto, "subarray", |rt, args| {
             let this_id = validate_typed_array_this(rt, "subarray")?;
+            let initially_detached = rt.typed_array_view_detached(this_id);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
             let start = typed_array_integer_index(rt, args.first(), len as i64, 0)? as usize;
             let end = typed_array_integer_index(rt, args.get(1), len as i64, len as i64)? as usize;
+            if initially_detached {
+                return Err(RuntimeError::TypeError(
+                    "subarray: receiver is detached".into(),
+                ));
+            }
             let slice_len = end.saturating_sub(start);
             let kind = match rt.object_get(this_id, "__kind") {
                 Value::String(s) => (*s).clone(),
@@ -18521,7 +18527,19 @@ impl Runtime {
             if len == 0 {
                 return Ok(Value::Number(-1.0));
             }
-            for i in 0..len {
+            let from = match args.get(1) {
+                Some(v) => rt.coerce_to_number(v)? as i64,
+                None => 0,
+            };
+            if rt.typed_array_view_detached(this_id) {
+                return Ok(Value::Number(-1.0));
+            }
+            let start = if from < 0 {
+                ((len as i64) + from).max(0) as usize
+            } else {
+                (from as usize).min(len)
+            };
+            for i in start..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
                     return Ok(Value::Number(i as f64));
@@ -18539,7 +18557,19 @@ impl Runtime {
             if len == 0 {
                 return Ok(Value::Boolean(false));
             }
-            for i in 0..len {
+            let from = match args.get(1) {
+                Some(v) => rt.coerce_to_number(v)? as i64,
+                None => 0,
+            };
+            if rt.typed_array_view_detached(this_id) {
+                return Ok(Value::Boolean(matches!(needle, Value::Undefined)));
+            }
+            let start = if from < 0 {
+                ((len as i64) + from).max(0) as usize
+            } else {
+                (from as usize).min(len)
+            };
+            for i in start..len {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
                     return Ok(Value::Boolean(true));
@@ -18565,29 +18595,8 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "find", |rt, args| {
-            // TAMM-EXT 8: ValidateTypedArray + IsCallable per §23.2.3.{11,12}.
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "find: this must be a TypedArray".into(),
-                    ))
-                }
-            };
-            if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
-                return Err(RuntimeError::TypeError(
-                    "find: this is not a TypedArray".into(),
-                ));
-            }
-            let cb = args
-                .first()
-                .cloned()
-                .ok_or_else(|| RuntimeError::TypeError("find: callback required".into()))?;
-            if !rt.is_callable(&cb) {
-                return Err(RuntimeError::TypeError(
-                    "find: predicate is not callable".into(),
-                ));
-            }
+            let this_id = validate_typed_array_access(rt, "find")?;
+            let cb = typed_array_callable_arg(rt, args.first(), "find")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18667,14 +18676,17 @@ impl Runtime {
         });
         register_method(self, ta_proto, "join", |rt, args| {
             let this_id = validate_typed_array_access(rt, "join")?;
-            let sep = match args.first() {
-                Some(v) => abstract_ops::to_string(v).as_str().to_string(),
-                None => ",".into(),
-            };
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
+            let sep = match args.first() {
+                Some(v) => rt.coerce_to_string(v)?,
+                None => ",".into(),
+            };
+            if rt.typed_array_view_detached(this_id) {
+                return Ok(Value::String(Rc::new(",".repeat(len.saturating_sub(1)))));
+            }
             let mut out = String::new();
             for i in 0..len {
                 if i > 0 {
@@ -18845,17 +18857,33 @@ impl Runtime {
             Ok(rt.object_get(this_id, &(idx as usize).to_string()))
         });
         register_method(self, ta_proto, "lastIndexOf", |rt, args| {
-            let this_id = validate_typed_array_this(rt, "lastIndexOf")?;
+            let this_id = validate_typed_array_access(rt, "lastIndexOf")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
             };
-            for i in (0..len).rev() {
+            if len == 0 {
+                return Ok(Value::Number(-1.0));
+            }
+            let from = match args.get(1) {
+                Some(v) => rt.coerce_to_number(v)? as i64,
+                None => len as i64 - 1,
+            };
+            if rt.typed_array_view_detached(this_id) {
+                return Ok(Value::Number(-1.0));
+            }
+            let mut i = if from >= 0 {
+                from.min(len as i64 - 1)
+            } else {
+                len as i64 + from
+            };
+            while i >= 0 {
                 let v = rt.object_get(this_id, &i.to_string());
                 if crate::abstract_ops::is_strictly_equal(&v, &needle) {
                     return Ok(Value::Number(i as f64));
                 }
+                i -= 1;
             }
             Ok(Value::Number(-1.0))
         });
@@ -18920,14 +18948,7 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "sort", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "sort: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_access(rt, "sort")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,

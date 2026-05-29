@@ -77,3 +77,21 @@
   - Artifacts: `/home/jaredef/Developer/cruftless-r3-sidecar/results/tapd-ext3-baseline-20260529T134149Z/` and `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-ext3-candidate-fixed-20260529T134245Z/`.
 
 **Findings**: access validation plus the species-create bridge closes a larger, coherent TAPD subset without regressing the touched-method surface. The only narrowing required was `subarray`: treating temporary out-of-bounds as an immediate TypeError regressed `subarray/coerced-begin-end-grow.js`, confirming that `subarray` belongs to a separate resizable-buffer ordering shape.
+
+## TAPD-EXT 4 — detached receiver and mid-coercion residuals (2026-05-29)
+
+**Trigger**: Helmsman directive `tapd-rung-4-detached-residuals-r2` after H262S-EXT 2 moved `$262.detachArrayBuffer` view support out of the host-shim layer and exposed the remaining TypedArray method semantics as TAPD-owned.
+
+**Move**:
+- added `Runtime::typed_array_view_detached(id)` so methods can distinguish detached backing buffers from resizable-buffer out-of-bounds states.
+- routed `find`, `lastIndexOf`, and `sort` through access validation for detached receiver TypeError behavior.
+- kept `subarray` off broad out-of-bounds validation, but made already-detached receivers throw after observable begin/end coercions.
+- added detached-mid-`fromIndex` behavior for `includes`, `indexOf`, and `lastIndexOf`.
+- changed `join` separator coercion to use runtime ToString, snapshotting length before separator coercion so a separator that detaches the buffer yields the expected separator-only shape.
+
+**Verification**:
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- Target sweep (89 direct `built-ins/TypedArray/prototype/**/detached-buffer*.js` rows plus `subarray/coerced-begin-end-grow.js`): baseline 62 PASS / 28 FAIL, candidate 77 PASS / 13 FAIL. Delta: 15 newly passing rows, 0 regressions. Artifacts: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung4-baseline-rebuilt-20260529T152042Z/` and `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung4-final-20260529T152509Z/`.
+- Adjacent TAPD regression sample: 50 PASS / 0 FAIL. Artifact: `/home/jaredef/Developer/cruftless-r2-sidecar/results/tapd-rung4-adjacent-final-20260529T152510Z/`.
+
+**Findings**: the detached receiver and detached-mid-coercion subset closes cleanly as one substrate move. The remaining 13-row target residual is a different shape: `slice` species/custom-constructor detached ordering plus `subarray/byteoffset-with-detached-buffer.js`, both requiring real TypedArraySpeciesCreate argument-list support rather than more prologue routing. `subarray/coerced-begin-end-grow.js` remains PASS under the detached-only guard, confirming the Rung 3 boundary.

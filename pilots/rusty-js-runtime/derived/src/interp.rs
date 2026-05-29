@@ -536,6 +536,16 @@ impl Runtime {
         false
     }
 
+    pub fn typed_array_view_detached(&self, id: ObjectRef) -> bool {
+        let Some(view) = self.typed_array_views.get(&id) else {
+            return false;
+        };
+        self.array_buffers
+            .get(&view.buffer)
+            .map(|buf| buf.detached)
+            .unwrap_or(true)
+    }
+
     fn typed_array_view_byte_length(&self, id: ObjectRef) -> Option<usize> {
         let view = self.typed_array_views.get(&id)?;
         Some(
