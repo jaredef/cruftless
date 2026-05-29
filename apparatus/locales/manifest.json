@@ -565,7 +565,7 @@
       "scope": "host-262-shim",
       "depth": 1,
       "rung_count": 1,
-      "status": "FOUNDED at H262S-EXT 0. Phase-2 baseline probe complete; substrate landing not yet authorized."
+      "status": "H262S-EXT 1 landed for `$262.detachArrayBuffer` cheap shim. Remaining `$262` host-hook subclusters stay deferred unless keeper or helmsman reopens them."
     },
     {
       "coord": "html-like-comment-lexing",
@@ -807,7 +807,7 @@
       "parent": null,
       "scope": "parser-permissiveness-audit-extensions",
       "depth": 1,
-      "rung_count": 4,
+      "rung_count": 5,
       "status": "**CLOSED at PPAE-EXT 1**."
     },
     {
@@ -1167,7 +1167,7 @@
       "parent": null,
       "scope": "strict-mode-parser-tracking",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": "**CLOSED at SMPT-EXT 1** (partial \u2014 only the function-body-depth axis; strict-mode + generator-context axes deferred)."
     },
     {
