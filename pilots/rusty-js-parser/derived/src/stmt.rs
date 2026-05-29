@@ -141,6 +141,16 @@ fn expr_to_binding_pattern(e: Expr) -> Option<BindingPattern> {
     }
 }
 
+fn starts_with_word(bytes: &[u8], word: &[u8]) -> bool {
+    if !bytes.starts_with(word) {
+        return false;
+    }
+    match bytes.get(word.len()) {
+        Some(b) => !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'$',
+        None => true,
+    }
+}
+
 fn is_valid_for_assignment_target(e: &Expr) -> bool {
     match e {
         Expr::Identifier { .. } | Expr::Member { .. } => true,
@@ -827,9 +837,9 @@ impl<'src> Parser<'src> {
                 let next = bytes.get(p).copied();
                 if next == Some(b'{') {
                     self.bump()?; // `static`
-                    // SMPT-EXT 4: ClassStaticBlockStatementList is strict
-                    // code and is parsed with [~Yield], even when the class
-                    // appears inside a generator function body.
+                                  // SMPT-EXT 4: ClassStaticBlockStatementList is strict
+                                  // code and is parsed with [~Yield], even when the class
+                                  // appears inside a generator function body.
                     let prior_strict = self.strict_mode;
                     let prior_gen = self.in_generator;
                     self.strict_mode = true;
@@ -1371,7 +1381,9 @@ impl<'src> Parser<'src> {
         self.expect_punct(Punct::LParen)?;
 
         // Head form discrimination: VariableDeclaration vs Expression vs empty.
-        let head_is_var = self.is_ident("var") || self.is_ident("let") || self.is_ident("const");
+        let head_is_var = self.is_ident("var")
+            || self.is_ident("const")
+            || (self.is_ident("let") && !self.for_head_let_is_lhs_identifier());
         let head_is_empty = matches!(self.current_kind(), TokenKind::Punct(Punct::Semicolon));
 
         // Try parsing the head; then peek for `in`/`of` to disambiguate.
@@ -1739,9 +1751,10 @@ impl<'src> Parser<'src> {
                 // Pre-PPIF-EXT 2 this lived in the bare-ident fast-path;
                 // now it operates on the parsed expression's identifier
                 // shape.
-                if is_of {
+                if is_of && !await_form {
                     if let Expr::Identifier { name, span } = &e {
-                        if name == "async" {
+                        let raw = &self.source()[span.start..span.end];
+                        if name == "async" && raw == "async" {
                             return Err(ParseError {
                                 span: *span,
                                 message: "`async` cannot be the for-of LHS (grammar lookahead restriction)".into(),
@@ -1784,33 +1797,34 @@ impl<'src> Parser<'src> {
                             message: "Invalid left-hand side in for-in/for-of head".into(),
                         });
                     }
-                    match expr_to_binding_pattern(e.clone()) {
-                        Some(pat) => {
-                            // SBAP-EXT 1: §13.15.1 + §13.2 — leaf binding-ids
-                            // in the AssignmentPattern must obey strict-mode
-                            // (eval/arguments) and generator (yield) rules.
-                            self.check_pattern_binding_ids(&pat, span_fallback)?;
-                            ForBinding::Pattern(pat)
-                        }
-                        None if is_pattern_literal && is_valid_assignment_pattern_expr(&e) => {
-                            ForBinding::AssignmentTarget(e)
-                        }
-                        None if is_pattern_literal => {
-                            return Err(ParseError {
-                                span: span_fallback,
-                                message:
-                                    "Invalid destructuring assignment target in for-in/for-of head"
-                                        .into(),
-                            });
-                        }
-                        None if is_valid_for_assignment_target(&e) => {
-                            ForBinding::AssignmentTarget(e)
-                        }
-                        None => {
-                            return Err(ParseError {
-                                span: span_fallback,
-                                message: "Invalid left-hand side in for-in/for-of head".into(),
-                            });
+                    if is_valid_for_assignment_target(&e) {
+                        ForBinding::AssignmentTarget(e.clone())
+                    } else {
+                        match expr_to_binding_pattern(e.clone()) {
+                            Some(pat) => {
+                                // SBAP-EXT 1: §13.15.1 + §13.2 — leaf binding-ids
+                                // in the AssignmentPattern must obey strict-mode
+                                // (eval/arguments) and generator (yield) rules.
+                                self.check_pattern_binding_ids(&pat, span_fallback)?;
+                                ForBinding::Pattern(pat)
+                            }
+                            None if is_pattern_literal && is_valid_assignment_pattern_expr(&e) => {
+                                ForBinding::AssignmentTarget(e)
+                            }
+                            None if is_pattern_literal => {
+                                return Err(ParseError {
+                                    span: span_fallback,
+                                    message:
+                                        "Invalid destructuring assignment target in for-in/for-of head"
+                                            .into(),
+                                });
+                            }
+                            None => {
+                                return Err(ParseError {
+                                    span: span_fallback,
+                                    message: "Invalid left-hand side in for-in/for-of head".into(),
+                                });
+                            }
                         }
                     }
                 };
@@ -1858,6 +1872,19 @@ impl<'src> Parser<'src> {
             body: Box::new(body),
             span: Span::new(start, end),
         })
+    }
+
+    fn for_head_let_is_lhs_identifier(&self) -> bool {
+        if !self.is_ident("let") {
+            return false;
+        }
+        let bytes = self.source().as_bytes();
+        let mut i = self.lookahead_span().end;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let rest = &bytes[i..];
+        starts_with_word(rest, b"in")
     }
 
     fn parse_while_statement(&mut self) -> Result<Stmt, ParseError> {

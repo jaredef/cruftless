@@ -68,3 +68,53 @@
 **Finding PPAE.5**: the is_reserved_word / is_unconditional_reserved_word split is the substrate-level surfacing of the strict-mode vs unconditional distinction. Per Standing Rule 18 (brand-check at the registration wrapper, not in shared impl), the predicate's two halves correspond to two distinct contexts; checks at each call site must use the right half. SMPT-EXT 2 (full strict-mode parser tracking) would unify these contexts.
 
 **Status**: PPAE-EXT 4 CLOSED.
+
+## PPAE-EXT 5 — contextual for-head LHS discrimination (2026-05-29)
+
+**Trigger**: EPSUA parallel-4 path-alpha approval for R3
+(`instance_id=codex-pop-os-20260529t040708`). Phase-2 residual probe
+found PPAE's prior parser-permissiveness closures intact, but surfaced
+three valid contextual for-head cases over-rejected by the parser:
+`for await (async of ...)`, escaped `async` in a for-of LHS, and sloppy
+`for (let in obj)`.
+
+**Edit**:
+- `stmt.rs::parse_for_statement`: refine `head_is_var` so `let in` in
+  sloppy for-in heads is expression-headed, while `let of` remains the
+  forbidden for-of grammar form and `let [` remains declaration-headed.
+- `stmt.rs::parse_for_statement`: apply the unescaped `async of`
+  lookahead restriction only for ordinary for-of, not `for await`, and
+  only when the LHS raw source is exactly `async`.
+- `stmt.rs::parse_for_statement`: route expression-headed identifier /
+  member LHS through `ForBinding::AssignmentTarget` before pattern
+  conversion, so `for await (async of ...)` assigns the outer binding
+  instead of creating a local pattern binding inside the async function.
+
+**Verification**:
+- Build: `cargo build --release --bin cruft -p cruftless` PASS
+  (existing warnings only).
+- Target exemplars: `language/statements/for-await-of/head-lhs-async.js`,
+  `language/statements/for-of/head-lhs-async-escaped.js`, and
+  `language/statements/for-in/head-lhs-let.js` all PASS.
+- Protective probes: `language/statements/for-of/head-lhs-let.js` and
+  `language/statements/for-of/escaped-of.js` both still PASS as negative
+  SyntaxError tests; representative PPAE arrow early-error rows
+  (`arrowparameters-cover-no-duplicates{,-rest}.js`,
+  `arrowparameters-bindingidentifier-identifier-futurereservedword.js`,
+  `arrowparameters-bindingidentifier-no-{eval,arguments}.js`) remain PASS.
+- Full targeted PPAE residual set (101 arrow early-error + for-head rows):
+  PASS=89 FAIL=0 SKIP=12. Remaining skips are explicit-resource-management
+  or module-loader omissions, outside PPAE scope.
+- TAMM exemplars: PASS=82 FAIL=18 / 100 (unchanged residual shape).
+- TAWR exemplars: PASS=63 FAIL=37 / 100 (unchanged residual shape).
+- `scripts/diff-prod/run-all.sh`: unusable in this clone state
+  (PASS=0 FAIL=112, uniform rc-mismatch / parse-error pattern), treated as
+  infrastructure/configuration failure rather than a PPAE signal.
+
+**Finding PPAE.6**: contextual-token lookahead has two independent
+questions: raw token spelling (`async` vs escaped `async`) and grammar
+parameter context (`for await` vs ordinary `for-of`). Combining them in
+one name-string check over-rejects valid programs. The correct parser-tier
+primitive is source-spelling-aware plus context-gated.
+
+**Status**: PPAE-EXT 5 LANDED.
