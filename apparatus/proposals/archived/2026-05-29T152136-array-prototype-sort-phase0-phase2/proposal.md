@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-29-principal
 proposed_commits:
-  - 84e9dec4d69a8956d532f70ff392cd0a8620a420
+  - ad134e1833ce713890d8506d4ad24bb26b42eb4a
 target_branch: main
 summary: Array.prototype.sort Phase 0 locale spawn and Phase 2 cluster probe
 risk_class: apparatus
@@ -19,7 +19,7 @@ gates_post:
 
 ## Substrate Moves
 
-Commit `84e9dec4d69a8956d532f70ff392cd0a8620a420` lands APS-EXT 0.
+Commit `ad134e1833ce713890d8506d4ad24bb26b42eb4a` lands APS-EXT 0.
 
 - **M** = `array-prototype-sort` locale spawn plus post-EPSUA matrix inspection.
 - **T** = top-ranked `Array.prototype.sort` sample cluster: 25 no-feature rows and 26 total pipeline rows.
