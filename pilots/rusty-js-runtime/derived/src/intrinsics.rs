@@ -18332,14 +18332,7 @@ impl Runtime {
             Ok(Value::Object(new_id))
         });
         register_method(self, ta_proto, "set", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "set: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "set")?;
             let src = match args.first() {
                 Some(Value::Object(id)) => *id,
                 _ => return Ok(Value::Undefined),
@@ -18365,14 +18358,7 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "fill", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "fill: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "fill")?;
             let v = args.first().cloned().unwrap_or(Value::Number(0.0));
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18384,14 +18370,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "slice", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "slice: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "slice")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18449,14 +18428,7 @@ impl Runtime {
         // superagent depends on cuid2. Without these the iteration path
         // throws "callee not callable: undefined (method='values')".
         register_method(self, ta_proto, "values", |rt, _args| {
-            let src_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "values: this must be TypedArray".into(),
-                    ))
-                }
-            };
+            let src_id = validate_typed_array_this(rt, "values")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18473,14 +18445,7 @@ impl Runtime {
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "keys", |rt, _args| {
-            let src_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "keys: this must be TypedArray".into(),
-                    ))
-                }
-            };
+            let src_id = validate_typed_array_this(rt, "keys")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18497,14 +18462,7 @@ impl Runtime {
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "entries", |rt, _args| {
-            let src_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "entries: this must be TypedArray".into(),
-                    ))
-                }
-            };
+            let src_id = validate_typed_array_this(rt, "entries")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18521,14 +18479,7 @@ impl Runtime {
             Ok(Value::Object(it_id))
         });
         register_method(self, ta_proto, "@@iterator", |rt, _args| {
-            let src_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "@@iterator: this must be TypedArray".into(),
-                    ))
-                }
-            };
+            let src_id = validate_typed_array_this(rt, "@@iterator")?;
             let mut o = Object::new_ordinary();
             o.set_own_internal("__it_src__".into(), Value::Object(src_id));
             o.set_own_internal("__it_idx__".into(), Value::Number(0.0));
@@ -18582,14 +18533,7 @@ impl Runtime {
         // Array.prototype). Cover the high-fanout set: reverse, indexOf,
         // includes, forEach, find, findIndex, every, some, join.
         register_method(self, ta_proto, "reverse", |rt, _args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "reverse: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "reverse")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -18605,10 +18549,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "indexOf", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Number(-1.0)),
-            };
+            let this_id = validate_typed_array_this(rt, "indexOf")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -18651,10 +18592,7 @@ impl Runtime {
             Ok(Value::Boolean(false))
         });
         register_method(self, ta_proto, "forEach", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Undefined),
-            };
+            let this_id = validate_typed_array_this(rt, "forEach")?;
             let cb = args
                 .first()
                 .cloned()
@@ -18715,10 +18653,7 @@ impl Runtime {
             Ok(Value::Undefined)
         });
         register_method(self, ta_proto, "findIndex", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Number(-1.0)),
-            };
+            let this_id = validate_typed_array_this(rt, "findIndex")?;
             let cb = args
                 .first()
                 .cloned()
@@ -18741,10 +18676,7 @@ impl Runtime {
             Ok(Value::Number(-1.0))
         });
         register_method(self, ta_proto, "every", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Boolean(true)),
-            };
+            let this_id = validate_typed_array_this(rt, "every")?;
             let cb = args
                 .first()
                 .cloned()
@@ -18767,10 +18699,7 @@ impl Runtime {
             Ok(Value::Boolean(true))
         });
         register_method(self, ta_proto, "some", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Boolean(false)),
-            };
+            let this_id = validate_typed_array_this(rt, "some")?;
             let cb = args
                 .first()
                 .cloned()
@@ -18793,10 +18722,7 @@ impl Runtime {
             Ok(Value::Boolean(false))
         });
         register_method(self, ta_proto, "join", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::String(Rc::new(String::new()))),
-            };
+            let this_id = validate_typed_array_this(rt, "join")?;
             let sep = match args.first() {
                 Some(v) => abstract_ops::to_string(v).as_str().to_string(),
                 None => ",".into(),
@@ -18828,14 +18754,7 @@ impl Runtime {
         // via the type-specific subtype chain), length, byteLength,
         // __kind sentinel (non-enumerable per P58.E1).
         register_method(self, ta_proto, "map", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.map: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.map")?;
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
                 _ => {
@@ -18861,14 +18780,7 @@ impl Runtime {
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "filter", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.filter: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.filter")?;
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
                 _ => {
@@ -18901,14 +18813,7 @@ impl Runtime {
             Ok(Value::Object(out))
         });
         register_method(self, ta_proto, "reduce", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.reduce: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduce")?;
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
                 _ => {
@@ -18943,14 +18848,7 @@ impl Runtime {
             Ok(acc)
         });
         register_method(self, ta_proto, "reduceRight", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "TypedArray.prototype.reduceRight: this must be a TypedArray".into(),
-                    ))
-                }
-            };
+            let this_id = validate_typed_array_this(rt, "TypedArray.prototype.reduceRight")?;
             let f = match args.first() {
                 Some(v @ Value::Object(_)) => v.clone(),
                 _ => {
@@ -18990,10 +18888,7 @@ impl Runtime {
             Ok(acc)
         });
         register_method(self, ta_proto, "toString", |rt, _args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::String(Rc::new(String::new()))),
-            };
+            let this_id = validate_typed_array_this(rt, "toString")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -19016,10 +18911,7 @@ impl Runtime {
         // (toReversed/toSorted/with/findLast/findLastIndex) gap plus the
         // older missing copyWithin/lastIndexOf/sort.
         register_method(self, ta_proto, "at", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Undefined),
-            };
+            let this_id = validate_typed_array_this(rt, "at")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -19036,10 +18928,7 @@ impl Runtime {
             Ok(rt.object_get(this_id, &(idx as usize).to_string()))
         });
         register_method(self, ta_proto, "lastIndexOf", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Number(-1.0)),
-            };
+            let this_id = validate_typed_array_this(rt, "lastIndexOf")?;
             let needle = args.first().cloned().unwrap_or(Value::Undefined);
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
@@ -19095,10 +18984,7 @@ impl Runtime {
             Ok(Value::Object(this_id))
         });
         register_method(self, ta_proto, "findLast", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => return Ok(Value::Undefined),
-            };
+            let this_id = validate_typed_array_this(rt, "findLast")?;
             let cb = args
                 .first()
                 .cloned()
@@ -21549,6 +21435,26 @@ fn ta_iter_next(rt: &mut Runtime) -> Result<Value, RuntimeError> {
         o.set_own("done".into(), Value::Boolean(false));
     }
     Ok(Value::Object(rt.alloc_object(o)))
+}
+
+fn validate_typed_array_this(
+    rt: &mut Runtime,
+    method_name: &str,
+) -> Result<ObjectRef, RuntimeError> {
+    let this_id = match rt.current_this() {
+        Value::Object(o) => o,
+        _ => {
+            return Err(RuntimeError::TypeError(format!(
+                "{method_name}: this must be a TypedArray"
+            )))
+        }
+    };
+    if matches!(rt.object_get(this_id, "__ta_kind"), Value::Undefined) {
+        return Err(RuntimeError::TypeError(format!(
+            "{method_name}: this is not a TypedArray"
+        )));
+    }
+    Ok(this_id)
 }
 
 fn num_arg(args: &[Value], i: usize) -> f64 {
