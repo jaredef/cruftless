@@ -268,6 +268,91 @@ fn t07_node_fs_builtin() {
     );
 }
 
+#[test]
+fn t14_dual_package_default_function_mirrors_own_props_into_namespace() {
+    let dir = fixture_dir("dual-pkg-default-fn");
+    write_file(
+        &dir,
+        "node_modules/dual-fn/package.json",
+        r#"{ "main": "./dist/index.cjs", "module": "./esm/index.mjs" }"#,
+    );
+    write_file(
+        &dir,
+        "node_modules/dual-fn/esm/index.mjs",
+        r#"
+        function api() { return 1; }
+        api.version = "1.0.0";
+        api.extra = 7;
+        export default api;
+    "#,
+    );
+    write_file(
+        &dir,
+        "node_modules/dual-fn/dist/index.cjs",
+        "module.exports = function api() {};\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
+        import * as M from "dual-fn";
+        const hasVersion = M.version;
+        const hasExtra = M.extra;
+        const fnName = M.name;
+        const fnArity = M.length;
+        export { hasVersion, hasExtra, fnName, fnArity };
+    "#,
+    );
+    let mut rt = fresh_runtime();
+    let ns = load(&mut rt, &dir, "main.mjs");
+    assert!(matches!(rt.object_get(ns, "hasVersion"), Value::String(s) if s.as_ref() == "1.0.0"));
+    assert!(matches!(rt.object_get(ns, "hasExtra"), Value::Number(n) if n == 7.0));
+    assert!(matches!(rt.object_get(ns, "fnName"), Value::String(s) if s.as_ref() == "api"));
+    assert!(matches!(rt.object_get(ns, "fnArity"), Value::Number(n) if n == 0.0));
+}
+
+#[test]
+fn t15_dual_package_default_object_preserves_existing_named_exports() {
+    let dir = fixture_dir("dual-pkg-default-object");
+    write_file(
+        &dir,
+        "node_modules/dual-decimal/package.json",
+        r#"{ "main": "./dist/index.cjs", "module": "./esm/index.mjs" }"#,
+    );
+    write_file(
+        &dir,
+        "node_modules/dual-decimal/esm/index.mjs",
+        r#"
+        const Decimal = function Decimal() {};
+        Decimal.ROUND_UP = 0;
+        Decimal.precision = 20;
+        export { Decimal };
+        export default Decimal;
+    "#,
+    );
+    write_file(
+        &dir,
+        "node_modules/dual-decimal/dist/index.cjs",
+        "module.exports = function Decimal() {};\n",
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
+        import * as M from "dual-decimal";
+        const roundUp = M.ROUND_UP;
+        const precision = M.precision;
+        const decimalType = typeof M.Decimal;
+        export { roundUp, precision, decimalType };
+    "#,
+    );
+    let mut rt = fresh_runtime();
+    let ns = load(&mut rt, &dir, "main.mjs");
+    assert!(matches!(rt.object_get(ns, "roundUp"), Value::Number(n) if n == 0.0));
+    assert!(matches!(rt.object_get(ns, "precision"), Value::Number(n) if n == 20.0));
+    assert!(matches!(rt.object_get(ns, "decimalType"), Value::String(s) if s.as_ref() == "function"));
+}
+
 // ─── 8. node:path built-in (default import). ──────────────────────────
 #[test]
 fn t08_node_path_default() {

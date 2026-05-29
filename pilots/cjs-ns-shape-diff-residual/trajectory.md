@@ -218,3 +218,94 @@ Do not land a broad null-namespace CJS patch. Next CNSDR namespace work should i
 - `playwright-core` derived-class/super semantics;
 - `@testing-library/dom` const-binding/helper mutation semantics;
 - `argon2`/`bcrypt` Node-API native-addon loading.
+
+## 2026-05-29 - CNSDR-EXT 4 - Dual-package default-export namespace mirroring
+
+### Directive
+
+Helmsman directed R4 via message `7058f44f-dd1a-4644-bc28-451132d70cb7` to attack the current five-package shape-diff cluster surfaced by the Round 13b fast residual survey:
+
+- `readable-stream`
+- `events`
+- `winston`
+- `proj4`
+- `decimal.js-light`
+
+The directive explicitly allowed scope-down if the five rows split into multiple mechanisms.
+
+### Mechanism split
+
+The five-package cluster does not close as one patch.
+
+Direct local probes separated it into two families:
+
+1. **Dual-package ESM namespace under-mirroring**
+   - `proj4`
+   - `decimal.js-light`
+2. **CJS/builtin/deprecated-surface residuals**
+   - `readable-stream`
+   - `events`
+   - `winston`
+
+The first family is coherent and closed in this rung. The second family remains open and is explicitly deferred.
+
+### Closed mechanism
+
+`proj4` and `decimal.js-light` are bare-specifier imports whose package shape is:
+
+- `main` present
+- `module` present
+- `main != module`
+- no `exports` field
+
+cruft already had the Rung-5 dual-package gate for synthesizing a `default` when the ESM namespace lacked one. The missing sibling behavior was that Bun also mirrors the existing default export's own properties into the namespace for that same package shape.
+
+That is why pre-fix cruft exposed:
+
+- `proj4`: only `default`, `length`, `name`, `prototype`
+- `decimal.js-light`: only `Decimal`, `default`
+
+while Bun exposed the full callable/default static surface.
+
+### Substrate move
+
+Inside the existing dual-package gate in `pilots/rusty-js-runtime/derived/src/module.rs`:
+
+- keep the prior synthesized-`default` behavior unchanged
+- when a `default` export already exists and is an object/function, mirror its own properties onto the namespace if the namespace does not already define them
+- filter only `__esModule`, `caller`, `arguments`, and `@@` symbol-string sentinels
+- dispatch accessor getters when present before installing the mirrored namespace value
+
+This keeps the fix local to the already-proven dual-package gate instead of broadening CJS namespace policy globally.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS
+- `cargo test --release -p rusty-js-runtime --test module_loader dual_package_default -- --nocapture` PASS
+- `cargo test --release -p rusty-js-runtime --lib` PASS (`71 passed`, `1 ignored`)
+
+Five-package parity sample after rebuild:
+
+| Package | Result |
+|---|---|
+| `proj4` | PASS |
+| `decimal.js-light` | PASS |
+| `readable-stream` | FAIL |
+| `events` | FAIL |
+| `winston` | FAIL |
+
+Net effect on the cluster: **0/5 -> 2/5 PASS**.
+
+### Deferral
+
+The remaining three rows are not part of the same closure:
+
+- `readable-stream`: raw `require()` / namespace path is still built-in-shaped and wrong at the export-object level
+- `events`: built-in/package namespace parity remains incomplete
+- `winston`: deprecated accessor surfaces (`padLevels`, `stripColors`, `emitErrs`, `levelLength`, etc.) are still overexposed relative to Bun
+
+These should be handled in a follow-up CNSDR rung rather than forced into the dual-package closure.
+
+### Finding
+
+**Finding CNSDR.4.1**: Bun's dual-package interop has a second branch beyond synthesized `default`: when a dual-package ESM entry already exports `default`, Bun mirrors that default export's own properties into the namespace. Standing recommendation: dual-package namespace work should treat "synthesize missing default" and "mirror existing default-own-props" as sibling closures under the same package-shape gate, not as unrelated mechanisms.

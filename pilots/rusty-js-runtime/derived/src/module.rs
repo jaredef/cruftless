@@ -1301,39 +1301,40 @@ impl Runtime {
         // Anti-telos §I.2 compliance: the gate is the conjunction of three
         // package-shape predicates, not a runtime condition; this is what
         // distinguishes the move from the reverted Round 3 (which had no gate).
+        // Walk up from the module URL to the nearest package.json.
+        let walk_path = url
+            .strip_prefix("file://")
+            .map(|p| std::path::PathBuf::from(p));
+        let mut pkg_dual_shape = false;
+        if let Some(mut p) = walk_path {
+            p.pop(); // drop filename → start at the module's directory
+            let mut steps = 0;
+            while steps < 32 {
+                let candidate = p.join("package.json");
+                if candidate.is_file() {
+                    if let Ok(pkg) = self.read_package_json(&candidate) {
+                        // Dual-package shape requires main AND module
+                        // pointing to DIFFERENT files. Packages like
+                        // lodash-es set both to the same .js file and
+                        // are not dual-package; treating them as such
+                        // corrupts default-import resolution in their
+                        // internal helper modules.
+                        pkg_dual_shape = pkg.main.is_some()
+                            && pkg.module_field.is_some()
+                            && pkg.main != pkg.module_field
+                            && pkg.raw.get("exports").is_none();
+                    }
+                    break;
+                }
+                if !p.pop() {
+                    break;
+                }
+                steps += 1;
+            }
+        }
+
         let needs_default_synth = matches!(self.object_get(namespace, "default"), Value::Undefined);
         if needs_default_synth {
-            // Walk up from the module URL to the nearest package.json.
-            let walk_path = url
-                .strip_prefix("file://")
-                .map(|p| std::path::PathBuf::from(p));
-            let mut pkg_dual_shape = false;
-            if let Some(mut p) = walk_path {
-                p.pop(); // drop filename → start at the module's directory
-                let mut steps = 0;
-                while steps < 32 {
-                    let candidate = p.join("package.json");
-                    if candidate.is_file() {
-                        if let Ok(pkg) = self.read_package_json(&candidate) {
-                            // Dual-package shape requires main AND module
-                            // pointing to DIFFERENT files. Packages like
-                            // lodash-es set both to the same .js file and
-                            // are not dual-package; treating them as such
-                            // corrupts default-import resolution in their
-                            // internal helper modules.
-                            pkg_dual_shape = pkg.main.is_some()
-                                && pkg.module_field.is_some()
-                                && pkg.main != pkg.module_field
-                                && pkg.raw.get("exports").is_none();
-                        }
-                        break;
-                    }
-                    if !p.pop() {
-                        break;
-                    }
-                    steps += 1;
-                }
-            }
             if pkg_dual_shape {
                 // CMig-EXT 16 NEEDS-VERIFY follow-up (2026-05-23):
                 // shape-aware. If namespace is Shape-enrolled, its
@@ -1366,6 +1367,59 @@ impl Runtime {
                     self.object_set(synth, k, v);
                 }
                 self.object_set(namespace, "default".to_string(), Value::Object(synth));
+            }
+        }
+
+        // CNSDR-EXT 4: on the same dual-package gate used for the
+        // synthesized-default closure, Bun also mirrors the existing
+        // default export's own properties onto the namespace when the
+        // module field's ESM default is shape-identical to the CJS
+        // entry's callable/object export. This is the proj4 /
+        // decimal.js-light family: the ESM entry only exports default,
+        // but Bun's namespace includes the default function/object's
+        // own props as named exports.
+        if pkg_dual_shape {
+            let default_v = self.object_get(namespace, "default");
+            if let Value::Object(default_id) = default_v {
+                let mut mirrored_data: Vec<(String, Value)> = Vec::new();
+                let mut mirrored_getters: Vec<(String, Value)> = Vec::new();
+                {
+                    let o = self.obj(default_id);
+                    if let Some(shape) = o.shape.as_ref() {
+                        for (name, slot) in shape.iter_slots() {
+                            if matches!(name, "__esModule" | "caller" | "arguments") {
+                                continue;
+                            }
+                            let idx = slot as usize;
+                            if let Some(v) = o.shape_values.get(idx) {
+                                mirrored_data.push((name.to_string(), v.clone()));
+                            }
+                        }
+                    }
+                    for (k, d) in o.properties.iter() {
+                        let name = k.as_str();
+                        if matches!(name, "__esModule" | "caller" | "arguments") || name.starts_with("@@") {
+                            continue;
+                        }
+                        if let Some(getter) = &d.getter {
+                            mirrored_getters.push((name.to_string(), getter.clone()));
+                        } else {
+                            mirrored_data.push((name.to_string(), d.value.clone()));
+                        }
+                    }
+                }
+                let mut mirrored = mirrored_data;
+                for (k, getter) in mirrored_getters {
+                    let v = self
+                        .call_function(getter, Value::Object(default_id), Vec::new())
+                        .unwrap_or(Value::Undefined);
+                    mirrored.push((k, v));
+                }
+                for (k, v) in mirrored {
+                    if matches!(self.object_get(namespace, &k), Value::Undefined) {
+                        self.object_set(namespace, k, v);
+                    }
+                }
             }
         }
 
