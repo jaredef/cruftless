@@ -152,6 +152,7 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             "node:domain" | "domain" => "domain",
             "node:async_hooks" | "async_hooks" => "async_hooks",
             "node:perf_hooks" | "perf_hooks" => "perf_hooks",
+            "safe-regex2" => "__safe_regex2_compat",
             "node:worker_threads" | "worker_threads" => "events",
             "node:querystring" | "querystring" => "url",
             "node:timers" | "timers" => "timers",

@@ -4,7 +4,7 @@
 //! implemented (cheap and load-bearing for yargs); the remaining surface
 //! is stubbed so import-time and shape probes succeed.
 
-use crate::register::{new_object, register_method, set_constant};
+use crate::register::{make_callable, register_method, set_constant};
 use rusty_js_runtime::abstract_ops;
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
 use std::rc::Rc;
@@ -36,7 +36,7 @@ fn loose_eq(a: &Value, b: &Value) -> bool {
 }
 
 pub fn install(rt: &mut Runtime) {
-    let assert = new_object(rt);
+    let assert = make_callable(rt, "assert", ok_impl);
 
     register_method(rt, assert, "ok", ok_impl);
     register_method(rt, assert, "strict", ok_impl);

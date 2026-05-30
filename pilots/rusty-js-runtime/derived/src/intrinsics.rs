@@ -18455,7 +18455,11 @@ impl Runtime {
             rt.object_set(new_id, "__kind".into(), Value::String(Rc::new(kind)));
             if let Value::Object(_) = parent_buf {
                 rt.object_set(new_id, "buffer".into(), parent_buf.clone());
-                rt.object_set(new_id, "byteOffset".into(), Value::Number(new_offset as f64));
+                rt.object_set(
+                    new_id,
+                    "byteOffset".into(),
+                    Value::Number(new_offset as f64),
+                );
                 rt.object_set(
                     new_id,
                     "byteLength".into(),
@@ -18555,7 +18559,9 @@ impl Runtime {
             let slice_len = end.saturating_sub(start);
             let new_id = make_typed_array_like(rt, this_id, slice_len)?;
             if slice_len > 0 && rt.typed_array_view_detached(this_id) {
-                return Err(RuntimeError::TypeError("slice: receiver is detached".into()));
+                return Err(RuntimeError::TypeError(
+                    "slice: receiver is detached".into(),
+                ));
             }
             for i in 0..slice_len {
                 let v = rt.object_get(this_id, &(start + i).to_string());
@@ -18966,8 +18972,7 @@ impl Runtime {
         });
         register_method(self, ta_proto, "reduceRight", |rt, args| {
             let this_id = validate_typed_array_access(rt, "TypedArray.prototype.reduceRight")?;
-            let f =
-                typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduceRight")?;
+            let f = typed_array_callable_arg(rt, args.first(), "TypedArray.prototype.reduceRight")?;
             let len = match rt.object_get(this_id, "length") {
                 Value::Number(n) => n as usize,
                 _ => 0,
@@ -19602,6 +19607,16 @@ impl Runtime {
                 setter: None,
             },
         );
+        // Round 18 R2: rfdc/fastify calls ArrayBuffer.isView(cur) while
+        // cloning router options. The predicate is true for DataView and all
+        // TypedArray view records, false otherwise.
+        register_intrinsic_method(self, ab_id, "isView", 1, |rt, args| {
+            let is_view = matches!(
+                args.first(),
+                Some(Value::Object(id)) if rt.typed_array_views.contains_key(id)
+            );
+            Ok(Value::Boolean(is_view))
+        });
         self.define_global_property("ArrayBuffer", Value::Object(ab_id));
 
         // TAMM-EXT 2: DataView gets its own prototype + accessor surface
@@ -21723,21 +21738,15 @@ fn validate_data_view_access(
     };
     match rt.object_get(this_id, "__kind") {
         Value::String(s) if s.as_str() == "DataView" => {}
-        _ => {
-            return Err(RuntimeError::TypeError(format!(
-                "DataView.prototype.{method_name}: receiver does not have [[DataView]] internal slot"
-            )))
-        }
+        _ => return Err(RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: receiver does not have [[DataView]] internal slot"
+        ))),
     }
-    let view = rt
-        .typed_array_views
-        .get(&this_id)
-        .cloned()
-        .ok_or_else(|| {
-            RuntimeError::TypeError(format!(
-                "DataView.prototype.{method_name}: receiver has no DataView record"
-            ))
-        })?;
+    let view = rt.typed_array_views.get(&this_id).cloned().ok_or_else(|| {
+        RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: receiver has no DataView record"
+        ))
+    })?;
     match rt.array_buffers.get(&view.buffer) {
         Some(buf) if buf.detached => Err(RuntimeError::TypeError(format!(
             "DataView.prototype.{method_name}: buffer is detached"
@@ -21793,7 +21802,9 @@ fn data_view_read_bytes(
     let abs = view.byte_offset.saturating_add(offset);
     let little_endian = data_view_little_endian(args, little_endian_arg_index);
     let buf = rt.array_buffers.get(&view.buffer).ok_or_else(|| {
-        RuntimeError::TypeError(format!("DataView.prototype.{method_name}: buffer is missing"))
+        RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: buffer is missing"
+        ))
     })?;
     let mut bytes = [0_u8; 8];
     for i in 0..byte_count {
@@ -21891,7 +21902,9 @@ fn data_view_set_number(
     let little_endian = data_view_little_endian(args, 2);
     let abs = view.byte_offset.saturating_add(offset);
     let buf = rt.array_buffers.get_mut(&view.buffer).ok_or_else(|| {
-        RuntimeError::TypeError(format!("DataView.prototype.{method_name}: buffer is missing"))
+        RuntimeError::TypeError(format!(
+            "DataView.prototype.{method_name}: buffer is missing"
+        ))
     })?;
     if buf.data.len() < abs + byte_count {
         buf.data.resize(abs + byte_count, Value::Number(0.0));

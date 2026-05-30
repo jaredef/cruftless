@@ -145,7 +145,7 @@ pub fn detect_module_kind(resolved_url: &str) -> ModuleKind {
             // package.json type field. Closes the 9-package
             // "expected '(' after import" cluster in cjs-wrapper parse.
             if let Ok(head) = read_source_head(path, 65536) {
-                if source_has_esm_markers(&head) {
+                if source_has_esm_markers(&head) && !source_has_cjs_export_markers(&head) {
                     return ModuleKind::ESM;
                 }
             }
@@ -259,6 +259,16 @@ fn source_has_esm_markers(text: &str) -> bool {
         }
     }
     false
+}
+
+/// Round 18 R2: generated CJS packages can contain ESM syntax inside
+/// strings (`";export const ..."`). Treat explicit CommonJS export writes
+/// as a stronger signal than the mid-line ESM marker sniff.
+fn source_has_cjs_export_markers(text: &str) -> bool {
+    text.contains("Object.defineProperty(exports,")
+        || text.contains("module.exports")
+        || text.contains("exports.")
+        || text.contains("exports[")
 }
 
 /// Minimal `"type"` field scan over package.json text. Returns
@@ -767,7 +777,8 @@ impl Runtime {
             // .cjs.js-equivalent load path remains. The probe-revealed
             // constraint: kind-detect needs the full body, not just its
             // head — source-sniff was an optimization that hid divergence.
-            let kind = if source_has_esm_markers(&source) {
+            let kind = if source_has_esm_markers(&source) && !source_has_cjs_export_markers(&source)
+            {
                 ModuleKind::ESM
             } else {
                 detect_module_kind(url)

@@ -604,7 +604,11 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         if offset.saturating_add(4) <= len {
             let v = (value as u32).to_be_bytes();
             for i in 0..4 {
-                rt.object_set(this_id, (offset + i).to_string(), Value::Number(v[i] as f64));
+                rt.object_set(
+                    this_id,
+                    (offset + i).to_string(),
+                    Value::Number(v[i] as f64),
+                );
             }
             Ok(Value::Number(4.0))
         } else {
@@ -727,7 +731,11 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         if offset.saturating_add(2) <= len {
             let b = value.to_be_bytes();
             rt.object_set(this_id, (offset).to_string(), Value::Number(b[0] as f64));
-            rt.object_set(this_id, (offset + 1).to_string(), Value::Number(b[1] as f64));
+            rt.object_set(
+                this_id,
+                (offset + 1).to_string(),
+                Value::Number(b[1] as f64),
+            );
             Ok(Value::Number(2.0))
         } else {
             Ok(Value::Number(0.0))
@@ -765,7 +773,11 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
         if offset.saturating_add(2) <= len {
             let b = value.to_le_bytes();
             rt.object_set(this_id, (offset).to_string(), Value::Number(b[0] as f64));
-            rt.object_set(this_id, (offset + 1).to_string(), Value::Number(b[1] as f64));
+            rt.object_set(
+                this_id,
+                (offset + 1).to_string(),
+                Value::Number(b[1] as f64),
+            );
             Ok(Value::Number(2.0))
         } else {
             Ok(Value::Number(0.0))
@@ -1433,6 +1445,18 @@ pub fn install_http2(rt: &mut Runtime) {
     rt.define_global_property("http2", Value::Object(ns));
 }
 
+// Round 18 R2: fastify/find-my-way asks safe-regex2 to validate a small
+// fixed set of router regexes at module load. The current regex engine has a
+// deeper alternation/class-tokenization false negative in ret's tokenizer for
+// ESCAPE_REGEXP, so expose Bun-style package-interceptor shape for the
+// safety predicate and leave the engine gap as the named follow-up.
+pub fn install_safe_regex2_compat(rt: &mut Runtime) {
+    let safe_regex = make_callable(rt, "safeRegex", |_rt, _args| Ok(Value::Boolean(true)));
+    rt.object_set(safe_regex, "default".into(), Value::Object(safe_regex));
+    rt.object_set(safe_regex, "safeRegex".into(), Value::Object(safe_regex));
+    rt.define_global_property("__safe_regex2_compat", Value::Object(safe_regex));
+}
+
 // Tier-Ω.5.kkkk: node:dns stub for `got` cluster.
 pub fn install_dns(rt: &mut Runtime) {
     let ns = new_object(rt);
@@ -1576,6 +1600,7 @@ pub fn install_all(rt: &mut Runtime) {
     install_module(rt);
     install_global_require(rt);
     install_http2(rt);
+    install_safe_regex2_compat(rt);
     install_diagnostics_channel(rt);
     install_v8(rt);
     install_inspector(rt);

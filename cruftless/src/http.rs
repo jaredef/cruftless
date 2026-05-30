@@ -132,6 +132,9 @@ fn make_server_object(
 ) -> Result<ObjectRef, RuntimeError> {
     let server = new_object(rt);
     rt.object_set(server, "listening".into(), Value::Boolean(false));
+    rt.object_set(server, "keepAliveTimeout".into(), Value::Number(5000.0));
+    rt.object_set(server, "requestTimeout".into(), Value::Number(300000.0));
+    rt.object_set(server, "timeout".into(), Value::Number(0.0));
     let listeners = rt.alloc_object(rusty_js_runtime::Object::new_array());
     rt.object_set(listeners, "length".into(), Value::Number(0.0));
     set_internal_slot(rt, server, REQUEST_LISTENERS_SLOT, Value::Object(listeners));
@@ -223,6 +226,23 @@ fn make_server_object(
             let _ = rt.call_function(cb, rt.current_this(), Vec::new())?;
         }
         Ok(rt.current_this())
+    });
+
+    // Round 18 R2: fastify configures Node HTTP server timeout knobs during
+    // construction and expects the mutators to be chainable.
+    register_method(rt, server, "setTimeout", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(id) => id,
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "server.setTimeout: invalid receiver".into(),
+                ))
+            }
+        };
+        if let Some(Value::Number(ms)) = args.first() {
+            rt.object_set(this_id, "timeout".into(), Value::Number(*ms));
+        }
+        Ok(Value::Object(this_id))
     });
 
     register_method(rt, server, "on", |rt, args| {
