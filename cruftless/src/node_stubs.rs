@@ -1763,9 +1763,25 @@ pub fn install_module(rt: &mut Runtime) {
         rt.object_set(require_obj, "resolve".into(), Value::Object(resolve_fn));
         Ok(Value::Object(require_obj))
     });
-    register_method(rt, ns, "builtinModules", |_rt, _args| Ok(Value::Undefined));
-    let arr = RtObject::new_ordinary();
+    // module.builtinModules must be an Array of node builtin module names.
+    // Consumers do `(builtinModules || ...).filter(...)`; an Object lacks
+    // .filter and dead-ends with a misleading "filter is undefined".
+    // List mirrors Node's `module.builtinModules` minus the ones cruft
+    // doesn't yet stub (kept conservative — listing a module here implies
+    // require('<name>') succeeds without throwing MODULE_NOT_FOUND).
+    let builtins = [
+        "assert", "buffer", "child_process", "constants", "crypto", "dns",
+        "events", "fs", "http", "https", "module", "net", "os", "path",
+        "process", "punycode", "querystring", "readline", "stream",
+        "string_decoder", "timers", "tls", "tty", "url", "util", "v8",
+        "vm", "worker_threads", "zlib",
+    ];
+    let arr = RtObject::new_array();
     let arr_id = rt.alloc_object(arr);
+    for (i, name) in builtins.iter().enumerate() {
+        rt.object_set(arr_id, i.to_string(), Value::String(Rc::new((*name).to_string())));
+    }
+    rt.object_set(arr_id, "length".into(), Value::Number(builtins.len() as f64));
     rt.object_set(ns, "builtinModules".into(), Value::Object(arr_id));
     rt.define_global_property("module", Value::Object(ns));
 }

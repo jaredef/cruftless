@@ -1058,3 +1058,42 @@ Any browser-isomorphic package that uses `typeof self !== 'undefined'`
 or reads `navigator.userAgent` for environment detection benefits.
 Common across React-companion libs, web-worker pool managers, and any
 package built with `--target=neutral` bundlers.
+
+## 2026-05-30 — MILF-EXT 13 module.builtinModules as Array (not Object)
+
+`require('module').builtinModules` was registered as an empty Object,
+then consumers (e.g. the `builtin-modules` package used by every rollup
+plugin) called `.filter(...)` on it, dead-ending with "filter is
+undefined" (Object lacks Array.prototype.filter).
+
+### Substrate
+
+`cruftless/src/node_stubs.rs::install_module` — replaced the empty-Object
++ duplicate-getter pair with an Array populated with Node's standard
+builtin-module names (29 entries: assert, buffer, child_process,
+constants, crypto, dns, events, fs, http, https, module, net, os, path,
+process, punycode, querystring, readline, stream, string_decoder, timers,
+tls, tty, url, util, v8, vm, worker_threads, zlib).
+
+Conservative listing: a module appears only if `require('<name>')` is
+expected to succeed in cruft (i.e., the stub exists). Consumers using
+this list to gate ESM/CJS detection or to filter user-supplied externals
+get accurate truthy answers.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- `Array.isArray(require('module').builtinModules)` → true; length 29;
+  `includes('fs')` → true.
+- rollup-plugin-node-resolve advanced past the builtin-modules filter
+  failure into a fresh-shape downstream blocker (CJS-wrapper parse-error
+  on `import` keyword) — named follow-up at the parser tier.
+
+### Compounding scope
+
+`builtin-modules` is a workhorse npm package; everything from rollup
+plugins to ESLint configs to bundler internals uses it to test whether
+a specifier targets a Node builtin. Cumulative cross-package gain
+likely > 5 packages on the next sweep.
