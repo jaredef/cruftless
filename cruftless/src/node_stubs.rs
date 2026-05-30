@@ -76,6 +76,36 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
+fn encode_buffer_write_value(s: &str, encoding: &str) -> Vec<u8> {
+    match encoding {
+        "hex" => {
+            let mut v = Vec::with_capacity(s.len() / 2);
+            let chars: Vec<char> = s.chars().collect();
+            let mut i = 0;
+            while i + 1 < chars.len() {
+                let hi = chars[i].to_digit(16);
+                let lo = chars[i + 1].to_digit(16);
+                match (hi, lo) {
+                    (Some(h), Some(l)) => v.push(((h << 4) | l) as u8),
+                    _ => break,
+                }
+                i += 2;
+            }
+            v
+        }
+        "base64" | "base64url" => {
+            let mut normalized = s.replace('-', "+").replace('_', "/");
+            while normalized.len() % 4 != 0 {
+                normalized.push('=');
+            }
+            base64_decode(&normalized)
+        }
+        "latin1" | "binary" => s.chars().map(|c| c as u8).collect(),
+        "ascii" => s.chars().map(|c| (c as u32 & 0x7f) as u8).collect(),
+        _ => s.as_bytes().to_vec(),
+    }
+}
+
 /// CAPS-EXT 11+12: gate clock/scheduler ops from this file.
 fn check_clock_ns(rt: &Runtime, op: caps::ClockOp) -> Result<(), RuntimeError> {
     let url = rt.current_module_url.last().cloned().unwrap_or_default();
@@ -483,6 +513,299 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
             rt.object_set(target, (target_start + i).to_string(), v);
         }
         Ok(Value::Number(count as f64))
+    });
+    register_method(rt, id, "write", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let text = match args.first() {
+            Some(Value::String(s)) => s.as_str().to_string(),
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let encoding = if let Some(Value::String(e)) = args.get(2) {
+            e.as_str().to_string()
+        } else if let Some(Value::String(e)) = args.get(1) {
+            if matches!(args.get(2), None) {
+                e.as_str().to_string()
+            } else {
+                "utf8".into()
+            }
+        } else {
+            "utf8".into()
+        };
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let start = args
+            .get(2)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(usize::MAX);
+        let bytes = encode_buffer_write_value(&text, &encoding.to_ascii_lowercase());
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let mut written = 0usize;
+        if offset < len {
+            for (i, b) in bytes
+                .iter()
+                .take(start.min(bytes.len()).min(len.saturating_sub(offset)))
+                .enumerate()
+            {
+                rt.object_set(this_id, (offset + i).to_string(), Value::Number(*b as f64));
+                written += 1;
+            }
+        }
+        Ok(Value::Number(written as f64))
+    });
+    register_method(rt, id, "writeInt32BE", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as i32)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset.saturating_add(4) <= len {
+            let v = (value as u32).to_be_bytes();
+            for i in 0..4 {
+                rt.object_set(this_id, (offset + i).to_string(), Value::Number(v[i] as f64));
+            }
+            Ok(Value::Number(4.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
+    });
+    register_method(rt, id, "writeUInt32BE", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u32)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset.saturating_add(4) <= len {
+            for i in 0..4 {
+                rt.object_set(
+                    this_id,
+                    (offset + i).to_string(),
+                    Value::Number((value.to_be_bytes()[i]) as f64),
+                );
+            }
+            Ok(Value::Number(4.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
+    });
+    register_method(rt, id, "writeUInt32LE", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u32)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset.saturating_add(4) <= len {
+            for i in 0..4 {
+                rt.object_set(
+                    this_id,
+                    (offset + i).to_string(),
+                    Value::Number((value.to_le_bytes()[i]) as f64),
+                );
+            }
+            Ok(Value::Number(4.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
+    });
+    register_method(rt, id, "writeUInt16BE", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u16)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset.saturating_add(2) <= len {
+            let b = value.to_be_bytes();
+            rt.object_set(this_id, (offset).to_string(), Value::Number(b[0] as f64));
+            rt.object_set(this_id, (offset + 1).to_string(), Value::Number(b[1] as f64));
+            Ok(Value::Number(2.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
+    });
+    register_method(rt, id, "writeUInt16LE", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u16)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset.saturating_add(2) <= len {
+            let b = value.to_le_bytes();
+            rt.object_set(this_id, (offset).to_string(), Value::Number(b[0] as f64));
+            rt.object_set(this_id, (offset + 1).to_string(), Value::Number(b[1] as f64));
+            Ok(Value::Number(2.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
+    });
+    register_method(rt, id, "writeUInt8", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Number(0.0)),
+        };
+        let value = args
+            .first()
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as u8)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let offset = args
+            .get(1)
+            .and_then(|v| {
+                if let Value::Number(n) = v {
+                    Some(*n as usize)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        if offset < len {
+            rt.object_set(this_id, offset.to_string(), Value::Number(value as f64));
+            Ok(Value::Number(1.0))
+        } else {
+            Ok(Value::Number(0.0))
+        }
     });
     register_method(rt, id, "subarray", |rt, args| {
         let this_id = match rt.current_this() {

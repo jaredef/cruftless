@@ -285,3 +285,47 @@ C4 holds for the node-shim sub-coordinate: the named failures map to Node host
 compatibility, not to the earlier DataView or namespace-shape coordinates. The
 remaining work is package availability and, if needed, follow-up host-global
 surface tuning rather than a different intrinsic family.
+
+## 2026-05-30 — MILF-EXT 3 Buffer writer methods
+
+### Trigger
+
+CAACP authorization `6590d93b-2ec3-4514-876a-6bbe54183b77` followed earlier
+authorization chain for `milf-ext-3` and requested landing of Buffer writer methods:
+
+- `Buffer.prototype.write`
+- `Buffer.prototype.writeInt32BE`
+- `Buffer.prototype.writeUInt8`
+- `Buffer.prototype.writeUInt16BE`
+- `Buffer.prototype.writeUInt16LE`
+- `Buffer.prototype.writeUInt32BE`
+- `Buffer.prototype.writeUInt32LE`
+
+### Substrate Move
+
+Added the listed methods and shared value encoding support in
+`cruftless/src/node_stubs.rs` (`install_buffer_methods`, plus
+`encode_buffer_write_value`).
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- Local target/debug run of `/tmp/milf-ext-3-smoke-r2-exact/milf-slonik-probe.mjs`:
+  - `typeof buf.write === 'function'`
+  - `typeof buf.writeInt32BE === 'function'`
+  - `pg-protocol` `Writer().addInt32()` path executes and `join()` succeeds.
+  - `slonik` and `mongoose` remain failing on:
+    `Cannot read property 'get' of undefined (receiver='toStringTag')`
+
+### C4 Status
+
+MILF-EXT 3 is closed for the Buffer-writer coordinate and keeps strict scope:
+it closes the writer-method blocker used by `pg-protocol`-style flows.
+The toStringTag failure is a distinct residual and should proceed as a separate
+follow-up.
+
+### PASS-Gain Snapshot (targeted residual subset)
+
+- First-coordinate closure achieved for the Buffer-writer subset (`exceljs`, `pg`,
+  `postgres`) in the inline residual context.
+- Residual `safe-stable-stringify`/`bson` toStringTag failure remains unchanged.
