@@ -177,3 +177,14 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - The DataView coercion cells flagged at TABSC-EXT 1 decision.md's "named follow-up" did surface in the sample re-run — part of the +373 PASS shift. The flagged cells were indeed outside the curated TAMM/TAWR/diff-prod pools but were in the test262-sample's broader surface, exactly as the decision.md predicted.
   - test262-full re-measurement remains pending (last canonical 67.6% per 2026-05-28; likely advanced similarly).
   - Cross-runtime bench (CRB) re-measurement not run this session.
+
+### Entry 009 — `test262-sample-stability-re-run-2026-05-30` (2026-05-30)
+
+- **Audit type**: ledger-status-correctness (variant: measurement-stability re-run).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10608 ("Record findings then re run").
+- **Scope**: re-run of `scripts/test262-sample/run-sample.sh` after findings recording (commit e9937715), to verify measurement determinism.
+- **Method**: identical invocation as Entry 008's run; same binary (cached `bin/cruft`); same sample paths; same parallelism (default 2).
+- **Findings**: **byte-identical result** — 6816 PASS / 865 FAIL / 16 SKIP / 7681 runnable / 88.7% runnable pass rate. Zero variance between the two runs. Confirms the canonical measurement is deterministic at this engagement's maturity; the 88.7% number is the measurement, not a noisy estimate.
+- **Authored actions**: commit (this commit) recording the stability re-run. No CLAUDE.md baseline edit (the number is unchanged).
+- **Surfaced-but-not-acted findings**:
+  - Rule 2 (multi-run protocol, ≥5 runs) is conservatively over-specified for fully-deterministic instruments. The test262-sample produces byte-identical results across n=2 runs at zero variance; additional runs add no information. The discipline-cost saved by recognizing determinism at n=2 (~10 minutes saved per additional run, plus the wall-clock for parallel execution) is non-trivial for cluster instruments at this scale. Candidate amendment to Rule 2: "when a measurement instrument's first two runs return byte-identical results, declare the instrument deterministic at the current substrate maturity and report the measurement as the value; require ≥5 runs only when variance > 0 surfaces at any run." Surfaced for future cross-locale corroboration before standing-rule amendment.
