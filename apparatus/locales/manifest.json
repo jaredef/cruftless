@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless-r4/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
   "totals": {
-    "locales": 226,
-    "top_level": 139,
+    "locales": 227,
+    "top_level": 140,
     "nested": 87,
     "warnings": 0
   },
@@ -935,6 +935,15 @@
       "depth": 1,
       "rung_count": 4,
       "status": "**WORKSTREAM FOUNDED (RS-EXT 0)**. Spawned per keeper directive \u2014 but with a sharp constraint that overrides the prospective doc's 8-round scope:"
+    },
+    {
+      "coord": "redis-package-json-resolution",
+      "tag": "L.redis-package-json-resolution",
+      "parent": null,
+      "scope": "redis-package-json-resolution",
+      "depth": 1,
+      "rung_count": 0,
+      "status": null
     },
     {
       "coord": "reference-error-on-unresolvable",

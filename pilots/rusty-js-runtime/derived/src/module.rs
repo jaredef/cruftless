@@ -376,7 +376,8 @@ impl Runtime {
     /// Algorithm:
     ///   1. `node:foo` → returned unchanged; caller dispatches via the
     ///      ResolveBuiltinModule host hook.
-    ///   2. `./`, `../` → resolved relative to dirname(parent path).
+    ///   2. `.`, `..`, `./`, `../` → resolved relative to dirname(parent
+    ///      path).
     ///   3. `file://...` → already-absolute; probes the extension list.
     ///   4. Otherwise (bare specifier) → TypeError pointing callers at
     ///      `resolve_module_full`.
@@ -384,7 +385,11 @@ impl Runtime {
         if specifier.starts_with("node:") {
             return Ok(specifier.to_string());
         }
-        if specifier.starts_with("./") || specifier.starts_with("../") {
+        if specifier == "."
+            || specifier == ".."
+            || specifier.starts_with("./")
+            || specifier.starts_with("../")
+        {
             let parent_path = parent_url.strip_prefix("file://").ok_or_else(|| {
                 RuntimeError::TypeError(format!(
                     "relative specifier '{}' requires a file:// parent URL (got '{}')",
@@ -475,7 +480,9 @@ impl Runtime {
         // @databases/pg, @jest/expect, and a long tail of webpack-
         // bundled CJS packages that surfaced through the Ω.5.P24.E1
         // probe.
-        if specifier.starts_with("node:")
+        if specifier == "."
+            || specifier == ".."
+            || specifier.starts_with("node:")
             || specifier.starts_with("./")
             || specifier.starts_with("../")
             || specifier.starts_with("file://")
@@ -2580,8 +2587,37 @@ fn package_name_from_node_modules_url(url: &str) -> Option<String> {
 mod tests {
     use super::{
         cjs_empty_exports_default_package, cjs_namespace_filter_package_key,
-        package_name_from_node_modules_url,
+        package_name_from_node_modules_url, Runtime,
     };
+
+    #[test]
+    fn resolve_module_treats_dot_as_relative_directory() {
+        use std::fs::{create_dir_all, remove_dir_all, write};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("cruftless-dot-relative-{ts}"));
+        let parent = root.join("a");
+        let parent_file = parent.join("index.js");
+        create_dir_all(&parent).unwrap();
+        write(parent.join("index.js"), "").unwrap();
+        write(root.join("index.js"), "").unwrap();
+
+        let parent_url = format!("file://{}", parent_file.display());
+        assert_eq!(
+            Runtime::resolve_module(&parent_url, ".").unwrap(),
+            format!("file://{}/index.js", parent.display())
+        );
+        assert_eq!(
+            Runtime::resolve_module(&parent_url, "..").unwrap(),
+            format!("file://{}/index.js", root.display())
+        );
+
+        let _ = remove_dir_all(&root);
+    }
 
     #[test]
     fn cjs_empty_exports_default_allowlist_matches_rung_a_packages() {
