@@ -1021,3 +1021,40 @@ indexed views; no per-shape dispatch needed.
 - Wider iteration smoke (from MILF-EXT 11) now reports `for-of: [10,20,30]`
   / `spread: [10,20,30]` / `[a, ...rest] = ...` works on array-input buffers
   (was empty before this rung).
+
+## 2026-05-30 — MILF-EXT 12 self / window / navigator browser-alias globals
+
+workerpool failed at `self is not defined` (environment.js). Survey of
+unblocked-by-self alternatives showed it then immediately reads
+`navigator.hardwareConcurrency` — a two-stage gap.
+
+### Substrate
+
+`pilots/rusty-js-runtime/derived/src/intrinsics.rs` — added next to the
+existing `globalThis` + `global` defines:
+
+- `self` = `globalThis` (HTML5 WorkerGlobalScope alias; used by isomorphic
+  npm packages that target both Node and browser/worker contexts).
+- `window` = `globalThis` (browser-target compatibility shim).
+- `navigator` = a stub object with `hardwareConcurrency: 1` (engine is
+  single-threaded) and `userAgent: "cruft/0.1 (node-compat)"` (feature-
+  detection paths read it).
+
+Same `{w:t, e:f, c:t}` descriptor as `global`/`globalThis` so consumer
+code that reassigns (e.g. for testing) isn't blocked.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke: `typeof self === 'object'`, `self === globalThis`, `window === globalThis`,
+  `navigator.hardwareConcurrency === 1`, `navigator.userAgent` string set.
+- **workerpool loads**: 10 keys (was `self is not defined`).
+
+### Compounding scope
+
+Any browser-isomorphic package that uses `typeof self !== 'undefined'`
+or reads `navigator.userAgent` for environment detection benefits.
+Common across React-companion libs, web-worker pool managers, and any
+package built with `--target=neutral` bundlers.

@@ -5429,6 +5429,22 @@ impl Runtime {
         // {w:t, e:f, c:t} descriptor.
         self.define_global_property("globalThis", Value::Object(gt));
         self.define_global_property("global", Value::Object(gt));
+        // Browser/worker aliases: many npm packages target both Node and
+        // worker contexts via `self` (HTML5 + WorkerGlobalScope spec) and
+        // `window`. workerpool/src/environment.js dispatches on `typeof self`;
+        // browser-shim polyfills mirror them. Same {w:t, e:f, c:t} descriptor
+        // so the values are still assignable per spec drift across libs.
+        self.define_global_property("self", Value::Object(gt));
+        self.define_global_property("window", Value::Object(gt));
+        // navigator stub — workerpool reads navigator.hardwareConcurrency
+        // immediately after the `typeof self` dispatch. Expose the value
+        // the engine knows (single-threaded; report 1). Add userAgent stub
+        // since several feature-detection paths read it.
+        let nav = Object::new_ordinary();
+        let nav_id = self.alloc_object(nav);
+        self.obj_mut(nav_id).set_own("hardwareConcurrency".into(), Value::Number(1.0));
+        self.obj_mut(nav_id).set_own("userAgent".into(), Value::String(Rc::new("cruft/0.1 (node-compat)".to_string())));
+        self.define_global_property("navigator", Value::Object(nav_id));
         // ECMA-262 §19.1.1 value properties are immutable/non-configurable.
         // From the parallel branch's globalThis spec-compliance work; preserved
         // through the GBSU integration because define_global_property uses
