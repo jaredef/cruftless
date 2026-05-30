@@ -17241,6 +17241,59 @@ impl Runtime {
         self.obj_mut(bc_proto)
             .set_own_internal("constructor".into(), Value::Object(bc_id));
         self.define_global_property("BroadcastChannel", Value::Object(bc_id));
+
+        // MessageChannel + MessagePort stubs — undici's MessageEvent-aware
+        // path (webidl.is.MessagePort / webidl.converters.MessagePort) needs
+        // the constructor to exist; consumers like roarr/slonik via
+        // safe-stable-stringify transitively land here.
+        let mp_ctor = make_native("MessagePort", |rt, _args| {
+            let mut o = Object::new_ordinary();
+            let postm = make_native("postMessage", |_rt, _a| Ok(Value::Undefined));
+            let postm_id = rt.alloc_object(postm);
+            o.set_own("postMessage".into(), Value::Object(postm_id));
+            let close = make_native("close", |_rt, _a| Ok(Value::Undefined));
+            let close_id = rt.alloc_object(close);
+            o.set_own("close".into(), Value::Object(close_id));
+            let start = make_native("start", |_rt, _a| Ok(Value::Undefined));
+            let start_id = rt.alloc_object(start);
+            o.set_own("start".into(), Value::Object(start_id));
+            let addel = make_native("addEventListener", |_rt, _a| Ok(Value::Undefined));
+            let addel_id = rt.alloc_object(addel);
+            o.set_own("addEventListener".into(), Value::Object(addel_id));
+            o.set_own("onmessage".into(), Value::Null);
+            Ok(Value::Object(rt.alloc_object(o)))
+        });
+        let mp_id = self.alloc_object(mp_ctor);
+        let mp_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(mp_id).set_own_frozen("prototype".into(), Value::Object(mp_proto));
+        self.obj_mut(mp_proto).set_own_internal("constructor".into(), Value::Object(mp_id));
+        self.define_global_property("MessagePort", Value::Object(mp_id));
+
+        let mc_ctor = make_native("MessageChannel", |rt, _args| {
+            // Each MessageChannel exposes port1/port2 — both MessagePort-shaped.
+            let mk_port = |rt: &mut Runtime| -> crate::ObjectRef {
+                let mut o = Object::new_ordinary();
+                let postm = make_native("postMessage", |_rt, _a| Ok(Value::Undefined));
+                let postm_id = rt.alloc_object(postm);
+                o.set_own("postMessage".into(), Value::Object(postm_id));
+                let close = make_native("close", |_rt, _a| Ok(Value::Undefined));
+                let close_id = rt.alloc_object(close);
+                o.set_own("close".into(), Value::Object(close_id));
+                rt.alloc_object(o)
+            };
+            let port1 = mk_port(rt);
+            let port2 = mk_port(rt);
+            let mut o = Object::new_ordinary();
+            o.set_own("port1".into(), Value::Object(port1));
+            o.set_own("port2".into(), Value::Object(port2));
+            Ok(Value::Object(rt.alloc_object(o)))
+        });
+        let mc_id = self.alloc_object(mc_ctor);
+        let mc_proto = self.alloc_object(Object::new_ordinary());
+        self.obj_mut(mc_id).set_own_frozen("prototype".into(), Value::Object(mc_proto));
+        self.obj_mut(mc_proto).set_own_internal("constructor".into(), Value::Object(mc_id));
+        self.define_global_property("MessageChannel", Value::Object(mc_id));
+
         for name in &[
             "MessageEvent",
             "ErrorEvent",

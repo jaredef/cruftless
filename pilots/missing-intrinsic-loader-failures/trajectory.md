@@ -867,3 +867,52 @@ buffer-shape closure rung in 24h (7 → 7.1 → 8.1); the cumulative effect
 is that all five Buffer-construction paths (alloc, allocUnsafe,
 allocUnsafeSlow, Buffer.from, Buffer.concat) and the subarray path all
 produce uniformly-shaped Buffers with the full prototype surface.
+
+## 2026-05-30 — MILF-EXT 9 MessageChannel + MessagePort global stubs
+
+While MILF-EXT 7+7.1+8+8.1 sweep ran, audited current top-failure cluster
+against the new binary. cheerio's residual was `ReferenceError: MessagePort
+is not defined` in undici's `webidl.is.MessagePort = MakeTypeAssertion(MessagePort)`
+at module-init. MessageChannel was also unregistered.
+
+### Substrate
+
+`pilots/rusty-js-runtime/derived/src/intrinsics.rs` — stubs added next to the
+existing BroadcastChannel stub (which uses the same shape rationale per
+Tier-Ω.5.tttttt):
+
+- `MessagePort` constructor: returns an Object with `postMessage` /
+  `close` / `start` / `addEventListener` no-op methods + `onmessage = null`.
+- `MessageChannel` constructor: returns an Object with `port1` / `port2`
+  each MessagePort-shaped.
+
+Both expose a `prototype` with `constructor` backref so `class X extends
+MessagePort {}` and `webidl.is.MessagePort = MakeTypeAssertion(MessagePort)`
+both find a callable + a prototype slot.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke `typeof MessagePort === 'function'` / `typeof MessageChannel === 'function'`
+  / `new MessageChannel()` returns `{port1: obj, port2: obj}` / port methods
+  callable.
+- **cheerio loads**: `import('cheerio')` now produces an Object with 7 keys
+  (was `ReferenceError: MessagePort is not defined`).
+
+### Side audit
+
+Re-ran 15 packages from the postround11 top-FAIL cluster against the new
+binary (MILF-EXT 7+7.1+8+8.1 + this rung). PASS now: redis, svgo, rehype,
+ramda, puppeteer-core, xlsx, cheerio. FAIL with NEW shapes (each is a
+distinct follow-up coordinate):
+- arktype: ParseError "'generic' is unresolvable" — parser tier
+- stylelint: readFileSync url-as-path bug (fs.url-shim coordinate)
+- sequelize: `toString is not defined` — same TDZ-shape, module-context
+- slonik: `callee is not callable [argc=1] (callee='fn')` — CJS-export propagation
+- csv-parser: `value is not iterable (in-call='<destr.src>')` — destructure-of-non-iterable
+- mnemonist: missing intrinsic `MinFibonacciHeap`
+
+The cumulative install-gap-and-friends substrate (7+7.1+8+8.1+9) has
+material cross-package PASS gain pending the in-flight sweep's quantification.
