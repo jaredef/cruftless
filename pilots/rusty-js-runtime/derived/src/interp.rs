@@ -7320,7 +7320,8 @@ impl Runtime {
             )
             && self.try_array_length(id)? < write_end
         {
-            self.object_set(id, "length".into(), Value::Number(write_end as f64));
+            // ASTA-EXT 0: route length-set through object_set_checked.
+            self.object_set_checked(id, "length".into(), Value::Number(write_end as f64))?;
         }
         for i in (sorted_count + undefined_count)..len {
             let key = Value::String(std::rc::Rc::new(i.to_string()));
@@ -7657,7 +7658,8 @@ impl Runtime {
         for (k, v) in items.into_iter().enumerate() {
             self.object_set(id, (start + k as i64).to_string(), v);
         }
-        self.object_set(id, "length".into(), Value::Number(new_len as f64));
+        // ASTA-EXT 0: route length-set through object_set_checked.
+        self.object_set_checked(id, "length".into(), Value::Number(new_len as f64))?;
         Ok(Value::Object(removed))
     }
 
@@ -7986,7 +7988,9 @@ impl Runtime {
             self.object_set(id, len.to_string(), a.clone());
             len += 1;
         }
-        self.object_set(id, "length".into(), Value::Number(len as f64));
+        // ASTA-EXT 0: route length-set through object_set_checked so frozen
+        // / non-writable-length receivers surface TypeError per ECMA §23.1.3.20.
+        self.object_set_checked(id, "length".into(), Value::Number(len as f64))?;
         Ok(Value::Number(len as f64))
     }
 
@@ -8000,7 +8004,8 @@ impl Runtime {
         let last_key = (len - 1).to_string();
         let v = self.object_get(id, &last_key);
         self.obj_mut(id).remove_str(&last_key);
-        self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
+        // ASTA-EXT 0: route length-set through object_set_checked.
+        self.object_set_checked(id, "length".into(), Value::Number((len - 1) as f64))?;
         Ok(v)
     }
 
@@ -8017,7 +8022,8 @@ impl Runtime {
             self.object_set(id, (i - 1).to_string(), v);
         }
         self.obj_mut(id).remove_str(&(len - 1).to_string());
-        self.object_set(id, "length".into(), Value::Number((len - 1) as f64));
+        // ASTA-EXT 0: route length-set through object_set_checked.
+        self.object_set_checked(id, "length".into(), Value::Number((len - 1) as f64))?;
         Ok(first)
     }
 
@@ -8034,7 +8040,8 @@ impl Runtime {
             self.object_set(id, i.to_string(), a.clone());
         }
         let new_len = len + n;
-        self.object_set(id, "length".into(), Value::Number(new_len as f64));
+        // ASTA-EXT 0: route length-set through object_set_checked.
+        self.object_set_checked(id, "length".into(), Value::Number(new_len as f64))?;
         Ok(Value::Number(new_len as f64))
     }
 
@@ -11916,6 +11923,48 @@ impl Runtime {
         // branches; rung-17 fixed the pk branch but the divergence remained
         // a maintenance hazard.
         self.object_set_pk(id, crate::value::PropertyKey::String(key), value);
+    }
+
+    /// ASTA-EXT 0 (2026-05-30): fallible String-keyed OrdinarySet for callers
+    /// that need to surface frozen / non-writable-length TypeErrors per
+    /// ECMA-262 §10.4.2.1 ArraySetLength + §23.1.3 Array.prototype mutating
+    /// methods (pop/push/shift/unshift/splice/sort). Mirrors `object_set` but
+    /// routes the Array-length branch through `array_set_length_define_property_via`
+    /// with `?` propagation; for non-Array-length keys, delegates to
+    /// `object_set_pk` and returns Ok(()).
+    pub fn object_set_checked(
+        &mut self,
+        id: ObjectRef,
+        key: String,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        if key.starts_with('#') {
+            self.obj_mut(id).set_private(&key, value);
+            return Ok(());
+        }
+        if key == "length"
+            && matches!(
+                self.obj(id).internal_kind,
+                crate::value::InternalKind::Array
+            )
+        {
+            let desc_id = self.alloc_object(crate::value::Object::default());
+            self.obj_mut(desc_id).dict_mut().insert(
+                crate::value::PropertyKey::String("value".to_string()),
+                crate::value::PropertyDescriptor {
+                    value,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                },
+            );
+            self.array_set_length_define_property_via(id, desc_id)?;
+            return Ok(());
+        }
+        self.object_set_pk(id, crate::value::PropertyKey::String(key), value);
+        Ok(())
     }
 
     fn object_get_private(&self, id: ObjectRef, key: &str) -> Option<Value> {

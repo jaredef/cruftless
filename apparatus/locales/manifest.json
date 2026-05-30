@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 230,
-    "top_level": 143,
+    "locales": 231,
+    "top_level": 144,
     "nested": 87,
     "warnings": 0
   },
@@ -206,6 +206,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**WORKSTREAM FOUNDED (ASCD-EXT 0)**. Spawned per keeper directive after EPSUA arc closed; carries the largest clean sub-cluster of the former constraint #1 (~23 tests)."
+    },
+    {
+      "coord": "array-strict-throw-discipline",
+      "tag": "L.array-strict-throw-discipline",
+      "parent": null,
+      "scope": "array-strict-throw-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED 2026-05-30 by ASTA-EXT 0 (helmsman session, keeper directive Telegram 10614). Founding rung LANDED with probe 7/7 PASS and cluster gates preserved. test262-sample marginal +0.1 PP (88.7% \u2192 88.8% with \u00b11 PASS variance across n=2; Rule 29 falsifier event recorded). Sibling sub-bundles deferred per seed \u00a7Carve-outs."
     },
     {
       "coord": "arrow-misc-early-errors",
@@ -1986,7 +1995,7 @@
       "parent": null,
       "scope": "typed-array-byte-storage-conformance",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "FOUNDED 2026-05-30 by TABSC-EXT 0 (helmsman session, keeper directive Telegram 10596). Founding rung LANDED with empirically validated cascade-revival of TAECSF sub-substrates (a) + (b); cluster yield +4 TAWR, +1 TAMM, diff-prod stable; view-aliasing probe 3/3 PASS; cascade probe 10/10 PASS."
     },
     {
