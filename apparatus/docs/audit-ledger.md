@@ -95,3 +95,20 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - Predictive-ruleset consolidation gap (rules 16–22 in JIT Addenda XII–XIII not yet folded into `apparatus/docs/predictive-ruleset.md`) carries forward from audit-ledger Entry 002; addressing requires a separate apparatus-tier consolidation pass.
   - The protocol is not yet wired into CLAUDE.md / AGENTS.md §Substrate-shaped-work discipline §Phase 5 chapter-close-inspect pointer, nor into `apparatus/docs/repository-apparatus.md` §III standing-discipline-artifact list. Same wiring gap as audit-ledger (Entry 001 §Surfaced) and findings-ledger (Entry 002 §Surfaced). Three apparatus-tier documents now share the same not-yet-wired status; recommend a single consolidation pass.
   - `apparatus/docs/arc-as-coordinate.md` §F event-log class for "findings-disposition annotation" is referenced by the protocol but not yet added to arc-as-coordinate.md itself.
+
+### Entry 004 — `apparatus-wiring-consolidation-2026-05-30` (2026-05-30)
+
+- **Audit type**: arc-enrollment-coherence (variant: apparatus-document-enumeration-coherence).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10572 ("Author").
+- **Scope**: the three apparatus-tier documents introduced during the 2026-05-30 session — `apparatus/docs/audit-ledger.md` (commit 6456c35e), `apparatus/docs/findings-ledger.md` (d904702b), `apparatus/docs/findings-disposition-protocol.md` (496e4d21) — against the canonical enumeration surfaces: `CLAUDE.md` §Required-agent-reading, `AGENTS.md` (mirror of CLAUDE.md), `apparatus/docs/repository-apparatus.md` §III directory tree + §Tracked-but-not-an-addition ledgers table + §Locale-tier discipline table, `apparatus/docs/arc-as-coordinate.md` §File shapes log.md event-class enumeration.
+- **Method**: direct file inspection + targeted `Edit` insertions at the identified canonical surfaces. CLAUDE.md and AGENTS.md kept in byte-for-byte sync via `cp` (existing convention).
+- **Findings**: three new apparatus-tier documents introduced in the session were not yet enumerated in any of the canonical surfaces. Surfaced-but-not-acted findings carried forward from Entries 001 (audit-ledger), 002 (findings-ledger), 003 (findings-disposition-protocol). Wiring gap closed by this audit.
+- **Authored actions**:
+  - `CLAUDE.md` §Required-agent-reading — three bullets added (audit-ledger, findings-ledger, findings-disposition-protocol) after the deletions-ledger entry.
+  - `CLAUDE.md` §Substrate-shaped-work-discipline — new subsection §Findings-disposition protocol added after §Orphan-disposition protocol, paired as the two engagement-tier Phase-5 instances.
+  - `AGENTS.md` — synced to CLAUDE.md (byte-identical mirror).
+  - `apparatus/docs/repository-apparatus.md` §III — directory-tree extended with four new lines (audit-ledger, findings-ledger, findings-disposition-protocol, ledger-comment text updated for orphan-disposition coverage scope); Tracked-but-not-an-addition table extended with audit-ledger + findings-ledger rows; Locale-tier discipline table extended with findings-disposition-protocol row; functional-partitioning paragraph updated to enumerate all four ledgers.
+  - `apparatus/docs/arc-as-coordinate.md` §File shapes log.md description extended with event-class enumeration including orphan-disposition-annotation and findings-disposition-annotation.
+- **Surfaced-but-not-acted findings**:
+  - The JIT findings.md rules 16–22 unconsolidated gap (carried forward from Entries 001 + 002 + 003) is not addressed by this wiring audit. Requires a separate predictive-ruleset.md consolidation pass.
+  - The findings-disposition-protocol §IV references `arc-as-coordinate.md §F (event log)`; the doc's actual section labels are §A–§F where §F is "Composition with other arcs" and the event log is under "File shapes". The protocol's reference is forward-looking; section relabeling is deferred to keeper direction.

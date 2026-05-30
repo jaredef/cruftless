@@ -97,7 +97,7 @@ CLOSED (or IN PROGRESS). Close-condition met / pending: ...
 
 ### `apparatus/arcs/YYYY-MM-DD-<slug>/log.md`
 
-Append-only event log. Each entry is a single rung landing or directive received, timestamped. Mirrors the trajectory format at the locale level but spans the arc.
+Append-only event log. Each entry is a single rung landing or directive received, timestamped. Mirrors the trajectory format at the locale level but spans the arc. Event classes include: rung-landing, directive-received, sub-locale-enrollment, orphan-disposition-annotation (per `apparatus/docs/orphan-disposition-protocol.md`), and findings-disposition-annotation (per `apparatus/docs/findings-disposition-protocol.md`; entries record when a finding was integrated into the arc as a cross-locale finding, or when an arc was scaffolded by a findings-disposition cycle's lift-to-new-arc disposition).
 
 ## What an arc is NOT
 

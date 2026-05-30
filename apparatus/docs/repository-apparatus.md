@@ -31,8 +31,11 @@ apparatus/
 │   ├── standing-rule-13-prospective-application.md       # rule 13 revert-then-deeper-layer thesis
 │   ├── deletions-ledger.md                               # append-only deletions record
 │   ├── deferrals-ledger.md                               # append-only deferrals record
-│   ├── orphan-disposition-protocol.md                    # 6-step protocol + 8 disposition candidates
-│   ├── coverage-gap-orphan-disposition-2026-05-28.md     # canonical first run instance
+│   ├── audit-ledger.md                                   # append-only apparatus-audit record
+│   ├── findings-ledger.md                                # append-only cross-locale findings aggregator
+│   ├── orphan-disposition-protocol.md                    # 6-step protocol + 8 candidates (locale subsumption)
+│   ├── findings-disposition-protocol.md                  # 6-step protocol + 8 candidates (finding subsumption)
+│   ├── coverage-gap-orphan-disposition-2026-05-28.md     # canonical first orphan-disposition instance
 │   ├── agent-feedback-schema.md                          # per-locale cross-resolver review schema
 │   └── arc-as-coordinate.md                              # arc-tier coordinate formalization
 │
@@ -227,9 +230,11 @@ The discipline is recorded in artifacts that future substrate work must consult.
 |---|---|---|
 | **deletions-ledger.md** | `apparatus/docs/deletions-ledger.md` | Constraint-induced deletions: what got removed, named upstream constraint making removal safe |
 | **deferrals-ledger.md** | `apparatus/docs/deferrals-ledger.md` | Surfaced-but-not-founded candidates: candidate name, gating predicate, un-defer condition |
+| **audit-ledger.md** | `apparatus/docs/audit-ledger.md` | Apparatus-audit record: scope, method, findings, authored actions, surfaced-but-not-acted findings |
+| **findings-ledger.md** | `apparatus/docs/findings-ledger.md` | Cross-locale findings aggregator: per-locale `findings.md` inventory + cross-locale recurrence patterns + bidirectional back-references to predictive-ruleset.md |
 | **coverage-gap-orphan-disposition-*.md** | `apparatus/docs/` | Per-run records of the orphan-disposition protocol applied to ≥3-locale orphan sets |
 
-Both ledgers and the deferrals doc serve the arbiter as primary apparatus-meta read surfaces (the deletions-ledger answers methodology-coherence questions; the deferrals-ledger answers commitment-tracking questions).
+All four ledgers plus the per-run disposition records serve the arbiter as primary apparatus-meta read surfaces. Functional partitioning: deletions-ledger answers methodology-coherence questions; deferrals-ledger answers commitment-tracking questions; audit-ledger answers apparatus-inspection-history questions; findings-ledger answers cross-locale-empirical-discovery questions.
 
 ### Locale-tier discipline
 
@@ -237,7 +242,8 @@ Both ledgers and the deferrals doc serve the arbiter as primary apparatus-meta r
 |---|---|---|
 | **CANDIDATES.md** | `apparatus/locales/CANDIDATES.md` | Tiered queue of prospective locales |
 | **locale manifest** | `apparatus/locales/manifest.json` | Authoritative inventory; ~214 active locales (per Doc 737) |
-| **orphan-disposition-protocol.md** | `apparatus/docs/orphan-disposition-protocol.md` | 6-step protocol with 8 disposition candidates for orphaned locales |
+| **orphan-disposition-protocol.md** | `apparatus/docs/orphan-disposition-protocol.md` | 6-step protocol with 8 disposition candidates for orphaned locales (locale-to-arc subsumption) |
+| **findings-disposition-protocol.md** | `apparatus/docs/findings-disposition-protocol.md` | 6-step protocol with 8 disposition candidates for findings (finding-to-arc-or-standing-rule subsumption); apparatus self-applies its 5-phase pipeline at the finding tier. Composes with orphan-disposition at engagement-wide chapter-close. |
 
 ### Arc tier (multi-locale operational units)
 
