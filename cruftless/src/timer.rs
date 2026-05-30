@@ -11,11 +11,11 @@
 //! Wires through the standard runtime globals path so consumers reach
 //! these via plain `setTimeout(cb, ms)` without imports.
 
-use crate::register::{make_callable, register_method};
+use crate::register::{make_callable, new_object, register_method};
+use rusty_js_runtime::promise::{new_promise, resolve_promise};
 use rusty_js_runtime::value::{Object, ObjectRef};
 use rusty_js_runtime::{Runtime, Value};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// Single registered timer entry.
@@ -221,6 +221,8 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Undefined)
     });
     rt.define_global_property("clearImmediate", Value::Object(clear_im));
+
+    install_node_timer_namespaces(rt);
 }
 
 fn timer_id_from(rt: &Runtime, v: Value) -> Option<u64> {
@@ -232,4 +234,97 @@ fn timer_id_from(rt: &Runtime, v: Value) -> Option<u64> {
         },
         _ => None,
     }
+}
+
+fn delay_arg(args: &[Value], idx: usize) -> u64 {
+    args.get(idx)
+        .and_then(|v| match v {
+            Value::Number(n) if n.is_finite() && *n > 0.0 => Some(*n as u64),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
+fn promise_timer(rt: &mut Runtime, delay: u64, value: Value) -> Value {
+    let promise = new_promise(rt);
+    let resolver = make_callable(rt, "__timers_promises_resolve", move |rt, _args| {
+        resolve_promise(rt, promise, value.clone());
+        Ok(Value::Undefined)
+    });
+    register(Value::Object(resolver), Vec::new(), delay, false);
+    Value::Object(promise)
+}
+
+fn make_iterator_result(rt: &mut Runtime, value: Value, done: bool) -> Value {
+    let result = rt.alloc_object(Object::new_ordinary());
+    rt.object_set(result, "value".into(), value);
+    rt.object_set(result, "done".into(), Value::Boolean(done));
+    Value::Object(result)
+}
+
+fn install_node_timer_namespaces(rt: &mut Runtime) {
+    let timers = new_object(rt);
+    let set_timeout = rt.global_get("setTimeout");
+    let clear_timeout = rt.global_get("clearTimeout");
+    let set_interval = rt.global_get("setInterval");
+    let clear_interval = rt.global_get("clearInterval");
+    let set_immediate = rt.global_get("setImmediate");
+    let clear_immediate = rt.global_get("clearImmediate");
+    rt.object_set(timers, "setTimeout".into(), set_timeout);
+    rt.object_set(timers, "clearTimeout".into(), clear_timeout);
+    rt.object_set(timers, "setInterval".into(), set_interval);
+    rt.object_set(timers, "clearInterval".into(), clear_interval);
+    rt.object_set(timers, "setImmediate".into(), set_immediate);
+    rt.object_set(timers, "clearImmediate".into(), clear_immediate);
+    rt.define_global_property("timers", Value::Object(timers));
+
+    let promises = new_object(rt);
+    register_method(rt, promises, "setTimeout", |rt, args| {
+        let delay = delay_arg(args, 0);
+        let value = args.get(1).cloned().unwrap_or(Value::Undefined);
+        Ok(promise_timer(rt, delay, value))
+    });
+    register_method(rt, promises, "setImmediate", |rt, args| {
+        let value = args.first().cloned().unwrap_or(Value::Undefined);
+        Ok(promise_timer(rt, 0, value))
+    });
+    register_method(rt, promises, "setInterval", |rt, args| {
+        let delay = delay_arg(args, 0).max(1);
+        let value = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let iter = rt.alloc_object(Object::new_ordinary());
+        let next_delay = delay;
+        let next_value = value.clone();
+        register_method(rt, iter, "next", move |rt, _args| {
+            let promise = new_promise(rt);
+            let result_value = next_value.clone();
+            let resolver =
+                make_callable(rt, "__timers_promises_interval_next", move |rt, _args| {
+                    let result = make_iterator_result(rt, result_value.clone(), false);
+                    resolve_promise(rt, promise, result);
+                    Ok(Value::Undefined)
+                });
+            register(Value::Object(resolver), Vec::new(), next_delay, false);
+            Ok(Value::Object(promise))
+        });
+        register_method(rt, iter, "return", |rt, _args| {
+            let promise = new_promise(rt);
+            let result = make_iterator_result(rt, Value::Undefined, true);
+            resolve_promise(rt, promise, result);
+            Ok(Value::Object(promise))
+        });
+        register_method(rt, iter, "@@asyncIterator", |rt, _args| {
+            Ok(rt.current_this())
+        });
+        Ok(Value::Object(iter))
+    });
+    let scheduler = new_object(rt);
+    register_method(rt, scheduler, "wait", |rt, args| {
+        let delay = delay_arg(args, 0);
+        Ok(promise_timer(rt, delay, Value::Undefined))
+    });
+    register_method(rt, scheduler, "yield", |rt, _args| {
+        Ok(promise_timer(rt, 0, Value::Undefined))
+    });
+    rt.object_set(promises, "scheduler".into(), Value::Object(scheduler));
+    rt.define_global_property("timers_promises", Value::Object(promises));
 }

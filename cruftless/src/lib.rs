@@ -154,7 +154,8 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             "node:perf_hooks" | "perf_hooks" => "perf_hooks",
             "node:worker_threads" | "worker_threads" => "events",
             "node:querystring" | "querystring" => "url",
-            "node:timers" | "timers" | "node:timers/promises" | "timers/promises" => "events",
+            "node:timers" | "timers" => "timers",
+            "node:timers/promises" | "timers/promises" => "timers_promises",
             // Ω.5.P53.E5: three more node:* aliases.
             //   node:sys is the deprecated alias of node:util (Node v14+).
             //   node:cluster, node:repl have no analog in a single-process
