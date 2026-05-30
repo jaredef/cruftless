@@ -188,3 +188,17 @@ The standing rule the ledger formalizes: **an audit session that produces classi
 - **Authored actions**: commit (this commit) recording the stability re-run. No CLAUDE.md baseline edit (the number is unchanged).
 - **Surfaced-but-not-acted findings**:
   - Rule 2 (multi-run protocol, ≥5 runs) is conservatively over-specified for fully-deterministic instruments. The test262-sample produces byte-identical results across n=2 runs at zero variance; additional runs add no information. The discipline-cost saved by recognizing determinism at n=2 (~10 minutes saved per additional run, plus the wall-clock for parallel execution) is non-trivial for cluster instruments at this scale. Candidate amendment to Rule 2: "when a measurement instrument's first two runs return byte-identical results, declare the instrument deterministic at the current substrate maturity and report the measurement as the value; require ≥5 runs only when variance > 0 surfaces at any run." Surfaced for future cross-locale corroboration before standing-rule amendment.
+
+### Entry 010 — `findings-disposition-cycle-3-rule-30-promotion` (2026-05-30)
+
+- **Audit type**: findings-disposition.
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10616 ("Do the follow ups").
+- **Scope**: Findings TAECSF.1 (Entry 005) + TABSC.2 (Entry — referenced in TABSC-EXT 1 trajectory) + ASTA.1 (referenced in ASTA-EXT 0 trajectory). Three-instance corroboration of the narrow-dispatcher cascade-revival pattern.
+- **Method**: `apparatus/docs/findings-disposition-protocol.md` Step 3 candidate (4) promote-to-standing-rule. The findings-disposition protocol's §III three-instance threshold (one-more-observation × 2 ≈ 3 cross-locale corroborations) is satisfied by TAECSF-EXT 0 (`typed_array_set_index_checked`) + TABSC-EXT 0/1 (`number_to_raw_bytes` substrate prefix amortization) + ASTA-EXT 0 (`object_set_checked`). All three are independent locales authoring the same engineering shape at different dispatcher sites.
+- **Findings**: **Rule 30 promotion** — Narrow-dispatcher cascade-revival as preferred error-propagation discipline (amends Rule 27 via back-reference per Doc 727 §X append-only).
+- **Authored actions**:
+  - Commit (this commit): `apparatus/docs/predictive-ruleset.md` Rule 30 appended between Rule 29 and Standing instruments; §Status note refreshed to record 30 total rules; `apparatus/docs/findings-ledger.md` Entry 005 Promotion status flipped in-place to standing-rule; Entry 019 appended as back-reference; this audit-ledger entry recorded.
+- **Surfaced-but-not-acted findings**:
+  - DET.4 candidate (test262-sample variance ±1 across n=2 observed post-ASTA-EXT 0) — investigation deferred to a follow-up rung within this same session per the keeper directive; sample run 3 currently in background to bound the variance.
+  - test262-full re-run deferred per the session's wall-clock budget; flagged for the next session.
+  - Sibling Doc-721 sub-bundles (Map/Set frozen-receiver; for-of iterator-protocol; Promise dispatcher receiver-validation) deferred to next session as new substrate-spawn proposals.
