@@ -138,6 +138,73 @@ async function fetchInbox() {
   return await resp.json();
 }
 
+async function fetchOutbox() {
+  let url = `http://${SIDECAR_HOST}:${SIDECAR_PORT}/local/outbox?role=${encodeURIComponent(ROLE)}`;
+  if (INSTANCE_ID) url += `&instance_id=${encodeURIComponent(INSTANCE_ID)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    throw new Error(`sidecar outbox returned HTTP ${resp.status}`);
+  }
+  return await resp.json();
+}
+
+function outboxMessages(outbox) {
+  if (!outbox || typeof outbox !== "object") return [];
+  for (const key of ["messages", "outbox", "data", "items"]) {
+    if (Array.isArray(outbox[key])) return outbox[key];
+  }
+  return [];
+}
+
+function findTerminalReport(outbox, directiveId) {
+  return outboxMessages(outbox).find((msg) => {
+    if (!msg || typeof msg !== "object") return false;
+    const recipient = String(msg.recipient ?? "").toLowerCase();
+    if (recipient !== "helmsman") return false;
+    if (msg.related_to !== directiveId) return false;
+    return Boolean(msg.message_id);
+  }) ?? null;
+}
+
+function activeEntries(ledger) {
+  return Object.entries(ledger).filter(([, entry]) => entry?.state !== "COMPLETED");
+}
+
+function statusType(status) {
+  if (typeof status === "string") return status;
+  if (status && typeof status === "object" && typeof status.type === "string") {
+    return status.type;
+  }
+  return null;
+}
+
+async function markTerminalReports(active) {
+  const live = activeEntries(active).filter(([, entry]) => entry?.requires_helmsman_final !== false);
+  if (live.length === 0) return false;
+  let outbox;
+  try {
+    outbox = await fetchOutbox();
+  } catch (err) {
+    await log(`WARN: terminal-report outbox check failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+  let changed = false;
+  for (const [id, entry] of live) {
+    if (entry.helmsman_final_message_id) continue;
+    const terminal = findTerminalReport(outbox, id);
+    if (!terminal) continue;
+    entry.helmsman_final_message_id = terminal.message_id;
+    entry.terminal_report_sent_at =
+      terminal.server_timestamp ?? terminal.created_at ?? new Date().toISOString();
+    entry.terminal_report_related_to = terminal.related_to ?? id;
+    entry.terminal_report_slug = terminal.slug ?? null;
+    entry.state = "COMPLETED";
+    changed = true;
+    await log(`terminal report observed directive=${id} helmsman_message=${terminal.message_id}`);
+  }
+  return changed;
+}
+
 function parseWsUrl(raw) {
   const url = new URL(raw);
   if (url.protocol !== "ws:") {
@@ -318,15 +385,24 @@ async function codexRequest(method, params) {
 }
 
 async function wakeCodex(directive) {
+  const beforeStatus = await codexThreadStatus();
+  if (beforeStatus === "systemError") {
+    throw new Error(`target thread ${THREAD_ID} is systemError before injection`);
+  }
   await codexRequest("thread/resume", {
     threadId: THREAD_ID,
     cwd: REPO_ROOT,
   });
-  return await codexRequest("turn/start", {
+  const result = await codexRequest("turn/start", {
     threadId: THREAD_ID,
     input: [{ type: "text", text: directive }],
     cwd: REPO_ROOT,
   });
+  const afterStatus = await codexThreadStatus();
+  if (afterStatus === "systemError") {
+    throw new Error(`target thread ${THREAD_ID} entered systemError after turn/start`);
+  }
+  return { result, status: afterStatus };
 }
 
 async function codexThreadStatus() {
@@ -340,7 +416,7 @@ async function codexThreadStatus() {
         (result.thread && result.thread.status) ||
         result.status ||
         null;
-      return status;
+      return statusType(status);
     }
     return null;
   } catch (err) {
@@ -358,16 +434,29 @@ async function cycle() {
   const seenSet = new Set(seen);
   const fresh = messages.filter((msg) => !seenSet.has(msg.message_id));
 
-  // Active-directive ledger maintenance: retire any tracked directives
-  // that are no longer PENDING (resolver has acked or remote endpoint
-  // transitioned them). v1 retirement check is inbox-absence; v2 follow-
-  // up will use sidecar GET /local/messages/<id> for exact remote state
-  // (per watcher's design recommendation).
   const active = await readActive();
-  let activeChanged = false;
-  for (const id of Object.keys(active)) {
-    if (!pendingIds.has(id)) {
+  let activeChanged = await markTerminalReports(active);
+
+  for (const [id, entry] of Object.entries(active)) {
+    if (!entry || typeof entry !== "object") {
       delete active[id];
+      activeChanged = true;
+      continue;
+    }
+    if (!entry.state) {
+      entry.state = entry.helmsman_final_message_id ? "COMPLETED" : "ACTIVE";
+      activeChanged = true;
+    }
+    if (entry.requires_helmsman_final === undefined) {
+      // Pre-terminal-invariant ledger entries did not carry this field.
+      // Enforce the new terminal edge only if the original directive is
+      // still PENDING at upgrade time; otherwise mark the historical entry
+      // completed so bridge restarts do not resurrect stale directives.
+      entry.requires_helmsman_final = pendingIds.has(id);
+      if (!entry.requires_helmsman_final && !entry.helmsman_final_message_id) {
+        entry.state = "COMPLETED";
+        entry.legacy_completed_without_terminal_report = true;
+      }
       activeChanged = true;
     }
   }
@@ -376,7 +465,14 @@ async function cycle() {
     const latest = fresh[fresh.length - 1];
     const latestTag = `${latest.sender}/${latest.intent}/${latest.slug}`;
     const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
-    const directive = `**CAACP NEW** role=${ROLE}${instance} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.`;
+    const directive = `**CAACP NEW** role=${ROLE}${instance} count=${messages.length} latest=${latestTag}. Check sidecar inbox before continuing.
+
+Run to CAACP quiescence before yielding:
+1. Poll the sidecar inbox for this exact role/instance and read every PENDING message.
+2. For each PENDING message, either perform the requested same-turn work and ack/respond RESOLVED, or send a response naming the concrete blocker.
+3. Send a fresh outbound final status message to Helmsman with related_to=<inbound-message-id>; ack bodies do not satisfy this terminal-report obligation.
+4. Poll the inbox again after the last ack/response; if new PENDING messages appeared, repeat steps 2-3.
+5. Only final when the inbox has no actionable PENDING messages, the Helmsman terminal message_id has been emitted for each handled directive, required bridge/process state is verified, and your final answer includes message IDs / ack IDs / process IDs or the blocker evidence.`;
 
     await wakeCodex(directive);
     await writeSeen([...seen, ...fresh.map((msg) => msg.message_id)]);
@@ -391,6 +487,14 @@ async function cycle() {
         last_continue_at: null,
         continue_attempts: 0,
         directive_tag: `${msg.sender}/${msg.intent}/${msg.slug}`,
+        source_message_ids: [msg.message_id],
+        resolver_instance_id: INSTANCE_ID ?? null,
+        requires_helmsman_final: true,
+        helmsman_final_message_id: null,
+        terminal_report_sent_at: null,
+        terminal_report_related_to: null,
+        terminal_report_slug: null,
+        state: "ACTIVE",
       };
     }
     activeChanged = true;
@@ -403,7 +507,12 @@ async function cycle() {
   // window, re-inject a CONTINUE turn. Only runs when there's at least
   // one tracked-pending directive — saves a thread/read call per cycle
   // when nothing is in flight.
-  const tracked = Object.entries(active).filter(([id]) => pendingIds.has(id));
+  activeChanged = (await markTerminalReports(active)) || activeChanged;
+
+  const tracked = activeEntries(active).filter(([, entry]) => {
+    if (entry?.requires_helmsman_final === false) return false;
+    return !entry?.helmsman_final_message_id;
+  });
   if (tracked.length > 0) {
     const status = await codexThreadStatus();
     if (status === "systemError") {
@@ -424,7 +533,11 @@ async function cycle() {
         if (!eligibleByInject || !eligibleByInterval) continue;
 
         const instance = INSTANCE_ID ? ` instance_id=${INSTANCE_ID}` : "";
-        const continueDirective = `**CAACP CONTINUE** role=${ROLE}${instance} target_directive_id=${id} attempt=${entry.continue_attempts + 1}/${CONTINUE_MAX_ATTEMPTS} reason=stop-before-telos. Resume directive per §V.4 same-turn imperative; the original directive (${entry.directive_tag}) is still PENDING in your inbox.`;
+        const reason = pendingIds.has(id) ? "stop-before-telos" : "missing-helmsman-final";
+        const inboxState = pendingIds.has(id)
+          ? `the original directive (${entry.directive_tag}) is still PENDING in your inbox`
+          : `the original directive (${entry.directive_tag}) is no longer PENDING, but no fresh outbound terminal report to Helmsman has been observed`;
+        const continueDirective = `**CAACP CONTINUE** role=${ROLE}${instance} target_directive_id=${id} attempt=${entry.continue_attempts + 1}/${CONTINUE_MAX_ATTEMPTS} reason=${reason}. Resume directive per §V.4 same-turn imperative; ${inboxState}. Send a fresh outbound final status to Helmsman with related_to=${id} before yielding.`;
         try {
           await wakeCodex(continueDirective);
           entry.continue_attempts += 1;

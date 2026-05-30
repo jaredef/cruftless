@@ -21,6 +21,9 @@
 #   inbox <role> [instance_id]
 #     GET /local/inbox?role=...&instance_id=...
 #
+#   outbox <role> [instance_id]
+#     GET /local/outbox?role=...&instance_id=...
+#
 #   health
 #     GET /local/health — sidecar status + registered agents.
 #
@@ -42,6 +45,7 @@ Usage: caacp-sidecar.sh <subcommand> [args...]
   send     <sender_token> <recipient> <intent> <slug> [related_to]    (body on stdin)
   ack      <ack_author_token> <original_message_id> <ack_state> <ack_slug>  (body on stdin)
   inbox    <role> [instance_id]
+  outbox   <role> [instance_id]
   health
 EOF
     exit 1
@@ -111,6 +115,15 @@ cmd_inbox() {
     echo
 }
 
+cmd_outbox() {
+    local role="${1:-}" instance_id="${2:-}"
+    [[ -n "$role" ]] || usage
+    local url="${BASE}/local/outbox?role=${role}"
+    [[ -n "$instance_id" ]] && url="${url}&instance_id=${instance_id}"
+    curl -sf "$url"
+    echo
+}
+
 cmd_health() {
     curl -sf "${BASE}/local/health"
     echo
@@ -123,6 +136,7 @@ case "$sub" in
     send)     cmd_send     "$@" ;;
     ack)      cmd_ack      "$@" ;;
     inbox)    cmd_inbox    "$@" ;;
+    outbox)   cmd_outbox   "$@" ;;
     health)   cmd_health        ;;
     *)        usage ;;
 esac

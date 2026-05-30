@@ -243,6 +243,24 @@ async function handleInbox(url: URL): Promise<Response> {
   return json(200, await remoteResp.json());
 }
 
+async function handleOutbox(url: URL): Promise<Response> {
+  const role = url.searchParams.get("role");
+  const instance_id = url.searchParams.get("instance_id");
+  if (!role) return json(400, { error: "missing role" });
+
+  // Find a registered agent whose role+instance match (for the per-token call).
+  const agent = Object.values(registry).find(a =>
+    a.role === role && (instance_id ? a.instance_id === instance_id : true),
+  );
+  if (!agent) return json(404, { error: "no registered agent for role/instance" });
+
+  const remoteResp = await callRemote("GET", `/outbox/${role}`, undefined, agent.token);
+  if (!remoteResp.ok) {
+    return json(remoteResp.status, { error: "remote outbox failed", remote: await remoteResp.text() });
+  }
+  return json(200, await remoteResp.json());
+}
+
 async function handleHealth(): Promise<Response> {
   return json(200, {
     status: "ok",
@@ -331,6 +349,7 @@ const server = Bun.serve({
       if (req.method === "POST" && p === "/local/send") return await handleSend(req);
       if (req.method === "POST" && p === "/local/ack") return await handleAck(req);
       if (req.method === "GET" && p === "/local/inbox") return await handleInbox(url);
+      if (req.method === "GET" && p === "/local/outbox") return await handleOutbox(url);
       if (req.method === "GET" && p === "/local/health") return await handleHealth();
       return json(404, { error: "unknown sidecar path" });
     } catch (e: any) {
