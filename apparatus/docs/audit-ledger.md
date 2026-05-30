@@ -159,3 +159,21 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - The protocol's §III validation discipline ("at its second authoring it must pass through itself") is partially exercised here: cycle 2 is the protocol's first live use after the protocol's own authoring (commit 496e4d21). No protocol amendment surfaced this cycle; the §III self-application coherence holds at the protocol's first real-state test.
   - TAECSF.1 (narrow dispatcher beats wide signature lift) remains at one-more-observation per cycle 1's disposition; this cycle does not flip it. Second observation candidate: a future Result-thread-through-non-Result-callsite work in the engine (e.g., template-literal ToNumber, RegExp dispatch).
   - BBND yield-analysis (Entry 006) remains deferred per cycle 1's disposition; this cycle does not flip it. Awaits a non-parser-early-error locale exhibiting the constraint-stacking multiplier shape.
+
+### Entry 008 — `test262-sample-canonical-2026-05-30` (2026-05-30)
+
+- **Audit type**: ledger-status-correctness (variant: canonical-measurement re-baselining).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10606 ("Test 262 sample").
+- **Scope**: `scripts/test262-sample/run-sample.sh` against current main post-TABSC-EXT 1 (commit 944a22dd).
+- **Method**: ran the canonical sample with default PARALLEL=2 per the script's discipline; binary auto-refresh from `target/release/cruft` confirmed; sample size 7750 tests (7697 emitted, 7681 runnable, 16 SKIP per frontmatter feature flags).
+- **Findings**:
+  - **88.7% runnable pass rate** (6816 PASS / 865 FAIL / 16 SKIP / 7681 runnable).
+  - **+4.4 percentage points over the 2026-05-27 canonical** (84.3%; 6443/7647).
+  - **+373 absolute PASS** (6443 → 6816) across the 3-day window.
+  - The delta compounds today's session work: rules 17-22 consolidation; TAECSF-EXT 0 BigInt-TA Result-threaded coercion; TABSC-EXT 0 byte-storage architectural rectification (the load-bearing rung — closed the architectural constraint blocking spec-faithful coercion); TAECSF cascade-revival of integer-kind + Float32-NaN sub-substrates without TAECSF-side work; TABSC-EXT 1 DataView coercion-faithfulness via substrate-prefix amortization.
+- **Authored actions**:
+  - Commit (this commit): CLAUDE.md + AGENTS.md §Measurement baselines test262-sample line refreshed with 88.7% + delta + attribution to session work; this audit-ledger entry recorded.
+- **Surfaced-but-not-acted findings**:
+  - The DataView coercion cells flagged at TABSC-EXT 1 decision.md's "named follow-up" did surface in the sample re-run — part of the +373 PASS shift. The flagged cells were indeed outside the curated TAMM/TAWR/diff-prod pools but were in the test262-sample's broader surface, exactly as the decision.md predicted.
+  - test262-full re-measurement remains pending (last canonical 67.6% per 2026-05-28; likely advanced similarly).
+  - Cross-runtime bench (CRB) re-measurement not run this session.
