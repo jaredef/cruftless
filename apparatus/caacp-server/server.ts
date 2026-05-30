@@ -27,6 +27,11 @@
 //   GET  /local/outbox?role=<role>&instance_id=<instance>
 //     → forwarded GET /api/caacp/v1/outbox/<role> via per-agent token
 //   GET  /local/health → {status, registered_agents, last_poll_at}
+//   POST /local/bridge-announce {host, pid, started_at, runners: [{role, instance_id, thread_id}]}
+//     → 201 {bridge_id, registered_runner_count}
+//   POST /local/bridge-shutdown {pid}
+//     → 200 {bridge_id, removed: true|false}
+//   GET  /local/bridges → {bridges: [{pid, host, started_at, runners}]}
 //
 // Configuration via env:
 //   CAACP_SIDECAR_PORT      default 7777
@@ -46,6 +51,7 @@ const POLL_INTERVAL_MS = parseInt(process.env.CAACP_POLL_INTERVAL_MS ?? "5000", 
 
 const DATA_DIR = path.resolve(import.meta.dir, "./data");
 const REGISTRY_FILE = path.join(DATA_DIR, "agent-registry.json");
+const BRIDGES_DIR = path.join(DATA_DIR, "active-bridges");
 
 if (!ADMIN_TOKEN) {
   console.error("[caacp-sidecar] FATAL: CAACP_TOKEN_VERIFIER unset. Cannot register agents with jaredfoy.com.");
@@ -261,6 +267,71 @@ async function handleOutbox(url: URL): Promise<Response> {
   return json(200, await remoteResp.json());
 }
 
+type BridgeRunner = { role: string; instance_id: string | null; thread_id: string };
+type BridgeRecord = { bridge_id: string; pid: number; host: string; started_at: string; runners: BridgeRunner[] };
+
+function bridgeIdFor(host: string, pid: number): string {
+  return `${host}-${pid}`;
+}
+
+function bridgeFileFor(bridgeId: string): string {
+  return path.join(BRIDGES_DIR, `${bridgeId}.json`);
+}
+
+async function handleBridgeAnnounce(req: Request): Promise<Response> {
+  const body = await req.json().catch(() => null);
+  if (!body) return json(400, { error: "invalid JSON body" });
+  const { host, pid, started_at, runners } = body as any;
+  if (typeof host !== "string" || typeof pid !== "number" || typeof started_at !== "string" || !Array.isArray(runners)) {
+    return json(400, { error: "expected {host:string, pid:number, started_at:string, runners:array}" });
+  }
+  for (const r of runners) {
+    if (!r || typeof r.role !== "string" || typeof r.thread_id !== "string") {
+      return json(400, { error: "each runner needs role:string + thread_id:string + optional instance_id:string|null" });
+    }
+  }
+  await fs.mkdir(BRIDGES_DIR, { recursive: true });
+  const bridge_id = bridgeIdFor(host, pid);
+  const record: BridgeRecord = {
+    bridge_id, pid, host, started_at,
+    runners: runners.map((r: any) => ({ role: r.role, instance_id: r.instance_id ?? null, thread_id: r.thread_id })),
+  };
+  await fs.writeFile(bridgeFileFor(bridge_id), JSON.stringify(record, null, 2), "utf8");
+  logInfo("bridge announced", { bridge_id, runner_count: record.runners.length });
+  return json(201, { bridge_id, registered_runner_count: record.runners.length });
+}
+
+async function handleBridgeShutdown(req: Request): Promise<Response> {
+  const body = await req.json().catch(() => null);
+  if (!body) return json(400, { error: "invalid JSON body" });
+  const { host, pid } = body as any;
+  if (typeof host !== "string" || typeof pid !== "number") {
+    return json(400, { error: "expected {host:string, pid:number}" });
+  }
+  const bridge_id = bridgeIdFor(host, pid);
+  let removed = false;
+  try {
+    await fs.unlink(bridgeFileFor(bridge_id));
+    removed = true;
+  } catch {}
+  logInfo("bridge shutdown", { bridge_id, removed });
+  return json(200, { bridge_id, removed });
+}
+
+async function handleBridgesList(): Promise<Response> {
+  await fs.mkdir(BRIDGES_DIR, { recursive: true });
+  const entries = await fs.readdir(BRIDGES_DIR).catch(() => [] as string[]);
+  const bridges: BridgeRecord[] = [];
+  for (const name of entries) {
+    if (!name.endsWith(".json")) continue;
+    try {
+      const raw = await fs.readFile(path.join(BRIDGES_DIR, name), "utf8");
+      bridges.push(JSON.parse(raw));
+    } catch {}
+  }
+  return json(200, { bridges });
+}
+
 async function handleHealth(): Promise<Response> {
   return json(200, {
     status: "ok",
@@ -351,6 +422,9 @@ const server = Bun.serve({
       if (req.method === "GET" && p === "/local/inbox") return await handleInbox(url);
       if (req.method === "GET" && p === "/local/outbox") return await handleOutbox(url);
       if (req.method === "GET" && p === "/local/health") return await handleHealth();
+      if (req.method === "POST" && p === "/local/bridge-announce") return await handleBridgeAnnounce(req);
+      if (req.method === "POST" && p === "/local/bridge-shutdown") return await handleBridgeShutdown(req);
+      if (req.method === "GET" && p === "/local/bridges") return await handleBridgesList();
       return json(404, { error: "unknown sidecar path" });
     } catch (e: any) {
       return json(500, { error: e.message ?? String(e) });

@@ -1,0 +1,20 @@
+{
+  "default_poll_interval_seconds": 5,
+  "runners": [
+    {
+      "role": "substrate-resolver",
+      "instance_id": "codex-r1-pop-os-EXAMPLE",
+      "thread_id": "019e0000-0000-0000-0000-000000000001"
+    },
+    {
+      "role": "substrate-resolver",
+      "instance_id": "codex-r2-pop-os-EXAMPLE",
+      "thread_id": "019e0000-0000-0000-0000-000000000002"
+    },
+    {
+      "role": "helmsman",
+      "instance_id": null,
+      "thread_id": "019e0000-0000-0000-0000-000000000003"
+    }
+  ]
+}

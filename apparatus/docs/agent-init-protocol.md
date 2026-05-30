@@ -63,11 +63,13 @@ INSTANCE_ID="<from Step 3>"
 # notification file at apparatus/caacp-server/data/inbound-substrate-resolver-<instance>.json.
 
 curl -sX POST -H "Content-Type: application/json" \
-  -d "{\"role\":\"substrate-resolver\",\"instance_id\":\"$INSTANCE_ID\"}" \
+  -d "{\"role\":\"substrate-resolver\",\"instance_id\":\"$INSTANCE_ID\",\"callback_url\":null}" \
   http://127.0.0.1:7777/local/register
 ```
 
-Returns:
+Accepted fields (per `apparatus/caacp-server/server.ts::handleRegister`): `role` (required), `instance_id` (required per §I), `callback_url` (optional; when set, sidecar POSTs `{role, instance_id, new_message_ids, notification_file}` on each new-message arrival). No other fields are accepted.
+
+Returns (HTTP 201):
 
 ```json
 {
@@ -76,9 +78,11 @@ Returns:
   "instance_id": "<your-instance>",
   "sidecar_host": "127.0.0.1",
   "sidecar_port": 7777,
-  "notification_file": "/.../apparatus/caacp-server/data/inbound-substrate-resolver-<instance>.json"
+  "notification_file": "/.../apparatus/caacp-server/data/inbound-<role>-<instance>.json"
 }
 ```
+
+Notification-file naming: `inbound-<role>-<instance_id>.json` when `instance_id` is set; `inbound-<role>.json` when not. The file is initialized empty (`{"messages":[]}`) at registration so file-watchers can attach before the first poll.
 
 Save the `token` to your session's working memory (do not commit to git; do not log in a way that lands in the repo). Save the `notification_file` path.
 
@@ -111,17 +115,39 @@ To dispatch to another agent (peer substrate-resolver, helmsman, arbiter, watche
 # body is the message content; computed sha is handled by the sidecar
 curl -sX POST -H "Content-Type: application/json" \
   -d "{
+    \"sender\": \"<your-role>\",
     \"sender_token\": \"$YOUR_TOKEN\",
     \"recipient\": \"<role>\",
     \"intent\": \"request|notification|response|broadcast|veto-pending\",
     \"slug\": \"<short-descriptor>\",
     \"body\": \"<message body as string>\",
-    \"related_to\": null
+    \"related_to\": null,
+    \"target_instance_id\": null
   }" \
   http://127.0.0.1:7777/local/send
 ```
 
-Returns `{message_id, state: "PENDING", server_timestamp}`. Record the `message_id` if you intend to await an acknowledgment.
+Accepted fields (per `handleSend`):
+- `sender_token` (required) — your registered token from Step 4.
+- `sender` (optional, validated) — if present, MUST equal the role bound to `sender_token`; mismatch returns 403.
+- `recipient` (required) — the destination role.
+- `intent` (required) — one of `request | notification | response | broadcast | veto-pending`.
+- `slug` (required) — short descriptor.
+- `body` (required) — message content as string; sidecar computes `content_sha`.
+- `related_to` (optional) — message_id this message responds to.
+- `target_instance_id` (optional, string-or-null) — body-level per-instance addressing for shared-role inbox semantics. **Structurally enforced as of commit `31ff99e2`** (sidecar forwards the field to the endpoint), superseding the §V.7 interim non-target-bounce discipline.
+
+Returns HTTP 201 with `{message_id, state: "PENDING", server_timestamp, ...}` (full shape per jaredfoy.com endpoint). Record the `message_id` if you intend to await an acknowledgment.
+
+To read your inbox (PENDING messages addressed to you):
+
+```sh
+curl -sG http://127.0.0.1:7777/local/inbox \
+  --data-urlencode "role=<your-role>" \
+  --data-urlencode "instance_id=<your-instance>"
+```
+
+`instance_id` is optional but recommended when multiple instances of the same role are registered; without it the sidecar selects the first matching agent.
 
 To acknowledge a message you received:
 
@@ -285,7 +311,11 @@ Why a carve-out instead of routing through helmsman/a resolver:
 
 Failure mode this rule prevents: apparatus artifacts (fleet-state snapshots, deputy retrospectives) authored by deputy but stranded as untracked files because no commit path exists. Observed in the 2026-05-29 topology round when deputy fleet-state files from 2026-05-28T21:08 + T21:47 had been waiting hours for a commit path that §V.6 (as originally written) didn't provide.
 
-### V.7 Bounce-ack must not consume directives addressed to other instances (mandatory; per keeper Telegram 10372, surfaced by watcher 2026-05-29 investigation)
+### V.7 Bounce-ack must not consume directives addressed to other instances (superseded by `target_instance_id` structural fix; retained for clones predating commit `31ff99e2`)
+
+**Status as of 2026-05-29**: the structural fix landed. `/local/send`, `/local/inbox`, and the upstream endpoint now accept and enforce `target_instance_id` (sidecar commit `31ff99e2 caacp sidecar: forward target instance id`). Senders SHOULD always set `target_instance_id` when addressing a specific instance; the endpoint then admits terminal-state acks only from the matching instance, so non-target bounces can no longer consume the directive. The interim discipline below is retained as the failure-mode reference and as the fallback for clones that have not yet picked up `31ff99e2`.
+
+
 
 When a directive is sent to `recipient=<role>` with body-level `instance_id=<target>` targeting a specific instance, **non-target instances MUST NOT call `/local/ack` with `ack_state=RESOLVED`** on the original message. The CAACP endpoint currently tracks message state globally (not per-instance); a RESOLVED ack from a non-target instance transitions the message globally, consuming it for the target instance — whose `/local/inbox` poll then returns `{messages: []}`. The target never sees the directive.
 
@@ -298,9 +328,9 @@ The correct discipline for non-target instances:
 
 The original directive remains in PENDING state until the actual target instance processes it, at which point the target's RESOLVED ack correctly transitions the global state.
 
-**Why this discipline (interim)**:
+**Why this discipline (historical interim)**:
 
-The structural fix is `target_instance_id` on `/local/send` + `/local/inbox` + `/local/ack` so the endpoint can enforce that terminal state transitions on targeted messages are accepted only from matching role+instance. That fix is pending (per keeper 10372, item 1: keeper-authored endpoint schema change; item 2: substrate-resolver-led sidecar update once endpoint accepts the new field). Until both land, the discipline above prevents recurrence of the failure mode by keeping non-target acks out of the state-transition path.
+The structural fix is `target_instance_id` on `/local/send` + `/local/inbox` + `/local/ack` so the endpoint can enforce that terminal state transitions on targeted messages are accepted only from matching role+instance. **Both items landed** (keeper-authored endpoint schema change + sidecar update at commit `31ff99e2`). The discipline below remains the correct behavior for any clone/session predating that commit, and is the recovery path if a non-target ack is observed to consume a directive (re-dispatch with a fresh `message_id` to the actual target).
 
 **Failure mode this rule prevents** (per 2026-05-29 R3 PIND Rung 4a delivery miss):
 - Helmsman dispatched directive `ac77efff` to substrate-resolver, body-targeted R3.
