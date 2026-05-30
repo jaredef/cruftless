@@ -21960,23 +21960,27 @@ fn data_view_set_number(
     let n = rt.coerce_to_number(&value)?;
     let mut bytes = [0_u8; 8];
     if float {
+        // Float kinds use Rust's f32/f64 casts which are spec-correct for
+        // floats; no modular reduction needed.
         if byte_count == 4 {
             bytes[0..4].copy_from_slice(&(n as f32).to_le_bytes());
         } else {
             bytes.copy_from_slice(&n.to_le_bytes());
         }
-    } else if signed {
-        match byte_count {
-            1 => bytes[0] = n as i8 as u8,
-            2 => bytes[0..2].copy_from_slice(&(n as i16).to_le_bytes()),
-            _ => bytes[0..4].copy_from_slice(&(n as i32).to_le_bytes()),
-        }
     } else {
-        match byte_count {
-            1 => bytes[0] = n as u8,
-            2 => bytes[0..2].copy_from_slice(&(n as u16).to_le_bytes()),
-            _ => bytes[0..4].copy_from_slice(&(n as u32).to_le_bytes()),
-        }
+        // TABSC-EXT 1: spec-modular ToIntN/ToUintN per ECMA-262 §7.1.6/§7.1.8
+        // via the byte-storage helper (TABSC-EXT 0 substrate prefix). Rust's
+        // saturating `as` cast diverges from spec on overflow (e.g.,
+        // `300_f64 as u8` saturates to 255 where spec yields 44 via mod 256).
+        let kind = match (signed, byte_count) {
+            (true, 1) => "Int8Array",
+            (false, 1) => "Uint8Array",
+            (true, 2) => "Int16Array",
+            (false, 2) => "Uint16Array",
+            (true, _) => "Int32Array",
+            (false, _) => "Uint32Array",
+        };
+        bytes = abstract_ops::number_to_raw_bytes(kind, &Value::Number(n));
     }
     let little_endian = data_view_little_endian(args, 2);
     let abs = view.byte_offset.saturating_add(offset);
