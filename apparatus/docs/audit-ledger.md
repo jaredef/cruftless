@@ -77,3 +77,21 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - JIT findings.md rules 16–22 remain unconsolidated to `apparatus/docs/predictive-ruleset.md`; recommended as a follow-up consolidation pass (separate audit + apparatus-tier edit).
   - TAECSF.1 remains trajectory-embedded; per per-locale convention extraction to `pilots/ta-element-coercion-spec-faithful/findings.md` defers until the second productive rung lands in that locale.
   - The findings-ledger is not yet wired into CLAUDE.md §Required agent reading or `apparatus/docs/repository-apparatus.md` enumeration; flagged for keeper direction in parallel with audit-ledger's same gap.
+
+### Entry 003 — `findings-disposition-cycle-1` (2026-05-30)
+
+- **Audit type**: findings-disposition (new type; formalized by `apparatus/docs/findings-disposition-protocol.md` introduced in this same commit).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10570 ("create and formalize a apparatus tier heuristics that's based on the methodology of the apparatus itself self applying to the findings so that we can then either create new arcs or integrate the findings into existing arcs").
+- **Scope**: all 10 entries of `apparatus/docs/findings-ledger.md` (Entries 001–010), authored at commit d904702b.
+- **Method**: apparatus self-application — the 5-phase substrate-shaped-work pipeline (Rule 11 spawn + Rule 23 baseline-inspect + Rule 24 Pin-Art probe + Rule 13 revert-if-negative + Rule 15 chapter-close-inspect) applied at the finding tier with findings as cells and arcs / standing rules as lifted substrates. Eight disposition candidates tested in order per finding (integrate-existing-arc, integrate-scaffolded-arc, lift-to-new-arc, promote-to-standing-rule, relocate-to-apparatus-pilot, lattice-meet-annotation, defer-with-cross-reference, close-as-locale-singleton). Protocol mirrors `apparatus/docs/orphan-disposition-protocol.md` at the finding subsumption boundary.
+- **Findings**:
+  - **Dispositions assigned**: 4 lattice-meet-annotation (Entries 002, 003, 004 + 001 close-as-canonical-reference); 4 close-as-promoted (Entries 007, 008, 009, 010 — all promoted-to-standing-rule status already covered); 2 defer-with-cross-reference (Entries 005 TAECSF.1, 006 BBND yield-analysis — both awaiting second cross-locale corroboration before standing-rule promotion).
+  - **Cross-finding pattern observed**: Pattern F.1 (finding-already-promoted-with-bidirectional-back-reference) instance count = 3 at this cycle (Entries 002 + 003 + 004). Confirms F.1 as steady-state pattern when canonical-ledger discipline is healthy.
+  - **No new arcs scaffolded at cycle 1** — all findings are either already promoted to standing rules + JIT canonical addenda or below promotion-readiness threshold.
+  - **Next-cycle predictions**: TAECSF.1 → Rule 27 (or post-16-22-consolidation number) on second corroboration of dispatcher-over-lift heuristic; BBND yield-analysis → Rule 28 (or post-consolidation number) on second corroboration of constraint-stacking multiplier.
+- **Authored actions**:
+  - Commit (this commit): introduce `apparatus/docs/findings-disposition-protocol.md`; record cycle 1 worked application in §V of that doc; record this audit-ledger entry.
+- **Surfaced-but-not-acted findings**:
+  - Predictive-ruleset consolidation gap (rules 16–22 in JIT Addenda XII–XIII not yet folded into `apparatus/docs/predictive-ruleset.md`) carries forward from audit-ledger Entry 002; addressing requires a separate apparatus-tier consolidation pass.
+  - The protocol is not yet wired into CLAUDE.md / AGENTS.md §Substrate-shaped-work discipline §Phase 5 chapter-close-inspect pointer, nor into `apparatus/docs/repository-apparatus.md` §III standing-discipline-artifact list. Same wiring gap as audit-ledger (Entry 001 §Surfaced) and findings-ledger (Entry 002 §Surfaced). Three apparatus-tier documents now share the same not-yet-wired status; recommend a single consolidation pass.
+  - `apparatus/docs/arc-as-coordinate.md` §F event-log class for "findings-disposition annotation" is referenced by the protocol but not yet added to arc-as-coordinate.md itself.
