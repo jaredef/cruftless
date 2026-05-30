@@ -52,6 +52,7 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a gene
 | `pilots/rusty-js-jit/osr/findings.md` | OSR.1, OSR.2 | OSR invoke calling-convention + loop-boundary; promoted as Findings VIII.2 + VIII.3. |
 | `pilots/rusty-js-jit/top-level/findings.md` | TL.1, TL.2 | Whole-body bail bounds + Φ value-domain; promoted as Findings VII.2 + VII.3. |
 | `pilots/parser-early-error-residual/block-bound-names-dup/findings.md` | BBND yield-analysis | Five-condition multiplier; non-standard structure (yield-analysis rather than discrete findings). Standing-rule-16 candidate pending corpus Doc 743 corroboration. |
+| `pilots/array-strict-throw-discipline/findings.md` | ASTA.1, ASTA.2 | ASTA.1 = narrow-dispatcher cascade-revival (promoted to Rule 30 at cycle-3); ASTA.2 = parallel-emit-site throw-discipline drift (Rule 20 compiler-tier specialization candidate; one-more-observation). Extracted 2026-05-30 after ASTA-EXT 1 landed (locale's second productive rung). |
 
 Trajectory-embedded findings discovered but not yet extracted to a `findings.md`:
 
@@ -266,3 +267,27 @@ Trajectory-embedded findings discovered but not yet extracted to a `findings.md`
   - Increase per-test timeout from 10s to 15s or 20s; reduces the edge for tests near the cap; minor wall-clock cost.
   - Identify the specific test(s) that hit the timeout edge; pin them via a fixed test-order or pre-execute them serially before the parallel sweep.
   - Hash-pinning per `measurement-determinism-prospective` doc §V.2.e — a hash mismatch flag at byte-equivalent counts would distinguish "harness dropped a test" from "engine produced different output."
+
+### Entry 021 — ASTA.1 + ASTA.2 findings.md extraction + consolidation (2026-05-30)
+
+- **Pattern name**: per-locale findings.md extraction at locale's second productive rung (per-locale convention).
+- **Locales corroborating**: `pilots/array-strict-throw-discipline/` (ASTA.1 + ASTA.2 extracted to findings.md after ASTA-EXT 1 landed).
+- **Class**: apparatus-tier (per-locale findings.md extraction discipline).
+- **Body summary**: per the per-locale findings.md extraction convention (see Entry 005 TAECSF.1 precedent + the audit-ledger Entry 002 surfaced finding), `findings.md` extraction is due when a locale's second productive rung lands. ASTA-EXT 1 (commit 371caf79) is the locale's second productive rung; this consolidation extracts ASTA.1 (narrow-dispatcher cascade-revival, contributing to Rule 30) + ASTA.2 (parallel-emit-site throw-discipline drift, Rule 20 compiler-tier specialization candidate) into the locale's first `findings.md`.
+- **Promotion status**: ASTA.1 → standing-rule (Rule 30 at cycle-3); ASTA.2 → trajectory-and-findings-embedded (one-more-observation pending second cross-locale instance of parallel-emit-site drift).
+- **Composes with**: Rule 20 (substrate-discipline coherence drift across parallel helpers — ASTA.2 specializes at compiler-emit-site tier); Rule 30 (narrow-dispatcher cascade-revival — ASTA.1 was the third instance driving promotion); per-locale convention precedent at Entry 005 TAECSF.1; findings-disposition-protocol §III three-instance threshold.
+- **Authored actions**: commit (this commit) — `pilots/array-strict-throw-discipline/findings.md` introduced; findings-ledger inventory updated with the new entry; this consolidation entry recorded.
+
+### Entry 022 — Session 2026-05-30 findings-consolidation summary (2026-05-30)
+
+- **Pattern name**: session-tier findings-consolidation snapshot.
+- **Scope**: all findings surfaced during the 2026-05-30 session (TAECSF.1-3, TABSC.1-2, ASTA.1-2, SAMPLE.1, SESSION.1, DET.1-4 + the cycle-2 + cycle-3 promotions).
+- **Class**: methodology-tier.
+- **Body summary**: at session-end (per keeper directive Telegram 10621 "Consolidate findings"), the today's findings inventory is:
+  - **Promoted to standing rules**: TAECSF.3 → Rule 27; APP.PIPELINE-1 → Rule 28; DET.1 → Rule 29; TAECSF.1 + TABSC.2 + ASTA.1 → Rule 30 (3-instance corroboration at cycle-3).
+  - **Trajectory-and-findings-embedded; one-more-observation**: TAECSF.2 (direct-probe vs cluster-regression divergence); TABSC.1 (cascade-revival at precursor rung; Doc 740 §II.2 P4 amendment candidate); ASTA.2 (parallel-emit-site throw-discipline drift; Rule 20 compiler-tier specialization candidate); DET.2 (most regression-gates are Class A); DET.3 (discipline-cost reallocation from Rule 29); SESSION.1 (apparatus-driven compound-yield within single session); SAMPLE.1 (cross-family missing-TypeError-throw pattern — partially closed by ASTA-EXT 0 + EXT 1, remainder deferred).
+  - **Refined existing rules**: DET.4 refines Rule 29 with the "near-Class-A" sub-class (harness-bounded ±1 variance at test262-sample).
+  - **Per-locale findings.md inventory expanded**: ASTA's findings.md added at Entry 021 above; TABSC's findings.md extraction deferred to its third productive rung per per-locale convention (currently 2 rungs: EXT 0 + EXT 1).
+- **Promotion status**: snapshot entry; no new standing-rule promotion at this consolidation.
+- **Composes with**: findings-disposition-protocol §III three-instance threshold; Doc 727 §X append-only discipline; per-locale findings.md extraction convention.
+- **Authored actions**: commit (this commit) — this entry + the ASTA findings.md extraction at Entry 021.
