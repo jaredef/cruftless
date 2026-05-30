@@ -1,7 +1,7 @@
-//! node:zlib stub — Tier-Ω.5.y. Import-time + shape probe only;
-//! every method throws a clear "not yet implemented" message.
+//! node:zlib — Tier-Ω.5.y host sync compression surface.
 
 use crate::register::{new_object, register_method};
+use rusty_js_runtime::value::Object as RtObject;
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
 use std::rc::Rc;
 
@@ -13,25 +13,120 @@ fn stub(name: &'static str) -> impl Fn(&mut Runtime, &[Value]) -> Result<Value, 
     }
 }
 
+fn bytes_from_value(rt: &mut Runtime, value: &Value) -> Result<Vec<u8>, RuntimeError> {
+    match value {
+        Value::String(s) => Ok(s.as_bytes().to_vec()),
+        Value::Object(id) => {
+            let len = match rt.object_get(*id, "length") {
+                Value::Number(n) if n >= 0.0 => n as usize,
+                _ => 0,
+            };
+            let mut bytes = Vec::with_capacity(len);
+            for i in 0..len {
+                let b = match rt.object_get(*id, &i.to_string()) {
+                    Value::Number(n) => n as u8,
+                    Value::String(s) if !s.is_empty() => s.as_bytes()[0],
+                    _ => 0,
+                };
+                bytes.push(b);
+            }
+            Ok(bytes)
+        }
+        Value::Undefined | Value::Null => Err(RuntimeError::TypeError(
+            "node:zlib sync method requires a Buffer, TypedArray, or string".into(),
+        )),
+        other => {
+            let s = rusty_js_runtime::abstract_ops::to_string(other);
+            Ok(s.as_bytes().to_vec())
+        }
+    }
+}
+
+fn buffer_from_bytes(rt: &mut Runtime, bytes: &[u8]) -> Value {
+    let mut o = RtObject::new_ordinary();
+    o.set_own("length".into(), Value::Number(bytes.len() as f64));
+    o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
+    for (i, b) in bytes.iter().enumerate() {
+        o.set_own(i.to_string(), Value::Number(*b as f64));
+    }
+    let id = rt.alloc_object(o);
+    install_zlib_buffer_methods(rt, id);
+    Value::Object(id)
+}
+
+fn install_zlib_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
+    register_method(rt, id, "toString", |rt, args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::String(Rc::new(String::new()))),
+        };
+        let enc = match args.first() {
+            Some(Value::String(s)) => s.as_str(),
+            _ => "utf8",
+        };
+        let bytes = bytes_from_value(rt, &Value::Object(this_id))?;
+        let out = match enc {
+            "hex" => bytes.iter().map(|b| format!("{:02x}", b)).collect(),
+            "latin1" | "binary" => bytes.iter().map(|b| *b as char).collect(),
+            "ascii" => bytes.iter().map(|b| (b & 0x7f) as char).collect(),
+            _ => String::from_utf8_lossy(&bytes).to_string(),
+        };
+        Ok(Value::String(Rc::new(out)))
+    });
+}
+
+fn zlib_decode_error(method: &str, err: rusty_compression::DecodeError) -> RuntimeError {
+    RuntimeError::Thrown(Value::String(Rc::new(format!(
+        "Error: node:zlib.{method} failed: {err}"
+    ))))
+}
+
+fn register_sync_method(
+    rt: &mut Runtime,
+    host: rusty_js_runtime::ObjectRef,
+    name: &'static str,
+    op: fn(&[u8]) -> Result<Vec<u8>, rusty_compression::DecodeError>,
+) {
+    register_method(rt, host, name, move |rt, args| {
+        let input = bytes_from_value(rt, &args.first().cloned().unwrap_or(Value::Undefined))?;
+        let out = op(&input).map_err(|err| zlib_decode_error(name, err))?;
+        Ok(buffer_from_bytes(rt, &out))
+    });
+}
+
+fn register_sync_encoder(
+    rt: &mut Runtime,
+    host: rusty_js_runtime::ObjectRef,
+    name: &'static str,
+    op: fn(&[u8]) -> Vec<u8>,
+) {
+    register_method(rt, host, name, move |rt, args| {
+        let input = bytes_from_value(rt, &args.first().cloned().unwrap_or(Value::Undefined))?;
+        Ok(buffer_from_bytes(rt, &op(&input)))
+    });
+}
+
 pub fn install(rt: &mut Runtime) {
     let z = new_object(rt);
-    for name in &[
-        "deflate",
-        "deflateSync",
-        "deflateRaw",
-        "deflateRawSync",
-        "inflate",
-        "inflateSync",
-        "inflateRaw",
-        "inflateRawSync",
-        "gzip",
-        "gzipSync",
-        "gunzip",
-        "gunzipSync",
-        "brotliCompress",
-        "brotliDecompress",
-        "brotliCompressSync",
+    for name in &["deflate", "inflate", "gzip", "gunzip", "brotliCompress", "brotliDecompress"] {
+        register_method(rt, z, name, stub(name));
+    }
+    register_sync_encoder(rt, z, "deflateSync", rusty_compression::zlib_deflate_stored);
+    register_sync_encoder(rt, z, "deflateRawSync", rusty_compression::deflate_stored);
+    register_sync_encoder(rt, z, "gzipSync", rusty_compression::gzip_deflate_stored);
+    register_sync_method(rt, z, "inflateSync", rusty_compression::zlib_inflate);
+    register_sync_method(rt, z, "inflateRawSync", rusty_compression::inflate);
+    register_sync_method(rt, z, "gunzipSync", rusty_compression::gunzip);
+    register_sync_method(
+        rt,
+        z,
         "brotliDecompressSync",
+        rusty_compression::brotli_decode,
+    );
+    register_method(rt, z, "brotliCompressSync", stub("brotliCompressSync"));
+    for name in &[
+        "deflateRaw",
+        "inflateRaw",
         "createDeflate",
         "createInflate",
         "createGzip",

@@ -161,3 +161,21 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: a second package smoke/top500 row surfaces `node:zlib.gunzipSync`, `zlib.gunzipSync`, or adjacent sync zlib decompression as an import-time blocker, OR keeper/helmsman directs immediate closure for the `mongoose` path.
 - **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits the sync zlib host intrinsic surface used during package import, starting with `gunzipSync` and its expected Buffer/input coercion behavior.
 - **Status**: DEFERRED.
+
+### Entry 014 — `buffer-read-uint32be-host-method` (2026-05-30)
+
+- **Candidate name**: `buffer-read-uint32be-host-method` (proposed locale under host-runtime-api / Buffer numeric readers).
+- **Originating rung**: `pilots/missing-intrinsic-loader-failures/trajectory.md` MILF-EXT 6, Phase 5 inspection after closing the `node:zlib.gunzipSync` blocker surfaced by `mongoose`.
+- **Class**: consumer-package-driven host intrinsic residual. Current evidence is `mongoose` advancing to `callee is not callable: undefined ... (method='readUInt32BE')` in `@mongodb-js/saslprep/dist/memory-code-points.js` after zlib sync APIs pass.
+- **Gating predicate**: a second package smoke/top500 row surfaces `Buffer.prototype.readUInt32BE` or sibling numeric Buffer readers (`readUInt16BE`, `readUInt32LE`, signed variants, etc.) as an import-time blocker, OR keeper/helmsman directs immediate closure for the `mongoose` path.
+- **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits Buffer numeric read/write methods as a batch, starting with `readUInt32BE`.
+- **Status**: DEFERRED.
+
+### Entry 015 — `node-zlib-brotli-compress-sync` (2026-05-30)
+
+- **Candidate name**: `node-zlib-brotli-compress-sync` (proposed locale under compression / host-runtime-api).
+- **Originating rung**: `pilots/missing-intrinsic-loader-failures/trajectory.md` MILF-EXT 6, which implemented zlib/gzip/deflate sync methods plus Brotli decompression but left Brotli compression as an explicit unsupported operation.
+- **Class**: substrate-missing — no Brotli encoder exists in `pilots/compression/derived`; implementing this correctly requires a Brotli encode substrate or a consciously borrowed encoder dependency.
+- **Gating predicate**: a package smoke, top500 row, or test262/host-parity fixture executes `zlib.brotliCompressSync` as a required import-time or runtime path, OR keeper directs a compression substrate expansion.
+- **Un-defer condition**: found a Brotli encode locale that either derives a minimal encoder or adopts a vetted pure-Rust encoder dependency under apparatus rationale.
+- **Status**: DEFERRED.

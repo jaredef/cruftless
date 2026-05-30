@@ -39,6 +39,7 @@ rusty-js-pm = { path = "../pilots/rusty-js-pm/derived" }
 ts-resolve = { path = "../pilots/ts-resolve/derived" }
 rusty-http-codec = { path = "../pilots/http-codec/derived" }
 rusty-sockets = { path = "../pilots/sockets/derived" }
+rusty-compression = { path = "../pilots/compression/derived" }
 
 [dev-dependencies]
 # JIT-EXT 21 test exercises Runtime::resume_from_deopt_state with a

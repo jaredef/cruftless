@@ -527,6 +527,91 @@ probe intrinsic support via `Object.getOwnPropertyDescriptor(...).get`, so
 partial constructor exposure must include the accessor descriptors that package
 feature-detection code observes.
 
+## 2026-05-30 — MILF-EXT 6 node:zlib sync API batch
+
+### Trigger
+
+Helmsman directive `8e61f482-0f4c-452d-9b2a-629426635f71` targeted the
+post-EXT-5 `mongoose` residual:
+
+`node:zlib.gunzipSync not yet implemented (Tier-Ω.5.y stub)`.
+
+The directive requested a sync-API batch rather than a single-method closure,
+because package loaders commonly use multiple zlib sync entrypoints.
+
+### Baseline
+
+`cruftless/src/zlib.rs` exposed a populated `node:zlib` namespace with constants,
+constructors, and method names, but every behavior-bearing method was still a
+Tier-Ω.5.y stub. `mongoose` therefore stopped as soon as `mongodb` reached
+`zlib.gunzipSync`.
+
+### Substrate Move
+
+The host `node:zlib` layer now composes with the existing
+`pilots/compression/derived` substrate:
+
+- `gzipSync` returns a gzip-wrapped stored-block DEFLATE Buffer;
+- `gunzipSync` decodes gzip-wrapped DEFLATE;
+- `deflateSync` returns a zlib-wrapped stored-block DEFLATE Buffer;
+- `inflateSync` decodes zlib-wrapped DEFLATE;
+- `deflateRawSync` returns raw stored-block DEFLATE;
+- `inflateRawSync` decodes raw DEFLATE;
+- `brotliDecompressSync` decodes Brotli via the existing RFC 7932 pilot path;
+- `brotliCompressSync` remains a meaningful unsupported operation because no
+  Brotli encoder substrate exists yet.
+
+The returned objects are Buffer-like: indexed bytes, `length`, `__is_buffer__`,
+and a minimal `toString([encoding])` method for UTF-8/hex/latin1/ascii consumer
+flows.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS (`73 passed`, `1 ignored`).
+- `cargo test --release -p rusty-compression`: PASS (`17 passed` across unit +
+  verifier tests).
+
+Sidecar sync-method smokes at
+`/home/jaredef/Developer/cruftless-r1-sidecar/results/node-zlib-sync-r1/`:
+
+- `gzipSync(Buffer.from("hello"))` then `gunzipSync(...).toString()` prints
+  `hello`.
+- `deflateSync` then `inflateSync` prints `hello`.
+- `deflateRawSync` then `inflateRawSync` prints `hello`.
+- `brotliDecompressSync` on a known encoded `Hello, World!` stream prints
+  `Hello, World!`.
+- `brotliCompressSync` throws the explicit not-yet-implemented message.
+
+Post-fix package smoke:
+
+- `mongodb`: PASS.
+- `redis`: PASS (`keyCount=58`).
+- `webpack`: PASS (`Object.keys(ns).length === 96`).
+- `fastify`: advanced independently to `Error: the ESCAPE_REGEXP is not safe,
+  update this module` (not a zlib residual).
+- `mongoose`: advanced past zlib to a distinct Buffer numeric-read residual:
+  `readUInt32BE` missing on Buffer-like objects in
+  `@mongodb-js/saslprep/dist/memory-code-points.js`.
+
+### C4 Status
+
+C4 holds for the node:zlib sync decode/encode batch except Brotli compression,
+which is explicitly out of scope due to absent encoder substrate. The named
+mongoose zlib blocker is closed and the package advances to a separate Buffer
+numeric-reader coordinate.
+
+The new `mongoose` blocker is outside this rung and is recorded in the
+deferrals ledger as `buffer-read-uint32be-host-method`.
+
+### Finding
+
+**Finding MILF.6.1**: Import-time zlib parity requires behavior, not only shape.
+The previous namespace-stub was enough for feature detection, but package code
+executes sync decompression during module initialization. The existing
+compression pilot made the host closure cheap: zlib should consume the lower
+compression substrate rather than duplicate compression logic in `cruftless`.
+
 ## 2026-05-30 - MILF-EXT 6: Redis Post-Load Promise.catch Terminal Rejection
 
 ### Directive
