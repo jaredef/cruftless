@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # Cluster exemplar runner. Runs the 100 stratified-sample tests via
 # the test262 harness wrapper against cruft; prints aggregate pass/fail
 # and surface-family breakdown of remaining fails.

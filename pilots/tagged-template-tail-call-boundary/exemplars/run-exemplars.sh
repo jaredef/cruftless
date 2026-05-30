@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # tagged-template-tail-call-boundary exemplar runner.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

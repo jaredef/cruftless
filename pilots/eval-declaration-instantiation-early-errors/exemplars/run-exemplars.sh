@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # Focused runner for eval declaration-instantiation early-error exemplars.
 set -uo pipefail
 

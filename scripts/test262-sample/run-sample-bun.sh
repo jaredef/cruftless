@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # Run the curated test262 representative sample under bun for parity comparison.
 # Mirrors run-sample.sh but invokes bun instead of cruftless. Same runner.mjs,
 # same harness, same sample paths — so the comparison is apples-to-apples.

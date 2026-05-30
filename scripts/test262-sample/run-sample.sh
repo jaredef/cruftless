@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # Run the curated test262 representative sample with parallelism.
 #
 # The sample (sample-paths.txt) targets the surface that production

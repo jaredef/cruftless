@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # Test262 fixture driver for cruftless.
 #
 # Iterates every .js file under host/tests/test262/tests/ (or a path

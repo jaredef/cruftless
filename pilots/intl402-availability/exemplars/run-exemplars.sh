@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+if [ -z "${NICED:-}" ]; then exec env NICED=1 nice -n19 ionice -c2 -n7 bash "$0" "$@"; fi
 # ECMA-402 exemplar runner.
 # Runs the stratified Intl sample via the test262 harness wrapper against
 # cruft; prints aggregate pass/fail plus a surface breakdown.
