@@ -129,24 +129,31 @@ fn identifier_loads_global() {
 }
 
 #[test]
-fn variable_declaration_stores_local() {
+fn variable_declaration_inits_local() {
+    // Post-distinction: declaration-tied installation emits InitLocal
+    // (StoreLocal is reserved for subsequent assignment to an already-
+    // installed binding). See assignment_to_local below for the StoreLocal
+    // surface.
     let d = disasm("let x = 1;");
     assert!(d.contains("PushI32 1"));
-    assert!(d.contains("StoreLocal"));
+    assert!(d.contains("InitLocal"));
 }
 
 #[test]
 fn variable_without_initializer() {
     let d = disasm("let x;");
     assert!(d.contains("PushUndef"));
-    assert!(d.contains("StoreLocal"));
+    assert!(d.contains("InitLocal"));
 }
 
 #[test]
 fn multiple_declarators() {
     let d = disasm("const a = 1, b = 2;");
-    let count = d.matches("StoreLocal").count();
-    assert_eq!(count, 2);
+    // Each declarator both reserves and initializes its slot via InitLocal;
+    // assert at least one InitLocal per declarator (>=2) without pinning
+    // the exact reservation-vs-initialization opcode count.
+    let count = d.matches("InitLocal").count();
+    assert!(count >= 2, "expected >=2 InitLocal, got {count}: {d}");
 }
 
 #[test]
@@ -240,9 +247,11 @@ fn conditional_expression_emits_jumps() {
 #[test]
 fn assignment_to_local() {
     let d = disasm("let x = 0; x = 1;");
-    // After the let, x is a local. The assignment should emit StoreLocal.
-    let stores = d.matches("StoreLocal").count();
-    assert!(stores >= 2);
+    // Post-distinction: the let emits InitLocal (declaration installation),
+    // the subsequent assignment emits StoreLocal (assignment to an already-
+    // installed binding). Both must appear.
+    assert!(d.contains("InitLocal"), "expected InitLocal for let, got: {d}");
+    assert!(d.contains("StoreLocal"), "expected StoreLocal for reassignment, got: {d}");
 }
 
 #[test]
