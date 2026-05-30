@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 227,
-    "top_level": 140,
+    "locales": 228,
+    "top_level": 141,
     "nested": 87,
     "warnings": 0
   },
@@ -998,6 +998,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": null
+    },
+    {
+      "coord": "resizable-buffer-detection-per-access",
+      "tag": "L.resizable-buffer-detection-per-access",
+      "parent": null,
+      "scope": "resizable-buffer-detection-per-access",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED 2026-05-30 (helmsman session, keeper directive Telegram 10558). EXT 0 founding pending: apparatus scaffold (exemplar suite + runner + pool count) + baseline inspection of the three DataView cells."
     },
     {
       "coord": "rest-param-trailing-comma",

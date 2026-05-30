@@ -34,6 +34,7 @@ Per the substrate-shaped-work discipline (CLAUDE.md §Substrate-shaped-work disc
 | `typed-array-missing-method` (TAMM) | TypedArray.prototype method surface | LANDED at EXT 10 (10 rungs, +79 yield) | major |
 | `typed-array-wrong-result` | TA element-access semantics | OPEN | — |
 | `typed-array-resizable-buffer-indexed-access` | resizable-buffer indexed access | OPEN | — |
+| `resizable-buffer-detection-per-access` | DataView per-access OOB recompute under resizable buffers | FOUNDED 2026-05-30 (RBDPA-EXT 0; lifted from deferrals-ledger Entry 009 per keeper directive Telegram 10558) | — |
 
 ## Cumulative yield
 

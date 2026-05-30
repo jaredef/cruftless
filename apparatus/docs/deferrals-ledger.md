@@ -122,7 +122,7 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Class**: spawn-threshold (Doc 737 §II) — three cells observed (DataView `custom-proto-access-resizes-buffer-{invalid-by-length, invalid-by-offset, valid-by-offset}.js`). At the ≥3 candidate-locale threshold for promotion; deferred only because the resizable-buffer substrate work is non-trivial (per-access OOB recompute + ArrayBuffer.prototype.resize tracking) and the current arc is closing toward Phase 5 chapter-close.
 - **Gating predicate**: arc `2026-05-28-array-exotic-substrate` reaches Phase 5 chapter-close-inspect; OR a fourth resizable-buffer cell surfaces (TypedArray-side resizable-buffer OOB cluster — there are ~10 TypedArray exemplars in the "resizable-buffer-length-tracking" family that probably share this substrate's mouth).
 - **Un-defer condition**: arc closure OR TypedArray-side resizable-buffer surface count reaches the threshold to promote this candidate to the founding rung of the new locale.
-- **Status**: DEFERRED.
+- **Status**: PROMOTED — founded 2026-05-30 at `pilots/resizable-buffer-detection-per-access/` (RBDPA-EXT 0). See ledger Entry 016 for the un-defer back-reference.
 
 ### Entry 010 — `ta-element-coercion-spec-faithful` (2026-05-28)
 
@@ -179,3 +179,13 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: a package smoke, top500 row, or test262/host-parity fixture executes `zlib.brotliCompressSync` as a required import-time or runtime path, OR keeper directs a compression substrate expansion.
 - **Un-defer condition**: found a Brotli encode locale that either derives a minimal encoder or adopts a vetted pure-Rust encoder dependency under apparatus rationale.
 - **Status**: DEFERRED.
+
+### Entry 016 — `resizable-buffer-detection-per-access` PROMOTED (2026-05-30)
+
+- **Candidate name**: `resizable-buffer-detection-per-access` (founded locale at `pilots/resizable-buffer-detection-per-access/`).
+- **Back-reference**: Entry 009 (2026-05-28). Entry 009's Status field flipped in-place to PROMOTED per the discipline at this file's §Discipline (the single allowed in-place edit on prior entries).
+- **Originating rung**: this entry — helmsman session 2026-05-30 under keeper directive Telegram 10558 ("Begin with 1") following the helmsman deferrals-vs-substrate audit (2026-05-30) that classified Entry 009 as UN-DEFER READY.
+- **Un-defer signal**: spawn-threshold ≥3 cells was met at Entry 009's surfacing rung (TAWR-EXT 5 Phase 6) but deferred pending arc Phase-5 chapter-close. The arc's productive-rung sequence closed at the Phase-5 inflection (TAWR-EXT 5 LANDED + TAWR-EXT 6 NEGATIVE Rule-13 REVERT) per `pilots/typed-array-wrong-result/trajectory.md` EXT 6 conclusion ("`2026-05-28-array-exotic-substrate` arc reaches Phase-5 inflection at TAWR-EXT 5"). Gating condition satisfied; un-defer authorized.
+- **Founding rung**: RBDPA-EXT 0 (2026-05-30) — apparatus scaffold and baseline pending; founding entry records the lift and the parent-rung citation.
+- **Arc enrollment**: `2026-05-28-array-exotic-substrate` sub-locale roster updated in the same change.
+- **Status**: RECORDED (this is a back-reference entry; Entry 009 carries the PROMOTED status flip).
