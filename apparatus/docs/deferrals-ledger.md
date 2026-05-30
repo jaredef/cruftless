@@ -169,7 +169,7 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Class**: consumer-package-driven host intrinsic residual. Current evidence is `mongoose` advancing to `callee is not callable: undefined ... (method='readUInt32BE')` in `@mongodb-js/saslprep/dist/memory-code-points.js` after zlib sync APIs pass.
 - **Gating predicate**: a second package smoke/top500 row surfaces `Buffer.prototype.readUInt32BE` or sibling numeric Buffer readers (`readUInt16BE`, `readUInt32LE`, signed variants, etc.) as an import-time blocker, OR keeper/helmsman directs immediate closure for the `mongoose` path.
 - **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits Buffer numeric read/write methods as a batch, starting with `readUInt32BE`.
-- **Status**: DEFERRED.
+- **Status**: SUPERSEDED — Buffer numeric reader family installed via `install_buffer_methods` and back-filled across all buffer-creation paths by MILF-EXT 7.1 (2026-05-30); mongoose smoke confirmed PASS at MILF-EXT 8. See ledger Entry 017 for the SUPERSEDED back-reference.
 
 ### Entry 015 — `node-zlib-brotli-compress-sync` (2026-05-30)
 
@@ -189,3 +189,12 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Founding rung**: RBDPA-EXT 0 (2026-05-30) — apparatus scaffold and baseline pending; founding entry records the lift and the parent-rung citation.
 - **Arc enrollment**: `2026-05-28-array-exotic-substrate` sub-locale roster updated in the same change.
 - **Status**: RECORDED (this is a back-reference entry; Entry 009 carries the PROMOTED status flip).
+
+### Entry 017 — `buffer-read-uint32be-host-method` SUPERSEDED (2026-05-30)
+
+- **Candidate name**: `buffer-read-uint32be-host-method` (Entry 014, 2026-05-30).
+- **Back-reference**: Entry 014. Entry 014's Status field flipped in-place to SUPERSEDED per the discipline at this file's §Discipline.
+- **Originating rung**: this entry — helmsman session 2026-05-30 under keeper directive Telegram 10558 (action 2 of the deferrals audit) verifying that MILF-EXT 7.1 closed Entry 014's gap by a different route.
+- **Supersession signal**: MILF-EXT 7.1 (2026-05-30, commit lands `install_buffer_methods` exposed pub(crate) and back-filled across the three production buffer-creation paths `cruftless/src/zlib.rs::buffer_from_bytes`, `Buffer.allocUnsafeSlow`, `Buffer.concat`). The full Buffer numeric reader/writer family lands in one batch at `cruftless/src/node_stubs.rs:373` `install_buffer_methods`: `readUInt{8,16,32}{LE,BE}`, `readInt{8,16,32}{LE,BE}`, `readFloat{LE,BE}`, `readDouble{LE,BE}`, `readBig{U,}Int64{LE,BE}` + paired writers. MILF-EXT 7.1's verification (trajectory lines 762–763) explicitly names the saslprep `readUInt32BE` failure as unblocked; MILF-EXT 8 confirms mongoose smoke at full PASS (`hasSchema`, `hasModel`, `hasConnect`, `hasMongo`, `schemaHasPath` all true).
+- **Route**: not a per-locale founding; the gap closed at the install-discipline tier (every buffer-creation path must call `install_buffer_methods`) rather than as a Buffer-numeric-reader-coordinate locale. The substrate work that Entry 014 anticipated landed under MILF rather than under a new locale.
+- **Status**: RECORDED (this is a back-reference entry; Entry 014 carries the SUPERSEDED status flip).
