@@ -48,6 +48,18 @@ fn typed_array_tostringtag_descriptor_is_visible_by_symbol_key() {
 }
 
 #[test]
+fn shared_array_buffer_bytelength_descriptor_is_visible() {
+    let src = r#"
+        const desc = Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype, 'byteLength');
+        const sab = new SharedArrayBuffer(8);
+        return typeof SharedArrayBuffer === 'function'
+            && typeof desc.get === 'function'
+            && desc.get.call(sab) === 8;
+    "#;
+    assert!(matches!(run(src), Value::Boolean(true)));
+}
+
+#[test]
 fn return_integer() {
     if let Value::Number(n) = run("return 42;") {
         assert_eq!(n, 42.0);

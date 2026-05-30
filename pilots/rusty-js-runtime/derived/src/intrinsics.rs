@@ -19864,9 +19864,31 @@ impl Runtime {
             let _ = ta_proto;
             let per_type_proto = {
                 let mut o = Object::new_ordinary();
-                o.proto = Some(ta_proto_proto);
+                if *name != "SharedArrayBuffer" {
+                    o.proto = Some(ta_proto_proto);
+                }
                 self.alloc_object(o)
             };
+            if *name == "SharedArrayBuffer" {
+                install_ab_accessor(self, per_type_proto, "byteLength", |rt| {
+                    let this_id = match rt.current_this() {
+                        Value::Object(o) => o,
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "SharedArrayBuffer.prototype.byteLength getter: receiver must be a SharedArrayBuffer"
+                                    .into(),
+                            ))
+                        }
+                    };
+                    match rt.array_buffers.get(&this_id) {
+                        Some(buf) => Ok(Value::Number(buf.byte_length as f64)),
+                        None => Err(RuntimeError::TypeError(
+                            "SharedArrayBuffer.prototype.byteLength getter: receiver has no [[ArrayBufferData]] slot"
+                                .into(),
+                        )),
+                    }
+                });
+            }
             let proto_id = per_type_proto;
             let ctor_obj = make_native_with_length(name, 3, move |rt, args| {
                 // Ω.5.P59.E6 byteLength correctness: bytes-per-element
@@ -19880,6 +19902,30 @@ impl Runtime {
                     "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8,
                     _ => 4,
                 };
+                if n == "SharedArrayBuffer" {
+                    let byte_length = match args.first() {
+                        Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
+                        Some(v) => rt.coerce_to_number(v)? as usize,
+                        None => 0,
+                    };
+                    let mut o = Object::new_ordinary();
+                    o.set_own_internal(
+                        "__kind".into(),
+                        Value::String(Rc::new("SharedArrayBuffer".into())),
+                    );
+                    o.proto = Some(rt.prototype_from_new_target_or(proto_id));
+                    let id = rt.alloc_object(o);
+                    rt.array_buffers.insert(
+                        id,
+                        crate::interp::ArrayBufferRecord {
+                            byte_length,
+                            max_byte_length: byte_length,
+                            data: vec![Value::Number(0.0); byte_length],
+                            detached: false,
+                        },
+                    );
+                    return Ok(Value::Object(id));
+                }
                 if let Some(Value::Object(buf)) = args.first() {
                     if rt.array_buffers.contains_key(buf)
                         && n != "DataView"

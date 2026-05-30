@@ -425,3 +425,104 @@ across read and reflection paths. A property read fallback alone is insufficient
 ecosystem packages reflect descriptor objects and call accessors directly, so
 `Object.getOwnPropertyDescriptor(_, Symbol.toStringTag)` must share the same
 Symbol-to-`"@@..."` compatibility lookup as `[[Get]]`.
+
+## 2026-05-30 — MILF-EXT 5 SharedArrayBuffer byteLength descriptor
+
+### Trigger
+
+Helmsman directive `77473bb4-7590-4ccb-986c-cfadaecb1bd6` targeted the
+post-EXT-4 `mongoose` residual:
+
+`module not found: '..'` from `mongodb/lib/operations/drop.js`.
+
+### Baseline Reproduction
+
+Installed `mongoose`, `mongodb`, and `redis` into the sidecar sandbox at:
+
+`/home/jaredef/Developer/cruftless-r1-sidecar/results/milf-ext5-r1/`
+
+The stale local release binary reproduced the nominal parent-directory failure,
+but a fresh build of current main showed that R2 commit `ae0f98b6` had already
+closed the `require("..")` / dot-directory coordinate:
+
+- reduced nested-package fixture: `require("..")` from
+  `node_modules/pkg/lib/operations/drop.js` resolves to `pkg/lib/index.js`;
+- `mongodb`: PASS;
+- `redis`: PASS (`keyCount=58`);
+- `mongoose`: advanced to
+  `Cannot read property 'get' of undefined (receiver='prototype')` in
+  `webidl-conversions/lib/index.js`.
+
+### Root Cause
+
+`webidl-conversions` checks:
+
+`Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype, "byteLength").get`
+
+Cruft exposed `SharedArrayBuffer` as a function with a prototype object, but the
+prototype did not carry an accessor descriptor for `byteLength`. The constructor
+was emitted through the typed-array constructor loop, so the name existed while
+the ArrayBuffer-style internal-slot/accessor surface was absent.
+
+### Substrate Move
+
+`SharedArrayBuffer` now takes a conservative special branch inside the existing
+typed-array installation loop:
+
+- `SharedArrayBuffer.prototype` remains an ordinary prototype rather than a
+  typed-array prototype;
+- `SharedArrayBuffer.prototype.byteLength` is installed as a real accessor
+  descriptor;
+- `new SharedArrayBuffer(n)` allocates an object with a backing
+  `ArrayBufferRecord`, allowing the accessor getter to return the recorded byte
+  length.
+
+This keeps the change scoped to the descriptor and constructor surface needed by
+real package loaders; it does not claim full shared-memory or Atomics semantics.
+
+### Verification
+
+- Focused regression:
+  `cargo test --release -p rusty-js-runtime shared_array_buffer_bytelength_descriptor_is_visible --test run_golden`
+  PASS.
+- Required R2 regression:
+  `cargo test --release -p rusty-js-runtime module::tests::resolve_module_treats_dot_as_relative_directory`
+  PASS.
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS (`73 passed`, `1 ignored`).
+
+Post-fix probe:
+
+- `typeof SharedArrayBuffer === "function"`;
+- `Object.getOwnPropertyDescriptor(SharedArrayBuffer.prototype, "byteLength")`
+  returns an object;
+- descriptor `.get` is callable;
+- `Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, "byteLength").get`
+  remains callable.
+
+Post-fix package smoke:
+
+- `mongodb`: PASS;
+- `redis`: PASS (`keyCount=58`);
+- `mongoose`: advanced past the parent-directory and SharedArrayBuffer
+  descriptor failures, then stopped at the independent host intrinsic residual
+  `node:zlib.gunzipSync not yet implemented (Tier-Ω.5.y stub)`.
+
+### C4 Status
+
+C4 holds for the actual MILF-EXT 5 substrate coordinate surfaced by current
+main: SharedArrayBuffer descriptor visibility for package loaders. The nominal
+`require("..")` blocker is closed upstream by R2's dot-directory resolution
+commit and remains covered by the required regression.
+
+The new `mongoose` blocker is outside this rung. It is a host `node:zlib`
+intrinsic residual and is recorded in the deferrals ledger as
+`node-zlib-gunzip-sync-host-intrinsic`.
+
+### Finding
+
+**Finding MILF.5.1**: A global constructor stub is not loader-compatible unless
+its reflected prototype descriptor surface exists. Ecosystem packages commonly
+probe intrinsic support via `Object.getOwnPropertyDescriptor(...).get`, so
+partial constructor exposure must include the accessor descriptors that package
+feature-detection code observes.

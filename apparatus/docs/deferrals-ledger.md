@@ -152,3 +152,12 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Gating predicate**: a second package smoke or top500/refined sweep row surfaces `require("..")` / parent-directory CJS resolution from inside a package subdirectory, OR keeper/helmsman directs immediate closure for the `mongoose` path.
 - **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits CJS directory resolution relative to nested package files, including package boundary and `package.json` main/index fallback behavior.
 - **Status**: DEFERRED.
+
+### Entry 013 — `node-zlib-gunzip-sync-host-intrinsic` (2026-05-30)
+
+- **Candidate name**: `node-zlib-gunzip-sync-host-intrinsic` (proposed locale under host-runtime-api / Node builtin parity).
+- **Originating rung**: `pilots/missing-intrinsic-loader-failures/trajectory.md` MILF-EXT 5, Phase 5 inspection after closing the SharedArrayBuffer descriptor blocker surfaced by `mongoose`.
+- **Class**: consumer-package-driven host intrinsic residual. Current evidence is the `mongoose` loader advancing to `node:zlib.gunzipSync not yet implemented (Tier-Ω.5.y stub)` after parent-directory resolution and SharedArrayBuffer descriptor visibility both pass.
+- **Gating predicate**: a second package smoke/top500 row surfaces `node:zlib.gunzipSync`, `zlib.gunzipSync`, or adjacent sync zlib decompression as an import-time blocker, OR keeper/helmsman directs immediate closure for the `mongoose` path.
+- **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits the sync zlib host intrinsic surface used during package import, starting with `gunzipSync` and its expected Buffer/input coercion behavior.
+- **Status**: DEFERRED.
