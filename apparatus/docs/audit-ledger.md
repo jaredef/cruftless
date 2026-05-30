@@ -112,3 +112,19 @@ The standing rule the ledger formalizes: **an audit session that produces classi
 - **Surfaced-but-not-acted findings**:
   - The JIT findings.md rules 16–22 unconsolidated gap (carried forward from Entries 001 + 002 + 003) is not addressed by this wiring audit. Requires a separate predictive-ruleset.md consolidation pass.
   - The findings-disposition-protocol §IV references `arc-as-coordinate.md §F (event log)`; the doc's actual section labels are §A–§F where §F is "Composition with other arcs" and the event log is under "File shapes". The protocol's reference is forward-looking; section relabeling is deferred to keeper direction.
+
+### Entry 005 — `predictive-ruleset-consolidation-rules-17-22` (2026-05-30)
+
+- **Audit type**: cross-locale-finding (variant: canonical-source-to-derived-view consolidation).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10574 ("Now let's continue the process").
+- **Scope**: rules 17–22 articulated at `pilots/rusty-js-jit/findings.md` Addenda XII + XIII (Standing rule 17 EPSUA.6/EPSUA.7; Standing rule 18 SPBC.2; Standing rule 19 SPTW.2; Standing rule 20 NACR.1; Standing rule 21 RS.1+RS.2+CP.4; Standing rule 22 SMPT.4+ALST.2) against `apparatus/docs/predictive-ruleset.md` consolidated derived view. The gap was carried forward by Entries 001 / 002 / 003 / 004 as the single remaining apparatus-tier consolidation.
+- **Method**: Explore sub-agent delegation for rule extraction (verbatim text + class + origin); helmsman direct read of `pilots/rusty-js-jit/findings.md` Addendum XII–XIII to verify canonical wording + numbering. Sub-agent's initial enumeration mis-numbered the rules (16–22); helmsman direct read corrected to 17–22 (canonical source has no rule 16 — numbering jumps 15 → 17 in Addendum XII). Each rule then appended to `apparatus/docs/predictive-ruleset.md` between rule 15's separator and rule 23's heading, preserving the existing canonical formatting (`## Rule N — Title` + `**Statement**:` + `**Predicts**:` + `**Evidence**:`).
+- **Findings**:
+  - **Rules consolidated**: 6 (rules 17, 18, 19, 20, 21, 22). All promotion-ready as-is per canonical source wording; no editorial cleanup required.
+  - **Rule 16 does not exist**: numbering gap preserved per Doc 727 §X append-only discipline. Canonical-source numbering anomaly recorded in the predictive-ruleset.md §Status note + findings-ledger Entry 001 Promotion status + this audit entry.
+  - **Rule 21 (probe-first scoping) re-instantiated 2026-05-30**: TAECSF-EXT 0 narrow-dispatcher probe (~60 LOC vs prospective ~200+ LOC for option (i)) is the second engagement-wide instance of the probe-first pattern after the original Compartment-arc instance. Cited in the rule's Evidence section.
+- **Authored actions**:
+  - Commit (this commit): apparatus-tier consolidation. Edits to `apparatus/docs/predictive-ruleset.md` (rules 17–22 appended + status note refreshed); `apparatus/docs/findings-ledger.md` (Entry 001 Promotion status flipped in-place per §Discipline; Entry 011 appended recording the consolidation event; inventory table updated to reflect new consolidation state); this audit-ledger entry recording the audit.
+- **Surfaced-but-not-acted findings**:
+  - All four prior audit-ledger entries' carry-forward "rules 16–22 unconsolidated" gap is now closed by this entry; no carry-forward to subsequent audits remains on that axis.
+  - Sub-agent off-by-one numbering error (claimed rule 16 existed; canonical source does not have one) is a measurement-discipline finding at the meta-tier — when delegating apparatus-tier work to sub-agents, the helmsman should verify canonical-source numbering directly rather than trust the sub-agent's enumeration. Single observation at this audit; promotion-readiness: one-more-observation before standing-rule status (candidate Rule 27: "delegate-for-volume, verify-for-canonical-numbering").

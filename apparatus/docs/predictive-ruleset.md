@@ -6,7 +6,7 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 
 **Authoritative source**: `pilots/rusty-js-jit/findings.md` (26 rules across 16 addenda, append-only per Doc 727 §X). This doc is a derived consolidated view; on disagreement, findings.md is canonical.
 
-**Status as of 2026-05-28**: **26 rules in findings.md; rules 1-15 + 23 + 24 + 25 + 26 articulated in this doc**. Rules 16-22 (Addenda XII + XIII) are in findings.md but not yet folded into this consolidated view; a full re-consolidation pass remains open work. Rule 23 (founding-baseline-inspection / locale-as-probe) was promoted at keeper directive 2026-05-25 from Finding NLC.1 (tokenization-above-IR arc). Rules 24-26 promoted 2026-05-28 from findings IR.29/IR.32/IR.27 (rusty-js-ir locale Addendum XVI).
+**Status as of 2026-05-30**: **26 rules in findings.md; rules 1-15 + 17-22 + 23-26 articulated in this doc**. Rule 16 does not exist in the canonical source (findings.md jumps 15 → 17 in Addendum XII; preserved as-is per Doc 727 §X append-only discipline). Rules 17-22 (Addenda XII + XIII) consolidated 2026-05-30 per helmsman session under keeper directive Telegram 10574 ("continue the process") closing the carry-forward gap surfaced by audit-ledger Entries 001 / 002 / 003 / 004. Rule 23 (founding-baseline-inspection / locale-as-probe) was promoted at keeper directive 2026-05-25 from Finding NLC.1 (tokenization-above-IR arc). Rules 24-26 promoted 2026-05-28 from findings IR.29/IR.32/IR.27 (rusty-js-ir locale Addendum XVI).
 
 ---
 
@@ -169,6 +169,66 @@ The ruleset compounds: rules higher-numbered build on prior rules + their predic
 **Predicts**: chapter-close declarations made without failure-table top-row inspection will leave higher-impact substrate gaps undiscovered. Conversely, applying the rule routinely surfaces the next round's load-bearing gap as a mid-round discovery (the inspect-then-iterate compound-discovery pattern).
 
 **Evidence**: Reproduced 9 times across the TS-parity arc (TRSLS, TRCAPS, TRGC×6 follow-ons, TRE, TROI, long-tail singletons). Standing observation: each reproduction delivered a higher-impact mid-round-discovery fix than the planned-scope fix. Cumulative empirical efficiency: ~2× vs spec-driven planning.
+
+---
+
+## Rule 17 — Pre-scoping per-reason-pattern segmentation
+
+**Statement**: before scoping a sub-locale targeting a failure cluster, enumerate the failure-REASON distribution within the candidate cluster AND identify which sub-cluster the candidate substrate fix targets. Projected cascade = the sub-cluster size, not the whole cluster size.
+
+**Predicts**: sub-locales scoped against whole-cluster size will under-deliver by ~3-7× vs sub-cluster-scoped projection.
+
+**Evidence**: EPSUA arc — three constraints in a row delivered 24%/41%/67% of cluster projection and 100%/100%/67% of in-scope-sub-cluster projection. Promoted from Finding EPSUA.6 + EPSUA.7 at JIT findings.md Addendum XII.
+
+---
+
+## Rule 18 — Brand-check at registration wrapper, not in shared impl
+
+**Statement**: when a substrate impl is shared across multiple registrations (e.g., `Set.prototype.add` and `WeakSet.prototype.add` both call `set_proto_add_via`), brand-check discipline must live at the registration wrapper using captured proto-identity, NOT in the impl. The impl cannot know which proto routed the call; only the registration knows.
+
+**Predicts**: brand-check additions to shared impls will either over-reject (breaking the OTHER proto's valid calls) or under-reject (failing the spec contract).
+
+**Evidence**: SPBC-EXT 2's helper-level WeakSet rejection broke 15 WeakSet basic method tests; SPBC-EXT 3 carve-back + MPBC per-proto wrappers recovered all 15 and added Map brand-check cleanly. Promoted from Finding SPBC.2 at JIT findings.md Addendum XII.
+
+---
+
+## Rule 19 — IC fast-path coherence verification
+
+**Statement**: substrate fixes that change slow-path semantics must verify the corresponding IC fast path doesn't shadow them. IC entries that pre-screen by receiver type / arg shape must bail to slow path EARLIER than their optimistic-success path.
+
+**Predicts**: slow-path substrate fixes that don't verify the IC fast path will appear to "do nothing" for the inputs the IC pre-screens; tests will fail with unchanged-behavior shapes.
+
+**Evidence**: SPTW-EXT 1's slow-path `es_trim` fix did nothing for non-ASCII strings because `fast_string_trim`'s early-return "no trim needed" fired before the slow path could see the input. Carve-back bail-to-slow-on-non-ASCII closed the gap. Promoted from Finding SPTW.2 at JIT findings.md Addendum XII.
+
+---
+
+## Rule 20 — Substrate-discipline coherence drift surfaces as cross-module reason-shape coherence
+
+**Statement**: when multiple parallel helpers in different modules implement the same discipline (registration of native functions, brand-check at method entry, etc.), drift between them will surface as a homogeneous-reason cross-module test cluster. Per Finding T262C.6's corpus-as-regression-instrument shape: if the same reason-shape recurs across distinct module surfaces, look for substrate-discipline drift before per-module per-bug fixes.
+
+**Predicts**: cross-module reason-shape coherence is a higher-leverage diagnosis than per-module surface fixes.
+
+**Evidence**: NACR-EXT 1's three-`register_method`-helpers fix; SPBC-EXT 3's shared-impl-with-per-proto-discipline-drift recovery. Promoted from Finding NACR.1 at JIT findings.md Addendum XII.
+
+---
+
+## Rule 21 — Probe-first scoping for substrate cost
+
+**Statement**: before committing to a substrate refactor whose cost is uncertain or contested, build the minimum probe that empirically answers the load-bearing question (does this substrate change deliver this property?). If the probe answers yes at bounded cost, commit only that minimum and defer further architectural cost until a downstream consumer justifies it.
+
+**Predicts**: prospective substrate cost projections without probe-first verification will systematically overestimate by 2-5× (architects project the FULL architectural property; probes reveal the MINIMUM property-defeating substrate).
+
+**Evidence**: RS-EXT 1+2 — prospective ~700-800 LOC for Round 1+4 of full Realm substrate; minimum probe-defeating substrate landed at ~190 LOC. Compartment arc total ~520 LOC for the Doc 736 JS-API expression vs an estimated ~1000+ for full Realm + Compartments combined. Promoted from Findings RS.1 + RS.2 + CP.4 at JIT findings.md Addendum XII. Recently re-instantiated 2026-05-30 by the TAECSF-EXT 0 probe (deferrals-ledger Entry 010 un-defer): ~60 LOC narrow-dispatcher probe answered the option-(i)-vs-option-(ii) bifurcation that prospective architectural cost projected at hundreds of LOC for a wide `object_set_pk` signature lift.
+
+---
+
+## Rule 22 — Partial-exemplar-closure as substrate-axis discriminator
+
+**Statement**: when a substrate rung closes a fraction of its exemplar (e.g., SMPT-EXT 2 at 3/24, ALST-EXT 1 at 9/30), the residual is rarely "more of the same fix needed at more sites" — it's typically "different substrate axis sharing the exemplar." Diagnose the residual by spot-reading 2-3 residual tests; the axis split usually appears in one read and predicts the next rung's locale identity and bounds its expected yield.
+
+**Predicts**: engineers who treat residuals as "more of the same" write parallel fixes that don't move the residual; engineers who diagnose axis splits spawn distinct locales that do.
+
+**Evidence**: Findings SMPT.4 + ALST.2 at JIT findings.md Addendum XIII both instantiate the rule. Composes with Rule 13 (deeper-layer-closure) and Rule 15 (chapter-close-inspect): Rule 22 is the locale-spawning prediction; Rule 13 is the substrate-revert+re-aim discipline when partial closure is misdiagnosed; Rule 15 is the chapter-close inspection that surfaces the axis split.
 
 ---
 

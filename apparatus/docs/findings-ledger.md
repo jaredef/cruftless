@@ -47,7 +47,7 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a gene
 
 | Path | Findings | Notes |
 |---|---|---|
-| `pilots/rusty-js-jit/findings.md` | 26 standing rules + Addenda I-XVI | Engagement-wide canonical ledger. Compounds across JIT + IHI + OSR + TL + JSF + CharCode-EXT + TB and other JIT-touching locales. Rules 1-15, 23-26 consolidated in `apparatus/docs/predictive-ruleset.md`; rules 16-22 remain in addenda. |
+| `pilots/rusty-js-jit/findings.md` | 26 standing rules + Addenda I-XVI | Engagement-wide canonical ledger. Compounds across JIT + IHI + OSR + TL + JSF + CharCode-EXT + TB and other JIT-touching locales. Rules 1-15 + 17-22 + 23-26 consolidated in `apparatus/docs/predictive-ruleset.md` (rule 16 does not exist in canonical source; preserved per Doc 727 §X). Rules 17-22 consolidation landed 2026-05-30 per Entry 011. |
 | `pilots/interp-hot-intrinsics/findings.md` | IHI.1 | IC cache lifetime; promoted as Finding VIII.4 in JIT ledger. |
 | `pilots/rusty-js-jit/osr/findings.md` | OSR.1, OSR.2 | OSR invoke calling-convention + loop-boundary; promoted as Findings VIII.2 + VIII.3. |
 | `pilots/rusty-js-jit/top-level/findings.md` | TL.1, TL.2 | Whole-body bail bounds + Φ value-domain; promoted as Findings VII.2 + VII.3. |
@@ -68,7 +68,7 @@ Trajectory-embedded findings discovered but not yet extracted to a `findings.md`
 - **Originating rungs**: distributed across the JIT locale's trajectory; cross-locale compounding from `pilots/interp-hot-intrinsics/`, `pilots/rusty-js-jit/osr/`, `pilots/rusty-js-jit/top-level/`, and JIT-touching siblings.
 - **Class**: aggregator (mixed substrate-pattern + abstract-op-discipline + measurement-discipline + apparatus-tier classes per rule).
 - **Body summary**: the canonical engagement-wide rule ledger. Rules 1–15 and 23–26 are consolidated in `apparatus/docs/predictive-ruleset.md` as the 15-rule + 4-addendum derived view. Rules 16–22 are present in addenda but not yet consolidated to the predictive view. The 16 addenda (I–XVI) layer the rules with deeper context, multi-tier cascade analyses, and Pin-Art validation traces.
-- **Promotion status**: standing-rule (multiple). Rule 4, 5, 6, 11, 13, 14, 15, 23, 24, 25, 26 consolidated to `apparatus/docs/predictive-ruleset.md`. Rules 16–22 pending consolidation.
+- **Promotion status**: standing-rule (multiple). Rules 4, 5, 6, 11, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 consolidated to `apparatus/docs/predictive-ruleset.md`. Rule 16 does not exist in findings.md (canonical numbering jumps 15 → 17 in Addendum XII); preserved as-is per Doc 727 §X append-only discipline. Rules 17–22 consolidated 2026-05-30 per helmsman session under keeper directive Telegram 10574; see Entry 011 below for the consolidation back-reference.
 
 ### Entry 002 — IHI.1 (Per-Frame IC caches don't amortize)
 
@@ -160,3 +160,12 @@ Trajectory-embedded findings discovered but not yet extracted to a `findings.md`
 4. **No apparatus-pilot findings.md files**: the apparatus-pilots at `pilots/apparatus/*/` do not carry `findings.md`. Their findings live in `apparatus/docs/` documents (e.g., `apparatus/docs/repository-apparatus.md`, `apparatus/docs/predictive-ruleset.md`, `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`). This is consistent with the bilateral pilot tier distinction (substrate-pilots author trajectory + findings inside the pilot directory; apparatus-pilots author articulation in `apparatus/docs/`). No anomaly; documented here for reader orientation.
 
 5. **CHARMS-EXT 9 self-checking discipline**: per source-identifier convention findings, source-identifier coordinates (Doc 738) are described in CLAUDE.md but no `findings.md` aggregates the convention's self-check pattern (a name whose prefix and install helper disagree is a bug shape). Surfaced as future-extract candidate; promotion-status: none until a sibling source-identifier-convention finding lands at a different naming axis.
+
+### Entry 011 — Rules 17–22 consolidation (2026-05-30)
+
+- **Pattern name**: predictive-ruleset-canonical-source-consolidation.
+- **Locales corroborating**: `pilots/rusty-js-jit/findings.md` (canonical source) Addenda XII + XIII (rules 17, 18, 19, 20, 21, 22).
+- **Class**: apparatus-tier.
+- **Body summary**: rules 17–22 articulated at JIT findings.md Addenda XII + XIII (Standing rule 17 EPSUA.6/EPSUA.7; Standing rule 18 SPBC.2; Standing rule 19 SPTW.2; Standing rule 20 NACR.1; Standing rule 21 RS.1+RS.2+CP.4; Standing rule 22 SMPT.4+ALST.2) but never consolidated to the derived-view `apparatus/docs/predictive-ruleset.md`. Consolidation closes the gap surfaced by audit-ledger Entries 001 / 002 / 003 / 004. Note: rule 16 does not exist in the canonical source (findings.md jumps 15 → 17 in Addendum XII); the gap is preserved per Doc 727 §X append-only discipline.
+- **Promotion status**: standing-rule (rules 17–22 in `apparatus/docs/predictive-ruleset.md`). Cross-locale recurrence count: rules 17–22 originate in the JIT canonical ledger; cross-locale instantiations include rule 21 re-instantiated 2026-05-30 by TAECSF-EXT 0 probe (deferrals-ledger Entry 010 un-defer, ~60 LOC narrow-dispatcher probe answered the option-(i)-vs-option-(ii) bifurcation per the probe-first rule).
+- **Authored actions**: commit (this commit) appends rules 17–22 to `apparatus/docs/predictive-ruleset.md` between rule 15's separator and rule 23's heading; updates the §Status note to record the consolidation date + cite keeper Telegram 10574 + flag the rule-16-does-not-exist preservation. Entry 001 of this ledger has its Promotion status field flipped in-place to enumerate the now-consolidated rules.
