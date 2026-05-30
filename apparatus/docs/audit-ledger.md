@@ -142,3 +142,20 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - The proposed locale `typed-array-byte-storage-conformance` is not yet founded. Founding requires keeper APPROVED of a proposal explicitly citing the four risks identified in the audit (read/write symmetry; DataView migration scope; view-aliasing harness gate; `__kind` typed-enum co-yield optimization).
   - The DataView setters at `intrinsics.rs:19842–19865` carry the same Rust saturating-cast spec divergence flagged in the TAECSF-EXT 1 proposal §Risk Assessment; jointly subject to the precursor architectural rung.
   - The `__kind` slot is currently a String stored via `set_own_internal` rather than a typed field on `TypedArrayViewRecord`; the precursor migration is a natural moment to promote it to a typed enum, but this is a co-yield optimization, not a precondition.
+
+### Entry 007 — `findings-disposition-cycle-2` (2026-05-30)
+
+- **Audit type**: findings-disposition.
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10600 ("Cycle 2").
+- **Scope**: findings-ledger entries with newly-ripened promotion-readiness after TABSC-EXT 0 landing (commit f2107bb6): Entry 012 (TAECSF.3), Entry 013 (APP.PIPELINE-1), plus the new Finding TABSC.1 surfaced at TABSC-EXT 0.
+- **Method**: `apparatus/docs/findings-disposition-protocol.md` Step 3 candidate test applied per finding. TAECSF.3 + APP.PIPELINE-1: both received second observation via TABSC-EXT 0's empirical validation; candidate (4) promote-to-standing-rule fits per the protocol's Step 3 ordering. TABSC.1: new at TABSC-EXT 0; candidate (7) defer-with-cross-reference fits (one observation; awaits second). No new arcs scaffolded; no orphan-disposition lattice-meets surfaced.
+- **Findings**:
+  - **Promotions (2)**: Rules 27 (Substrate-spec-correctness vs engine-architecture conflict, from TAECSF.3) and 28 (Dynamic-typing pipeline starts type-specific alphabet at runtime introspection, from APP.PIPELINE-1) appended to `apparatus/docs/predictive-ruleset.md` between rule 26's separator and the Standing instruments section.
+  - **Deferrals (1)**: Finding TABSC.1 (cascade-revival materializes at precursor rung when precursor IS the encoding tier) recorded as findings-ledger Entry 015 with `trajectory-and-findings-embedded` Promotion status; candidate Doc 740 §II.2 P4 amendment pending second observation.
+  - **Cross-finding pattern observed**: Pattern F.1 (already-promoted-with-bidirectional-back-reference) increments by 2 at this cycle (TAECSF.3 + APP.PIPELINE-1 now carry bidirectional back-references to predictive-ruleset.md rules 27 + 28); steady-state pattern remains dominant per cycle 1's prediction.
+- **Authored actions**:
+  - Commit (this commit): `apparatus/docs/predictive-ruleset.md` rules 27 + 28 appended + §Status note refreshed; `apparatus/docs/findings-ledger.md` Entries 012 + 013 Promotion status flipped in-place per §Discipline; Entries 014 + 015 appended; this audit-ledger entry recorded.
+- **Surfaced-but-not-acted findings**:
+  - The protocol's §III validation discipline ("at its second authoring it must pass through itself") is partially exercised here: cycle 2 is the protocol's first live use after the protocol's own authoring (commit 496e4d21). No protocol amendment surfaced this cycle; the §III self-application coherence holds at the protocol's first real-state test.
+  - TAECSF.1 (narrow dispatcher beats wide signature lift) remains at one-more-observation per cycle 1's disposition; this cycle does not flip it. Second observation candidate: a future Result-thread-through-non-Result-callsite work in the engine (e.g., template-literal ToNumber, RegExp dispatch).
+  - BBND yield-analysis (Entry 006) remains deferred per cycle 1's disposition; this cycle does not flip it. Awaits a non-parser-early-error locale exhibiting the constraint-stacking multiplier shape.
