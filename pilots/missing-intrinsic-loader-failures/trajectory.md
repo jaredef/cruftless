@@ -329,3 +329,99 @@ follow-up.
 - First-coordinate closure achieved for the Buffer-writer subset (`exceljs`, `pg`,
   `postgres`) in the inline residual context.
 - Residual `safe-stable-stringify`/`bson` toStringTag failure remains unchanged.
+
+## 2026-05-30 — MILF-EXT 4 Symbol.toStringTag descriptor receiver
+
+### Trigger
+
+Helmsman directive `8fa1a44f-53f9-49e0-be40-636d83cfff9f` targeted the
+post-EXT-3 residual:
+
+`Cannot read property 'get' of undefined (receiver='toStringTag')`
+
+The named package smokes were `mongoose` and `slonik`.
+
+### Baseline Reproduction
+
+Installed `mongoose` and `slonik` into the sidecar sandbox at:
+
+`/home/jaredef/Developer/cruftless-r1-sidecar/results/milf-ext4-r1/`
+
+Pre-fix cruft reproduced the directive error:
+
+- `mongoose`: failed in `bson/lib/bson.cjs` while evaluating
+  `Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype), Symbol.toStringTag).get`
+- `slonik`: failed in `safe-stable-stringify/index.js` while evaluating
+  `Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Object.getPrototypeOf(new Int8Array())), Symbol.toStringTag).get`
+
+A reduced probe showed:
+
+- `Symbol.toStringTag` existed.
+- `%TypedArray%.prototype` already carried the `"@@toStringTag"` accessor.
+- `Object.getOwnPropertyDescriptor(proto, Symbol.toStringTag)` returned
+  `undefined`, causing the subsequent `.get` property read on `undefined`.
+
+### Root Cause
+
+The typed-array toStringTag accessor had already been installed at the correct
+prototype level by the earlier typed-array work, but much of the runtime still
+stores well-known symbol properties under transitional string keys such as
+`"@@toStringTag"`.
+
+Property reads already had a Symbol-to-string fallback through
+`object_get_pk` / `find_getter_pk`, but `Object.getOwnPropertyDescriptor` used
+a direct `properties.get(&Symbol(...))` path for symbol keys. That made the
+descriptor invisible to package code even though ordinary symbol property reads
+could find it.
+
+### Substrate Move
+
+`Runtime::get_own_property_descriptor_pk` now applies the same
+well-known-symbol fallback used by property reads:
+
+- first check the true `PropertyKey::Symbol` slot;
+- then check the transitional string key from the symbol description.
+
+`Object.getOwnPropertyDescriptor` now routes ordinary descriptor lookup through
+that shared helper instead of duplicating a string-only shape path plus direct
+symbol map lookup.
+
+### Verification
+
+- Focused regression:
+  `cargo test --release -p rusty-js-runtime --test run_golden typed_array_tostringtag_descriptor_is_visible_by_symbol_key -- --nocapture`
+  PASS.
+- `cargo build --release --bin cruft -p cruftless`: PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: PASS (`72 passed`, `1 ignored`).
+
+Post-fix reduced probe:
+
+- `Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype), Symbol.toStringTag)` returns an object.
+- `.get` is callable.
+- `.get.call(new Uint8Array())` returns `Uint8Array`.
+
+Post-fix package smoke:
+
+- `slonik`: PASS.
+- `mongoose`: advanced past the toStringTag receiver failure and now fails later
+  on a distinct module-resolution residual:
+  `module not found: '..'` from `mongodb/lib/operations/drop.js`.
+
+### C4 Status
+
+C4 holds for the toStringTag descriptor receiver coordinate. The shared
+descriptor lookup now composes with the existing well-known-symbol transitional
+storage strategy, and both named package smokes no longer fail on
+`receiver='toStringTag'`.
+
+The new `mongoose` blocker is not part of this rung. It is a CJS parent-directory
+resolution residual and should be tracked as a MILF-EXT 5 candidate if it
+recurs across the package cluster.
+
+### Finding
+
+**Finding MILF.4.1**: Well-known symbol transitional storage must be symmetric
+across read and reflection paths. A property read fallback alone is insufficient:
+ecosystem packages reflect descriptor objects and call accessors directly, so
+`Object.getOwnPropertyDescriptor(_, Symbol.toStringTag)` must share the same
+Symbol-to-`"@@..."` compatibility lookup as `[[Get]]`.

@@ -38,6 +38,16 @@ fn array_literal_elision_preserves_length_and_holes() {
 }
 
 #[test]
+fn typed_array_tostringtag_descriptor_is_visible_by_symbol_key() {
+    let src = r#"
+        const proto = Object.getPrototypeOf(Uint8Array.prototype);
+        const desc = Object.getOwnPropertyDescriptor(proto, Symbol.toStringTag);
+        return typeof desc.get === 'function' && desc.get.call(new Uint8Array()) === 'Uint8Array';
+    "#;
+    assert!(matches!(run(src), Value::Boolean(true)));
+}
+
+#[test]
 fn return_integer() {
     if let Value::Number(n) = run("return 42;") {
         assert_eq!(n, 42.0);

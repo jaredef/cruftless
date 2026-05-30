@@ -143,3 +143,12 @@ The standing rule the ledger formalizes: **a substrate rung that surfaces a cand
 - **Un-defer condition**: extend sidecar polling to surface outbox-ack-changes when ack bodies meet a substantive-content threshold (proposed signal: `surface_to_recipient=true` flag in the ack payload OR ack body length ≥ N characters with intent-bearing keywords). Implementation lands new `data/inbound-acks-<role>[-<instance>].json` channel + extends `/local/inbox` to merge ack-surfaced content. Until landed: helmsman discipline §V.5 (approval-as-fresh-outbound) is the workaround.
 - **Workaround in force**: agent-init-protocol §V.5 (added 2026-05-29). All substantive cybernetic direction rides fresh outbound messages with intent=response, related_to=<plan>.
 - **Status**: DEFERRED.
+
+### Entry 012 — `cjs-parent-directory-resolution` (2026-05-30)
+
+- **Candidate name**: `cjs-parent-directory-resolution` (proposed locale under module-loader / CJS resolution residuals).
+- **Originating rung**: `pilots/missing-intrinsic-loader-failures/trajectory.md` MILF-EXT 4, Phase 5 inspection after closing the toStringTag descriptor receiver bug.
+- **Class**: cluster-pending — surfaced as the next `mongoose` blocker after the directive's toStringTag failure advanced, but currently observed in one package path only.
+- **Gating predicate**: a second package smoke or top500/refined sweep row surfaces `require("..")` / parent-directory CJS resolution from inside a package subdirectory, OR keeper/helmsman directs immediate closure for the `mongoose` path.
+- **Un-defer condition**: evidence reaches sibling threshold or direct directive lands; found a locale that audits CJS directory resolution relative to nested package files, including package boundary and `package.json` main/index fallback behavior.
+- **Status**: DEFERRED.
