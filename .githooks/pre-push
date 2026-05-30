@@ -61,7 +61,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         # `covers_commits:`.
         covered=0
         if [[ -d apparatus/proposals/decided ]]; then
-            for decision in apparatus/proposals/decided/*.md; do
+            # Decisions live in two shapes per convention drift:
+            #   - flat:    apparatus/proposals/decided/<slug>.md
+            #   - nested:  apparatus/proposals/decided/<slug>/decision.md
+            # Glob both so the gate matches whichever the author used. Prior
+            # to this fix the glob only saw the flat shape, silently no-op'ing
+            # the gate for every nested-slug landing.
+            decisions=$(find apparatus/proposals/decided -mindepth 1 -maxdepth 2 \
+                -name '*.md' -not -path '*/.*' 2>/dev/null)
+            for decision in $decisions; do
                 [[ -f "$decision" ]] || continue
                 if grep -q "^decision: APPROVED" "$decision" 2>/dev/null && \
                    grep -qE "(^| |\")$sha([\" ,]|$)" "$decision" 2>/dev/null; then
