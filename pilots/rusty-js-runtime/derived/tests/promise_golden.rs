@@ -92,6 +92,45 @@ fn promise_reject_with_catch() {
     }
 }
 
+#[test]
+fn promise_instance_catch_on_fulfilled_chain_is_noop() {
+    let mut rt = run_with_jobs(
+        r#"
+        Promise.resolve(1)
+          .then(function(x) { __record(x); return x; })
+          .catch(function(reason) { __record('unexpected'); return reason; });
+    "#,
+    );
+    if let Some(Value::Number(n)) = recorded(&rt) {
+        assert_eq!(n, 1.0);
+    } else {
+        panic!("recorded: {:?}", recorded(&rt));
+    }
+    assert!(
+        rt.drain_unhandled_rejections().is_empty(),
+        "fulfilled .then(...).catch(...) chain must not create an unhandled rejection"
+    );
+}
+
+#[test]
+fn promise_instance_catch_handles_rejection() {
+    let mut rt = run_with_jobs(
+        r#"
+        Promise.reject('boom')
+          .catch(function(reason) { __record(reason); return reason; });
+    "#,
+    );
+    if let Some(Value::String(s)) = recorded(&rt) {
+        assert_eq!(s.as_str(), "boom");
+    } else {
+        panic!("recorded: {:?}", recorded(&rt));
+    }
+    assert!(
+        rt.drain_unhandled_rejections().is_empty(),
+        "instance .catch handler must clear pending unhandled rejection"
+    );
+}
+
 // ─────────── Microtask ordering: Promise reactions interleave properly ───────────
 
 #[test]

@@ -526,3 +526,84 @@ its reflected prototype descriptor surface exists. Ecosystem packages commonly
 probe intrinsic support via `Object.getOwnPropertyDescriptor(...).get`, so
 partial constructor exposure must include the accessor descriptors that package
 feature-detection code observes.
+
+## 2026-05-30 - MILF-EXT 6: Redis Post-Load Promise.catch Terminal Rejection
+
+### Directive
+
+Investigate the Redis post-load failure reproduced by:
+
+```js
+import('redis').then(m => {
+  console.log('OK', Object.keys(m).length);
+  console.log(Object.keys(m).slice(0, 8).join(','));
+}).catch(err => console.error(err));
+```
+
+Pre-fix cruft successfully loaded Redis and printed the export list, then ended
+the turn with:
+
+```text
+cruft: unhandled promise rejection: "TypeError(\"callee is not callable: undefined [argc=1]\")"
+```
+
+### Root Cause
+
+The Redis package itself was not the failing mechanism. Reduced probes showed
+that `Promise.resolve(1).then(...).catch(...)` produced the same terminal
+unhandled rejection.
+
+Two Promise instance-method gaps composed into the Redis post-load failure:
+
+- `Promise.prototype.catch` manually walked the prototype chain with
+  `get_own("then")`. The runtime installs `Promise.prototype.then` through the
+  shape-backed property path, so the manual lookup missed it and attempted to
+  call `undefined`.
+- `Promise.prototype.then` preserved non-callable handlers as reaction handlers.
+  A `.catch(...)` call dispatches to `.then(undefined, onRejected)`; the
+  fulfilled path later tried to call the `undefined` fulfillment handler instead
+  of applying the spec identity propagation path.
+
+### Substrate Move
+
+`Runtime::promise_catch_via` now resolves `this.then` through `Runtime::get_via`,
+matching the spec `Get` path and the runtime's shape-backed property storage.
+
+`Runtime::promise_then_via` now normalizes `onFulfilled` and `onRejected` to
+`None` unless the supplied value is callable. The existing promise reaction
+machinery already implements the required identity/thrower propagation for
+missing handlers, so this keeps the change local to handler normalization.
+
+### Verification
+
+- Focused Promise regression:
+  `cargo test --release -p rusty-js-runtime --test promise_golden`: PASS
+  (`8 passed`).
+- CLI build:
+  `cargo build --release --bin cruft -p cruftless`: PASS.
+- Reduced CLI smoke:
+  `Promise.resolve(1).then(v => console.log('then', v)).catch(...)`: PASS,
+  no unhandled rejection.
+- Redis exact smoke: PASS. The script prints `OK 58` and the first eight Redis
+  exports, then exits without the prior terminal unhandled rejection.
+
+### Residual
+
+`redis.createClient().connect().catch(...)` now reaches Redis socket retry code
+and reports a distinct runtime gap:
+
+```text
+connect-error callee is not callable: undefined [argc=1] (callee='<scoped@9>retryIn') ... socket.js:221:50
+```
+
+That path is downstream of the post-load fix and appears tied to the
+`timers/promises.setTimeout(retryIn)` retry loop, not to the import/post-load
+Promise.catch defect.
+
+### Finding
+
+**Finding MILF.6.1**: Promise instance combinators must use shared `[[Get]]`
+semantics and callable-handler normalization. Ecosystem packages commonly end
+dynamic imports with `.then(...).catch(...)`; if `.catch` bypasses the normal
+property lookup path or `.then` treats `undefined` as callable, otherwise
+successful package loads become terminal unhandled rejections.

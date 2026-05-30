@@ -4604,8 +4604,8 @@ impl Runtime {
                 ))
             }
         };
-        let on_fulfilled = args.get(1).cloned();
-        let on_rejected = args.get(2).cloned();
+        let on_fulfilled = args.get(1).cloned().filter(|v| self.is_callable(v));
+        let on_rejected = args.get(2).cloned().filter(|v| self.is_callable(v));
         let chain = crate::promise::new_promise(self);
         let (status, value) = {
             let s = self.obj(source);
@@ -4650,28 +4650,12 @@ impl Runtime {
     pub fn promise_catch_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
         let source = args.first().cloned().unwrap_or(Value::Undefined);
         let on_rejected = args.get(1).cloned().unwrap_or(Value::Undefined);
-        // Resolve `this.then` (walks prototype chain). The parser routes the
-        // user-facing identifier `then` directly; no name mangling needed.
+        // Resolve `this.then` via the spec Get path. Promise.prototype.then
+        // is installed through the shape-backed property path, so a manual
+        // get_own-only prototype walk misses it and turns .catch into a call
+        // to undefined.
         let then_fn = match &source {
-            Value::Object(id) => {
-                let mut cur = Some(*id);
-                let mut found = Value::Undefined;
-                while let Some(c) = cur {
-                    if let Some(d) = self.obj(c).get_own("then") {
-                        found = d.value.clone();
-                        // GOPD-EXT 1: only invoke callable getters; Some(Undefined)
-                        // means accessor-with-undefined-getter (returns undefined).
-                        if let Some(g) = d.getter.clone() {
-                            if self.is_callable(&g) {
-                                found = self.call_function(g, source.clone(), Vec::new())?;
-                            }
-                        }
-                        break;
-                    }
-                    cur = self.obj(c).proto;
-                }
-                found
-            }
+            Value::Object(_) => self.get_via(&source, &Value::String(std::rc::Rc::new("then".into())))?,
             _ => {
                 return Err(RuntimeError::TypeError(
                     "Promise.prototype.catch: this is not an Object".into(),
