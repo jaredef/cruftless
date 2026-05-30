@@ -370,7 +370,7 @@ pub fn install_string_decoder(rt: &mut Runtime) {
 
 // Tier-Ω.5.bbbbbb: rich Buffer-instance method surface — slice, toString,
 // copy, indexOf, equals. csv-parse uses all of these via ResizeableBuffer.
-fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
+pub(crate) fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
     register_method(rt, id, "slice", |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(o) => o,
@@ -1314,7 +1314,9 @@ pub fn install_buffer(rt: &mut Runtime) {
         for i in 0..n.min(65536) {
             o.set_own(i.to_string(), Value::Number(0.0));
         }
-        Ok(Value::Object(rt.alloc_object(o)))
+        let id = rt.alloc_object(o);
+        install_buffer_methods(rt, id);
+        Ok(Value::Object(id))
     });
     // Tier-Ω.5.iii: Buffer.allocUnsafe + subarray for nanoid. nanoid
     // calls Buffer.allocUnsafe(bytes * POOL_SIZE_MULTIPLIER), fills via
@@ -1452,6 +1454,7 @@ pub fn install_buffer(rt: &mut Runtime) {
         for (i, b) in bytes.iter().enumerate() {
             rt.object_set(id, i.to_string(), Value::Number(*b as f64));
         }
+        install_buffer_methods(rt, id);
         Ok(Value::Object(id))
     });
     register_method(rt, buf_ctor, "isBuffer", |rt, args| {

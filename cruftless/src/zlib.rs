@@ -50,6 +50,11 @@ fn buffer_from_bytes(rt: &mut Runtime, bytes: &[u8]) -> Value {
         o.set_own(i.to_string(), Value::Number(*b as f64));
     }
     let id = rt.alloc_object(o);
+    // Zlib outputs are Buffers; install the full prototype surface (numeric
+    // readers/writers, indexOf, equals, slice, etc.) plus the zlib-local
+    // toString override. Without the full surface, consumers that do
+    // `gunzipSync(...).readUInt32BE(...)` after decompression dead-end.
+    crate::node_stubs::install_buffer_methods(rt, id);
     install_zlib_buffer_methods(rt, id);
     Value::Object(id)
 }

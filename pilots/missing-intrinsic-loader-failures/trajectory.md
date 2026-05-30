@@ -741,3 +741,38 @@ Direct continuation of the R1 Option-C compounding result: zlib batch
 (MILF-EXT 6) advanced mongoose through the import path into the Buffer
 numeric residual; closing that residual is the same rung-shape as MILF-EXT 6
 but at the byte-decoding coordinate rather than the compression coordinate.
+
+## 2026-05-30 — MILF-EXT 7.1 Buffer-method install gaps closed (cross-package smoke triage)
+
+Cross-package smoke against mongoose (per keeper directive #3 in Telegram 10526)
+surfaced that the new MILF-EXT 7 numeric readers were unreachable via three
+production buffer-creation paths that pre-existed in the codebase:
+
+1. `cruftless/src/zlib.rs::buffer_from_bytes` — called `install_zlib_buffer_methods`
+   (toString-only) without first installing the full Buffer prototype surface.
+   Result: `gunzipSync(...).readUInt32BE(...)` and similar dead-ended.
+2. `cruftless/src/node_stubs.rs::allocUnsafeSlow` — alloc-shape factory that
+   didn't call `install_buffer_methods` at all.
+3. `cruftless/src/node_stubs.rs::Buffer.concat` — concat result didn't call
+   `install_buffer_methods`.
+
+Fix: each site now calls `install_buffer_methods` (exposed `pub(crate)`).
+zlib still layers its `toString` override on top.
+
+Mongoose smoke advanced: the readUInt32BE failure inside saslprep's
+memory-code-points.js (called transitively from mongodb's SCRAM auth path)
+no longer dead-ends. New residual surfaced one level deeper:
+`mongoose/lib/cast/bigint.js:18:65` errors `Cannot mix BigInt and other types`
+on the template-literal ERROR_MESSAGE that interpolates `${MIN_BIGINT}` /
+`${MAX_BIGINT}`. That's a parser/runtime-tier gap (template literals should
+call `ToString` on BigInt, not `ToNumber`), and is named here as a follow-up
+rung, distinct from the Buffer surface coordinate.
+
+### Verification
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Isolated Buffer smoke (`/tmp/smoke/buf.mjs`) unchanged: all numeric
+  round-trips PASS, OOB throws ERR_OUT_OF_RANGE.
+- Mongoose smoke advances past Buffer surface into the bigint-template
+  residual — confirms the install-gap fix unblocks the chain.
