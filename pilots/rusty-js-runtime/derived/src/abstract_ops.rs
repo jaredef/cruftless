@@ -352,6 +352,81 @@ pub fn to_bigint(
     }
 }
 
+/// TAECSF-EXT 1: spec-faithful `ConvertNumberToTypedArrayElement` per
+/// ECMA-262 §10.4.5.16 + §7.1.6 ToInt32 + §7.1.7 ToUint8Clamp +
+/// §7.1.8 ToUint8/Int8/Int16/Uint16/Uint32. Used by
+/// `Runtime::typed_array_set_index_checked` to coerce the value into the
+/// kind's storage representation before the existing storage delegate.
+///
+/// Critical: uses explicit `rem_euclid` for modular reduction. Rust's `as`
+/// cast from f64 to integers saturates (e.g., `300_f64 as u8 = 255`),
+/// which diverges from spec (`ToUint8(300) = 44`). DataView setters in
+/// intrinsics.rs currently use saturating casts and carry the same
+/// divergence; out of scope for this rung but flagged for future work.
+///
+/// Float32 / Float64 returned unchanged at this rung; sub-substrate (b)
+/// Float32 canonical-NaN preservation deferred per locale carve-out.
+pub fn convert_number_to_typed_array_element(v: &Value, kind: &str) -> Value {
+    let n = to_number(v);
+    match kind {
+        "Int8Array" => Value::Number(to_int_n(n, 8) as f64),
+        "Uint8Array" => Value::Number(to_uint_n(n, 8) as f64),
+        "Uint8ClampedArray" => Value::Number(to_uint8_clamp(n) as f64),
+        "Int16Array" => Value::Number(to_int_n(n, 16) as f64),
+        "Uint16Array" => Value::Number(to_uint_n(n, 16) as f64),
+        "Int32Array" => Value::Number(to_int_n(n, 32) as f64),
+        "Uint32Array" => Value::Number(to_uint_n(n, 32) as f64),
+        _ => Value::Number(n),
+    }
+}
+
+fn to_uint_n(n: f64, bits: u32) -> u64 {
+    if !n.is_finite() {
+        return 0;
+    }
+    let modulus = 2f64.powi(bits as i32);
+    n.trunc().rem_euclid(modulus) as u64
+}
+
+fn to_int_n(n: f64, bits: u32) -> i64 {
+    if !n.is_finite() {
+        return 0;
+    }
+    let modulus = 2f64.powi(bits as i32);
+    let half = 2f64.powi(bits as i32 - 1);
+    let rem = n.trunc().rem_euclid(modulus);
+    if rem >= half {
+        (rem - modulus) as i64
+    } else {
+        rem as i64
+    }
+}
+
+fn to_uint8_clamp(n: f64) -> u8 {
+    if n.is_nan() {
+        return 0;
+    }
+    if n <= 0.0 {
+        return 0;
+    }
+    if n >= 255.0 {
+        return 255;
+    }
+    let floor = n.floor();
+    let frac = n - floor;
+    if frac < 0.5 {
+        floor as u8
+    } else if frac > 0.5 {
+        (floor + 1.0) as u8
+    } else {
+        if (floor as i64) % 2 == 0 {
+            floor as u8
+        } else {
+            (floor + 1.0) as u8
+        }
+    }
+}
+
 /// Apply `+` semantics per §13.15. ToPrimitive-coerces operands; if either
 /// is a String, concatenate; else arithmetic add.
 pub fn op_add(x: &Value, y: &Value) -> Value {

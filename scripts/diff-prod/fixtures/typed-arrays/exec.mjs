@@ -62,6 +62,11 @@ const result = {};
 // don't mask the value by element byte-width (Uint8Array[0]=300 stores
 // 300 instead of 300 & 0xff = 44). Substantive substrate fix per
 // TypedArray subtype; queued as a separate intrinsics-locale rung.
+// TAECSF-EXT 1 (2026-05-30) attempted to land this via integer-kind
+// dispatch in `typed_array_set_index_checked`; reverted per Rule 13 on
+// negative TAMM regression (3 cells). Deeper-layer closure pending in
+// TAECSF-EXT 2; the `convert_number_to_typed_array_element` helper
+// stays in `abstract_ops.rs` as the substrate prefix per Finding IR.33.
 //
 // {
 //   const u = new Uint8Array(1); u[0] = 300; // should wrap to 44

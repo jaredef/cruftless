@@ -59,3 +59,60 @@ diff-prod POST-EXT 0:    PASS=64 FAIL=48 / 112
 **Phase 6 (deferral surfacing)**: the founding rung surfaces three carry-forward sub-substrates within this locale's scope: (a) integer-kind ConvertNumberToTypedArrayElement per §10.4.5.16; (b) Float32 canonical-NaN preservation per §6.1.6.2; (c) Number→BigInt spec deviation in `abstract_ops::to_bigint` (lattice with deferrals-ledger Entry 001). Sub-substrates (a) and (b) are in-locale post-rung work; (c) is lattice cross-reference to Entry 001's BigInt namespace and routed when Entry 001 promotes.
 
 **Status**: TAECSF-EXT 0 LANDED. Arc-tier accumulation: third productive locale in `2026-05-28-array-exotic-substrate`. Cumulative arc yield post this rung: TAWR 67/100 + TAMM 86/100 + RBDPA pending. Sub-substrates (a) + (b) queued for next rungs.
+
+## TAECSF-EXT 1 — NEGATIVE (Rule 13 revert) (2026-05-30) — integer-kind ConvertNumberToTypedArrayElement attempt
+
+**Trigger**: Keeper APPROVED of proposal `apparatus/proposals/pending/2026-05-30T172000Z-taecsf-ext-1-integer-kind-convert/proposal.md` per Telegram 10578 ("Approved"). Next-rung within this locale per Rule 22 axis-split prediction (integer-kind sub-substrate (a) sharing the BigInt-TA exemplar).
+
+**Arc enrollment**: `2026-05-28-array-exotic-substrate` (no roster change — locale already enrolled).
+
+**Phase 1 (Spawn)**:
+- **M** = JavaScript `ta[i] = v` on Int8/Uint8/Uint8Clamped/Int16/Uint16/Int32/Uint32 Array receiver.
+- **T** = spec-faithful ConvertNumberToTypedArrayElement per ECMA-262 §10.4.5.16 + §7.1.6–§7.1.8 (modular reduction via explicit `rem_euclid`, NOT Rust's saturating `as` cast; Uint8Clamp NaN→0 + saturation + round-half-to-even).
+- **I** = new `abstract_ops::convert_number_to_typed_array_element(&Value, &str) -> Value` (~60 LOC); integer-kind branch in `Runtime::typed_array_set_index_checked` paralleling the EXT 0 BigInt dispatch (~15 LOC).
+- **R** = lattice with TAMM regression-gate cluster; sibling within the locale to EXT 0's BigInt branch; DAG ↑ `abstract_ops::to_number`.
+- **Observability** = ordinary (TAMM + TAWR + diff-prod cluster movement; direct probe assertions on 5 spec cells).
+
+**Phase 2 (Baseline-inspect)**: pre-rung TAMM 86/100, TAWR 67/100, diff-prod 64/48 (re-verified against `bin/cruft` freshly refreshed from `target/release/cruft` after binary-staleness measurement-error was detected mid-rung).
+
+**Phase 3 (Pin-Art probe if duplicated)**: not invoked at this rung.
+
+**Phase 4 (Revert-then-deeper-layer-closure)** — **invoked per Rule 13**:
+
+Direct probe assertions all PASS (10/10 in `/tmp/probe-taecsf-1.js`): Uint8 wrap 300→44, Int8 wrap 130→-126, Uint8Clamped NaN→0, Uint8Clamped saturate 300→255, round-half-to-even 254.5→254, etc. The substrate move at the bytecode `Op::SetIndex` site behaves spec-faithfully for the named integer kinds.
+
+But **TAMM regressed 86 → 83 (-3 PASS)** under the EXT 1 substrate. Diff of cluster fail-set pre vs post identifies the three regressions:
+
+1. `built-ins/TypedArrayConstructors/internals/GetOwnProperty/BigInt/index-prop-desc.js`
+2. `built-ins/TypedArrayConstructors/internals/Set/conversion-operation-consistent-nan.js`
+3. `built-ins/TypedArray/prototype/some/BigInt/values-are-not-cached.js`
+
+**Mechanism diagnosis (in-progress; partial)**: two BigInt-TA tests + one Float NaN test regressed. None of these are integer-kind tests. The substrate edit's BigInt branch is byte-equivalent to EXT 0's; the Float fall-through (`_ => value`) is also byte-equivalent. Yet the cluster regression is real and reproducible across three independent runs. The regression is not in the direct probe cells; it surfaces only in the test262 internals/Set + internals/GetOwnProperty descriptor paths + the values-are-not-cached cache invalidation path. Hypotheses worth checking at EXT 2:
+- (a) `self.object_get(id, "__kind")` now executes on every TA element-set including BigInt-TA dispatched paths; if `object_get` walks the prototype chain with a side-effect tracker (cache invalidation, property-miss log), it may invalidate something the BigInt-TA cache tests rely on.
+- (b) The `kind` String allocation in the new code (`s.as_str().to_string()`) may interact with a refcount-sensitive code path in BigInt-TA's value-cache test.
+- (c) The Set/conversion-operation-consistent-nan test may be sensitive to how NaN is stored; the fall-through arm of the new match is structurally identical but the surrounding match arm ordering changes branch prediction or codegen in a way that surfaces a pre-existing latent NaN-bit-pattern divergence.
+
+**Per Rule 13 prospective application**: substrate edit at `interp.rs::typed_array_set_index_checked` reverted to EXT 0 form. The `abstract_ops::convert_number_to_typed_array_element` helper retained on disk as the substrate prefix that the EXT 2 deeper-layer closure will consume (per Finding IR.33 cumulative substrate amortization). Diff-prod fixture (`scripts/diff-prod/fixtures/typed-arrays/exec.mjs`) overflow cells kept commented with an updated note pointing at this rung's NEGATIVE result and the deferred deeper-layer closure.
+
+**Yield**:
+
+```text
+TAMM cluster PRE-EXT 1 / POST-REVERT:  PASS=86 FAIL=14 / 100 (86.0%)
+TAMM cluster POST-EXT 1 (substrate engaged):  PASS=83 FAIL=17 / 100 (83.0%) — REGRESSION
+TAWR cluster (stable across rung):  PASS=67 FAIL=33 / 100 (67.0%)
+diff-prod (post-revert):  PASS=64 FAIL=48 / 112 — gate intact
+```
+
+**Net rung yield: 0 PASS (revert preserves EXT 0 baseline).** The substrate move did not land.
+
+**Gates (post-revert)**: build PASS; runtime lib 74/0/1 ignored; TAMM 86/100; TAWR 67/100; diff-prod 64/48. Direct probe assertions no longer PASS for the integer-kind cells (the dispatch is reverted) but BigInt EXT 0 regression check stays clean.
+
+**Tag**: `taecsf-ext-1-integer-kind-NEGATIVE-rule13-revert`.
+
+**Finding TAECSF.2 (a-spec-faithful-direct-probe-can-coexist-with-test262-cluster-regression-via-non-obvious-shared-state)**: when a substrate edit passes the direct probe assertions designed by the proposal but fails the cluster regression-gate, the mechanism is rarely in the substrate edit's named scope; spot-read residuals per Rule 22 and look for shared state at the dispatch site (prototype-chain reads, cache invalidation, refcount sensitivity, match-arm codegen) that the substrate edit incidentally exercises. The revert + diagnose-then-deeper-layer rung is the discipline; immediate forward-pursuit is the anti-pattern.
+
+**Phase 5 (chapter-close-inspect at NEGATIVE)**: TAECSF-EXT 1 is a Rule-13 instance — verify (3 stable runs), diagnose (3 named regressions; hypotheses (a)/(b)/(c)), revert (interp.rs to EXT 0 form), identify deeper-layer (read the 3 failing tests to confirm which hypothesis holds, redesign the dispatch site to either avoid the touched-shared-state or migrate to a different routing point such as `typed_array_set_index` interior rather than `_checked` wrapper).
+
+**Phase 6 (deferral emission)**: EXT 2 is queued as the deeper-layer closure rung. Open hypotheses (a)/(b)/(c) named above; first action at EXT 2 is to spot-read the three regressing test262 cells to converge on the correct hypothesis. The proposal at `apparatus/proposals/pending/2026-05-30T172000Z-taecsf-ext-1-integer-kind-convert/proposal.md` remains in pending/ as the historical record of the original design; the EXT 2 proposal will supersede it with a refined dispatch design.
+
+**Status**: TAECSF-EXT 1 REVERTED locally (Rule 13). The `abstract_ops::convert_number_to_typed_array_element` helper remains on disk as substrate prefix per Finding IR.33; the integer-kind dispatch wiring at `interp.rs` reverted to EXT 0 form. Locale's TAECSF-EXT 2 queued for the deeper-layer closure.
