@@ -88,3 +88,44 @@ test262-sample (Class A measurement; Rule 29):
 **Tag**: `asta-ext-0-array-frozen-throw`.
 
 **Status**: ASTA-EXT 0 LANDED. Doc 721 chain-bundle analysis vindicated at the substrate-correctness level (probe 7/7 PASS); the cluster-yield prediction (|U - A| > 1) widened due to sample-path-curation artifact per Doc 721 §VI.5 false-pass amendment. Rule 29 falsifier event recorded for findings-ledger follow-up. Locale founded for future rungs in the strict-throw-discipline series.
+
+## ASTA-EXT 1 — LANDED (2026-05-30) — destructure-assign const-binding TypeError discipline (put-const sub-bundle)
+
+**Trigger**: Keeper directive Telegram 10619 ("Do the sibling doc sub bundles and then the test 262 thereafter"). Second SAMPLE.1 sub-bundle landed in this locale per the broader strict-throw-discipline telos.
+
+**Phase 1 (Spawn)** per Doc 744:
+- **M** = destructuring assignment in for-of head (or any AssignmentPattern) targeting a const-bound identifier; e.g., `for ([c] of [[1]]) {}` where `c` is const.
+- **T** = TypeError throw per ECMA-262 §13.15.4 + §15.2.7.
+- **I** = single transition: add const-binding check at `assign_target_from_stack` in `pilots/rusty-js-bytecode/derived/src/compiler.rs:6272` (Identifier arm). Mirrors the existing check in `compile_plain_assign` lines 5942-5954.
+- **R**: DAG mouth-gating prereq ↑ `is_const_binding(name)` (CLOSED at spawn; already implemented and used by compile_plain_assign). Lattice with compile_plain_assign — same throw-discipline shape at a parallel emit site.
+- **Observability** = ordinary.
+
+**Phase 2 (Baseline-inspect)**: pre-rung 4 cells failing per SAMPLE.1 chain-walk (`array-elem-put-const.js`, `array-rest-put-const.js`, `obj-id-put-const.js`, `obj-prop-put-const.js`). Direct probe confirmed: `const c = null; for ([c] of [[1]]) {}` silently no-ops (no error thrown).
+
+**Substrate** (~10 LOC in `pilots/rusty-js-bytecode/derived/src/compiler.rs`):
+
+The Identifier arm of `assign_target_from_stack` now checks `self.is_const_binding(name)` before emitting `emit_store_ident`; if const-bound, pops the stack value, emits a throw TypeError with the canonical "Assignment to constant variable 'X'" message, pushes Undefined for stack balance (mirrors compile_plain_assign's pattern).
+
+**Yield**:
+
+```text
+Direct probe (6 cells): 6/6 PASS
+  array destructure const → TypeError ✓
+  array rest destructure const → TypeError ✓
+  object shorthand destructure const → TypeError ✓
+  object prop destructure const → TypeError ✓
+  destructure to let still works (positive control) ✓
+  direct const assign still throws (positive control) ✓
+```
+
+Cluster gate measurement deferred to test262-full follow-up (per keeper directive Telegram 10619, test262-full runs thereafter).
+
+**Phase 3-4**: not invoked.
+
+**Phase 5 (chapter-close-inspect)**: substrate correct per probe. The 4 put-const cells from SAMPLE.1 should flip PASS in the next test262 measurement; this is the second SAMPLE.1 sub-bundle landed within this locale (ASTA-EXT 0 = Array-frozen length; ASTA-EXT 1 = destructure const-assign).
+
+**Tag**: `asta-ext-1-destructure-const-throw`.
+
+**Finding ASTA.2 (parallel-emit-site throw-discipline drift)**: when a TypeError-throw discipline is encoded at one emit site (`compile_plain_assign` Identifier arm), a parallel emit site (`assign_target_from_stack` Identifier arm) doing the same logical operation must mirror the same throw. The drift is a Rule 20 instance (substrate-discipline coherence drift across parallel helpers) at the compiler level. Standing rec: at emit sites that share the logical operation but diverge on per-site checks (here const-binding-writability), audit for parity at substrate-introduction. Promotion-readiness: trajectory-and-findings-embedded; one-more-observation pending.
+
+**Status**: ASTA-EXT 1 LANDED. Second SAMPLE.1 sub-bundle closed within this locale. Locale's telos remains "Array strict-throw discipline" with the implicit extension to destructure-assignment throw-parity per Rule 20 + Finding ASTA.2.

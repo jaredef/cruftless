@@ -6272,6 +6272,23 @@ impl Compiler {
     fn assign_target_from_stack(&mut self, target: &Expr) -> Result<(), CompileError> {
         match target {
             Expr::Identifier { name, .. } => {
+                // SAMPLE.1 sub-bundle (put-const): destructuring assignment to
+                // a const-bound identifier is a TypeError per ECMA-262 §13.15.4
+                // + §15.2.7. The non-destructuring path (compile_plain_assign)
+                // already checks; the destructuring path delegated to
+                // emit_store_ident without the check. Mirror the same
+                // throw-discipline: discard the stack value, emit throw, push
+                // undef to preserve stack balance for any caller assuming
+                // assign-as-expression yields the value.
+                if self.is_const_binding(name) {
+                    encode_op(&mut self.bytecode, Op::Pop);
+                    self.emit_throw_typeerror(&format!(
+                        "Assignment to constant variable '{}'",
+                        name
+                    ));
+                    encode_op(&mut self.bytecode, Op::PushUndef);
+                    return Ok(());
+                }
                 self.emit_store_ident(name);
                 Ok(())
             }
