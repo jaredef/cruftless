@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-caacp
 proposed_commits:
-  - 725f985b
+  - 655b59a5
 target_branch: main
 summary: Redis post-load Promise.catch terminal rejection closure
 risk_class: substrate
@@ -16,7 +16,7 @@ gates_post:
 
 ## Substrate Move
 
-This proposal covers substrate commit `725f985b`.
+This proposal covers substrate commit `655b59a5`.
 
 `Runtime::promise_catch_via` now resolves `this.then` through the runtime's
 normal `get_via` path. `Runtime::promise_then_via` now normalizes non-callable

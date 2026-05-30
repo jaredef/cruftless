@@ -4,7 +4,7 @@ decision: APPROVED
 arbiter_session: helmsman-approved-caacp
 decided_at: 2026-05-30T03:03:07Z
 covers_commits:
-  - 725f985b
+  - 655b59a5
 ---
 
 ## Findings
