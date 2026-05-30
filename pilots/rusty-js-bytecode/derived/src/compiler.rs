@@ -5473,7 +5473,12 @@ impl Compiler {
         let mut pre_slots: std::collections::HashMap<String, u16> =
             std::collections::HashMap::new();
         for (n, kind) in &pre_alloc_names {
-            if !pre_slots.contains_key(n) && sub.resolve_local(n).is_none() {
+            let existing = sub.resolve_local(n);
+            let lexical_shadows_self_name = matches!(kind, VariableKind::Let | VariableKind::Const)
+                && self_name_slot.is_some()
+                && existing == self_name_slot
+                && name.as_ref().is_some_and(|fn_name| fn_name.name == *n);
+            if !pre_slots.contains_key(n) && (existing.is_none() || lexical_shadows_self_name) {
                 let slot = sub.alloc_local(LocalDescriptor {
                     name: n.clone(),
                     kind: *kind,

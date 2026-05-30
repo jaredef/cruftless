@@ -18606,6 +18606,25 @@ mod gcs_tests {
     }
 
     #[test]
+    fn function_body_lexical_name_shadows_declaration_self_name_for_closure() {
+        let rt = run_js_runtime(
+            r#"
+            function outer() {
+              const outer = { ok: 1 };
+              function inner() {
+                return outer.ok;
+              }
+              return inner();
+            }
+            globalThis.result = outer();
+            "#,
+        )
+        .expect("lexical same-name binding should shadow function self-name");
+        let result = rt.global_get("result");
+        assert!(matches!(result, Value::Number(n) if n == 1.0));
+    }
+
+    #[test]
     fn named_function_expression_self_reassignment_stays_const() {
         let rt = run_js_runtime(
             r#"
