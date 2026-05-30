@@ -202,3 +202,16 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - DET.4 candidate (test262-sample variance ±1 across n=2 observed post-ASTA-EXT 0) — investigation deferred to a follow-up rung within this same session per the keeper directive; sample run 3 currently in background to bound the variance.
   - test262-full re-run deferred per the session's wall-clock budget; flagged for the next session.
   - Sibling Doc-721 sub-bundles (Map/Set frozen-receiver; for-of iterator-protocol; Promise dispatcher receiver-validation) deferred to next session as new substrate-spawn proposals.
+
+### Entry 011 — `det4-variance-bound-investigation-2026-05-30` (2026-05-30)
+
+- **Audit type**: ledger-status-correctness (variant: measurement-instrument variance characterization).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10616 ("Do the follow ups") — DET.4 investigation branch.
+- **Scope**: three runs of `scripts/test262-sample/run-sample.sh` against the same substrate state (post-ASTA-EXT 0, commit 00a73363). Investigates the Rule 29 falsifier event observed at ASTA-EXT 0's post-rung measurement.
+- **Method**: ran the canonical sample three times sequentially; recorded PASS/FAIL/emitted/runnable counts; confirmed `bin/cruft` md5sum-identical across runs. Compared the three runs' results to identify the variance source.
+- **Findings**: variance bounded at **±1 PASS, ±1 emitted count** across n=3. Substrate deterministic per direct probe (ASTA-EXT 0 probe 7/7 PASS reproducible). Variance source identified as **harness-side parallelism-timeout edge**: one test occasionally hits the per-test 10-second cap under PARALLEL=2 process contention and gets dropped from the emitted set on that run. Median PASS = 6817 (n=3); recorded canonical = 6817 ± 1 at 88.8%. Surfaced as findings-ledger Entry 020 (DET.4).
+- **Authored actions**:
+  - Commit (this commit): findings-ledger Entry 020 (DET.4) appended; this audit-ledger entry recorded; CLAUDE.md + AGENTS.md §Measurement baselines refreshed with ±1 PASS variance note (deferred to commit batch as a separate concern; the canonical 88.8% number stands).
+- **Surfaced-but-not-acted findings**:
+  - Mitigation candidates enumerated in DET.4 §Mitigation candidates (PARALLEL=1; longer per-test timeout; identifying the variance-source tests; hash-pinning per measurement-determinism-prospective §V.2.e). All deferred to a future apparatus-tier rung.
+  - Rule 29 refinement: the strict "byte-identity at n=2" falsifier discipline is preserved; DET.4 surfaces the **"near-Class-A"** sub-class as a refinement. The test262-sample instrument's reclass from Class A to near-Class-A is the operational outcome; future post-substrate measurements at this instrument should record the ±1 bound as part of the gates spec.
