@@ -1504,7 +1504,14 @@ impl Runtime {
                 "Cannot convert a Symbol value to a number".into(),
             ));
         }
-        if matches!(lp, Value::BigInt(_)) ^ matches!(rp, Value::BigInt(_)) {
+        // ECMA-262 §13.15.3 step 8: if either operand is a String, the result
+        // is a String concatenation; ToString is applied to both operands.
+        // BigInt.prototype.toString is defined, so `"x" + 1n` → `"x1"`.
+        // Only reject BigInt + Number-style mix when neither side is a String
+        // (i.e., the numeric-add path). Template literals lower to a chain of
+        // Add ops seeded by a String quasi, so this carve-out is what makes
+        // `${someBigInt}` interpolation produce the BigInt's decimal repr.
+        if matches!(lp, Value::BigInt(_)) ^ matches!(rp, Value::BigInt(_)) && !either_string {
             return Err(RuntimeError::TypeError(
                 "Cannot mix BigInt and other types".into(),
             ));

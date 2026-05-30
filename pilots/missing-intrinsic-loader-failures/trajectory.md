@@ -776,3 +776,50 @@ rung, distinct from the Buffer surface coordinate.
   round-trips PASS, OOB throws ERR_OUT_OF_RANGE.
 - Mongoose smoke advances past Buffer surface into the bigint-template
   residual — confirms the install-gap fix unblocks the chain.
+
+## 2026-05-30 — MILF-EXT 8 BigInt template-literal ToString coercion
+
+Closes the residual MILF-EXT 7.1 surfaced in mongoose: `cast/bigint.js:18:65`
+template-literal `${MIN_BIGINT}` / `${MAX_BIGINT}` interpolation throwing
+`Cannot mix BigInt and other types`.
+
+### Diagnosis
+
+The bytecode compiler lowers template literals to a left-to-right `Op::Add`
+chain seeded by the first quasi (a String constant). The comment in
+`compile_template_literal` (compiler.rs:4833) correctly observes "op_add
+coerces non-string operands when the LHS is a String, so explicit ToString
+is unnecessary" — but `op_add_rt` in `interp.rs:1507` checked
+`BigInt ^ other` BEFORE the String-concat fast path and rejected BigInt-in-
+template-literal as if it were arithmetic `+`. The mix rule is correct for
+numeric `+` (where the spec throws on heterogeneous BigInt mix) but wrong
+for `+` with a String operand (where the spec applies `ToString` to both).
+
+### Substrate
+
+`pilots/rusty-js-runtime/derived/src/interp.rs::op_add_rt` — gate the
+BigInt-mix rejection on `!either_string`. `abstract_ops::to_string` already
+calls `JsBigInt::to_decimal` for the BigInt path, so the existing
+String-concat fast path produces the correct result with no other changes.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- `cargo test --release -p rusty-js-bytecode`: 61 passed.
+- Smoke `/tmp/smoke/bigint_tpl.mjs`:
+  - `` `range: ${MIN} to ${MAX}` `` → `"range: -9223372036854775808 to 9223372036854775807"`.
+  - `"prefix" + 42n` → `"prefix42"`.
+  - `42n + "suffix"` → `"42suffix"`.
+  - `1n + 1` still throws `Cannot mix BigInt and other types` (numeric path
+    unchanged).
+- Mongoose smoke now fully PASSES:
+  `{"hasSchema":true,"hasModel":true,"hasConnect":true,"hasMongo":true,"schemaHasPath":true}`.
+
+### Compounding
+
+Mongoose was the trigger; any package that does `${someBigInt}` interpolation
+benefits. The fix is in the universal Add path so the gain ripples
+implicitly to every BigInt-using package whose load path touched this
+expression form. Cross-package re-smoke is a candidate follow-up rung.
