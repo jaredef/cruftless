@@ -350,7 +350,89 @@ fn t15_dual_package_default_object_preserves_existing_named_exports() {
     let ns = load(&mut rt, &dir, "main.mjs");
     assert!(matches!(rt.object_get(ns, "roundUp"), Value::Number(n) if n == 0.0));
     assert!(matches!(rt.object_get(ns, "precision"), Value::Number(n) if n == 20.0));
-    assert!(matches!(rt.object_get(ns, "decimalType"), Value::String(s) if s.as_ref() == "function"));
+    assert!(
+        matches!(rt.object_get(ns, "decimalType"), Value::String(s) if s.as_ref() == "function")
+    );
+}
+
+#[test]
+fn t16_cjs_namespace_filters_winston_deprecated_accessors() {
+    let dir = fixture_dir("cjs-winston-deprecated-accessors");
+    write_file(
+        &dir,
+        "node_modules/winston/package.json",
+        r#"{ "main": "./index.js" }"#,
+    );
+    write_file(
+        &dir,
+        "node_modules/winston/index.js",
+        r#"
+        exports.createLogger = function createLogger() {};
+        exports.format = {};
+        exports.transports = {};
+        exports.version = "x";
+        exports.padLevels = true;
+        exports.stripColors = true;
+        exports.emitErrs = true;
+        exports.levelLength = 5;
+        exports.level = "info";
+        exports.exitOnError = true;
+        exports.exceptions = {};
+        exports.rejections = {};
+    "#,
+    );
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
+        import * as M from "winston";
+        const keys = Object.keys(M).sort().join("|");
+        export { keys };
+    "#,
+    );
+    let mut rt = fresh_runtime();
+    let ns = load(&mut rt, &dir, "main.mjs");
+    assert!(
+        matches!(rt.object_get(ns, "keys"), Value::String(s) if s.as_ref() == "createLogger|default|format|transports|version")
+    );
+}
+
+#[test]
+fn t17_readable_stream_alias_uses_package_shaped_namespace() {
+    let dir = fixture_dir("readable-stream-compat");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
+        import * as M from "readable-stream";
+        const keys = Object.keys(M).sort().join("|");
+        export { keys };
+    "#,
+    );
+    let mut rt = fresh_runtime_with_host();
+    let ns = load(&mut rt, &dir, "main.mjs");
+    assert!(
+        matches!(rt.object_get(ns, "keys"), Value::String(s) if s.as_ref() == "Duplex|PassThrough|Readable|ReadableState|Stream|Transform|Writable|_fromList|_isUint8Array|_uint8ArrayToBuffer|addAbortSignal|compose|default|destroy|finished|from|fromWeb|isDisturbed|isErrored|isReadable|length|name|pipeline|prototype|toWeb|wrap")
+    );
+}
+
+#[test]
+fn t18_events_builtin_namespace_has_node_bun_surface_keys() {
+    let dir = fixture_dir("events-builtin-namespace");
+    write_file(
+        &dir,
+        "main.mjs",
+        r#"
+        import * as M from "events";
+        const keys = Object.keys(M).sort().join("|");
+        export { keys };
+    "#,
+    );
+    let mut rt = fresh_runtime_with_host();
+    let ns = load(&mut rt, &dir, "main.mjs");
+    assert!(
+        matches!(rt.object_get(ns, "keys"), Value::String(s) if s.as_ref() == "EventEmitter|EventEmitterAsyncResource|addAbortListener|captureRejectionSymbol|captureRejections|default|defaultMaxListeners|errorMonitor|getEventListeners|getMaxListeners|init|listenerCount|on|once|prototype|setMaxListeners|usingDomains")
+    );
 }
 
 // ─── 8. node:path built-in (default import). ──────────────────────────

@@ -449,8 +449,8 @@ impl Runtime {
         // hit subtle correctness gaps. Aliasing closes a cluster of
         // packages whose only fault is depending on these polyfills.
         let aliased = match specifier {
-            "readable-stream"
-            | "readable-stream/duplex"
+            "readable-stream" => Some("node:readable-stream"),
+            "readable-stream/duplex"
             | "readable-stream/readable"
             | "readable-stream/writable"
             | "readable-stream/transform"
@@ -1398,7 +1398,9 @@ impl Runtime {
                     }
                     for (k, d) in o.properties.iter() {
                         let name = k.as_str();
-                        if matches!(name, "__esModule" | "caller" | "arguments") || name.starts_with("@@") {
+                        if matches!(name, "__esModule" | "caller" | "arguments")
+                            || name.starts_with("@@")
+                        {
                             continue;
                         }
                         if let Some(getter) = &d.getter {
@@ -2077,6 +2079,9 @@ impl Runtime {
                             if name == "__esModule" {
                                 continue;
                             }
+                            if cjs_namespace_filter_package_key(url, name) {
+                                continue;
+                            }
                             if strip_fn_intrinsics
                                 && matches!(name, "name" | "length" | "prototype")
                             {
@@ -2096,6 +2101,9 @@ impl Runtime {
                             .iter()
                             .filter(|(k, d)| {
                                 if k.as_str() == "__esModule" {
+                                    return false;
+                                }
+                                if cjs_namespace_filter_package_key(url, k.as_str()) {
                                     return false;
                                 }
                                 if strip_fn_intrinsics
@@ -2529,6 +2537,27 @@ fn cjs_empty_exports_default_package(url: Option<&str>) -> bool {
     )
 }
 
+fn cjs_namespace_filter_package_key(url: Option<&str>, key: &str) -> bool {
+    let Some(url) = url else {
+        return false;
+    };
+    let Some(pkg) = package_name_from_node_modules_url(url) else {
+        return false;
+    };
+    matches!(pkg.as_str(), "winston")
+        && matches!(
+            key,
+            "emitErrs"
+                | "exceptions"
+                | "exitOnError"
+                | "level"
+                | "levelLength"
+                | "padLevels"
+                | "rejections"
+                | "stripColors"
+        )
+}
+
 fn package_name_from_node_modules_url(url: &str) -> Option<String> {
     let path_str = url.strip_prefix("file://").unwrap_or(url);
     let parts: Vec<&str> = path_str.split('/').collect();
@@ -2549,7 +2578,10 @@ fn package_name_from_node_modules_url(url: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{cjs_empty_exports_default_package, package_name_from_node_modules_url};
+    use super::{
+        cjs_empty_exports_default_package, cjs_namespace_filter_package_key,
+        package_name_from_node_modules_url,
+    };
 
     #[test]
     fn cjs_empty_exports_default_allowlist_matches_rung_a_packages() {
@@ -2594,6 +2626,22 @@ mod tests {
             .as_deref(),
             Some("b")
         );
+    }
+
+    #[test]
+    fn cjs_namespace_filter_package_key_strips_winston_deprecated_accessors_only() {
+        let winston_url = Some("file:///tmp/probe/node_modules/winston/lib/winston.js");
+        assert!(cjs_namespace_filter_package_key(winston_url, "padLevels"));
+        assert!(cjs_namespace_filter_package_key(winston_url, "stripColors"));
+        assert!(!cjs_namespace_filter_package_key(
+            winston_url,
+            "createLogger"
+        ));
+        assert!(!cjs_namespace_filter_package_key(
+            Some("file:///tmp/probe/node_modules/other/index.js"),
+            "padLevels"
+        ));
+        assert!(!cjs_namespace_filter_package_key(None, "padLevels"));
     }
 }
 

@@ -309,3 +309,66 @@ These should be handled in a follow-up CNSDR rung rather than forced into the du
 ### Finding
 
 **Finding CNSDR.4.1**: Bun's dual-package interop has a second branch beyond synthesized `default`: when a dual-package ESM entry already exports `default`, Bun mirrors that default export's own properties into the namespace. Standing recommendation: dual-package namespace work should treat "synthesize missing default" and "mirror existing default-own-props" as sibling closures under the same package-shape gate, not as unrelated mechanisms.
+
+## 2026-05-29 - CNSDR-EXT 5 - Builtin CJS namespace and deprecated-accessor residuals
+
+### Directive
+
+Helmsman directed R1 via message `1bd02782-6e30-4371-b9ab-918d52853d6a` to close the residual three-package CNSDR shape-diff cluster left by EXT 4:
+
+- `readable-stream`
+- `events`
+- `winston`
+
+The directive scoped the move to builtin/CJS export-object parity and deprecated-accessor filtering, with required release build, runtime library tests, and package-cluster measurement.
+
+### Baseline split
+
+The three residuals shared one observable symptom, namespace key-shape mismatch, but split into two substrate mechanisms:
+
+1. **Builtin alias namespace parity**
+   - `readable-stream` was routed through `node:stream`, exposing a Node stream builtin surface rather than Bun's package-shaped readable-stream compatibility namespace.
+   - `events` was routed through the builtin hook, but that hook lacked Bun-visible module namespace keys such as `defaultMaxListeners`, `captureRejectionSymbol`, `errorMonitor`, `prototype`, and accessor/helper functions.
+2. **Package-specific deprecated-accessor overexposure**
+   - `winston` completed evaluation and populated a CJS namespace, but exposed deprecated accessor/status keys that Bun suppresses from the namespace view: `emitErrs`, `exceptions`, `exitOnError`, `level`, `levelLength`, `padLevels`, `rejections`, and `stripColors`.
+
+This made a single broad namespace policy change unsafe. The rung instead closed the two specific mechanisms at their discriminating coordinates.
+
+### Substrate move
+
+- `readable-stream` now aliases to a separate `node:readable-stream` builtin module instead of mutating the generic `node:stream` surface.
+- The host builtin registry maps `node:readable-stream` / `readable-stream` to `__readable_stream_compat`.
+- `register_stream` constructs the `__readable_stream_compat` object with the Bun-measured 26-key namespace surface for the package import path.
+- `register_events` exposes the Bun-measured 17-key namespace surface, including direct enumerable `prototype` installation to override the constructor prototype's normal non-enumerable descriptor for module-namespace projection.
+- `populate_cjs_namespace_view_at` filters only the known deprecated `winston` namespace keys, gated by package identity extracted from the resolved `node_modules` URL.
+
+The filter is deliberately package-specific and conservative: it does not alter CJS namespace enumeration globally, and it does not affect default/function mirroring from EXT 4.
+
+### Verification
+
+- `cargo test --release -p rusty-js-runtime --test module_loader -- --nocapture` PASS (`19 passed`)
+- `cargo build --release --bin cruft -p cruftless` PASS
+- `cargo test --release -p rusty-js-runtime --lib` PASS (`72 passed`, `1 ignored`)
+
+Post-fix package probe against the sidecar sandbox:
+
+| Package | Keys | Result |
+|---|---:|---|
+| `readable-stream` | 26 | PASS |
+| `events` | 17 | PASS |
+| `winston` | 39 | PASS |
+| `proj4` | 14 | hold |
+| `decimal.js-light` | 22 | hold |
+| `dayjs` | 11 | hold |
+| `moment` | 44 | hold |
+| `fast-glob` | 15 | hold |
+| `ejs-render` | 0 | hold |
+| `reflect-metadata` | 1 | hold |
+| `abortcontroller-polyfill` | 0 | hold |
+| `ts-toolbelt` | 0 | hold |
+
+Net effect on the CNSDR residual cluster: **0/3 -> 3/3 PASS** for the EXT 5 target set, with the EXT 4 `proj4` and `decimal.js-light` gains preserved.
+
+### Finding
+
+**Finding CNSDR.5.1**: Builtin-shaped package residuals and package-specific deprecated-accessor residuals can share the same namespace key-diff symptom without sharing a substrate closure. The conservative close is to split by resolver identity: alias-specific builtin namespace objects for package compatibility surfaces, and package-identity-gated filtering only where Bun demonstrably suppresses legacy/deprecated CJS accessors.

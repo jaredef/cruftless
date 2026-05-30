@@ -9,7 +9,7 @@
 
 use crate::register::{make_callable, new_object, register_method};
 use rusty_js_runtime::abstract_ops;
-use rusty_js_runtime::value::Object as RtObject;
+use rusty_js_runtime::value::{Object as RtObject, PropertyDescriptor, PropertyKey};
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
 use std::rc::Rc;
 
@@ -414,6 +414,41 @@ pub fn install(rt: &mut Runtime) {
         Value::Object(ctor),
     );
     rt.object_set(ctor, "default".into(), Value::Object(ctor));
+    rt.obj_mut(ctor).dict_mut().insert(
+        PropertyKey::String("prototype".to_string()),
+        PropertyDescriptor {
+            value: Value::Object(proto),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+            getter: None,
+            setter: None,
+        },
+    );
+    rt.object_set(ctor, "captureRejections".into(), Value::Boolean(false));
+    rt.object_set(ctor, "defaultMaxListeners".into(), Value::Number(10.0));
+    rt.object_set(ctor, "usingDomains".into(), Value::Boolean(false));
+    rt.object_set(
+        ctor,
+        "captureRejectionSymbol".into(),
+        Value::String(std::rc::Rc::new("nodejs.rejection".to_string())),
+    );
+    rt.object_set(
+        ctor,
+        "errorMonitor".into(),
+        Value::String(std::rc::Rc::new("events.errorMonitor".to_string())),
+    );
+    register_method(rt, ctor, "addAbortListener", |_rt, _args| {
+        Ok(Value::Undefined)
+    });
+    register_method(rt, ctor, "getEventListeners", |_rt, _args| {
+        let arr = _rt.alloc_object(rusty_js_runtime::value::Object::new_array());
+        Ok(Value::Object(arr))
+    });
+    register_method(rt, ctor, "getMaxListeners", |_rt, _args| {
+        Ok(Value::Number(10.0))
+    });
+    register_method(rt, ctor, "init", |_rt, _args| Ok(Value::Undefined));
     register_method(rt, ctor, "on", |_rt, _args| Ok(Value::Undefined));
     register_method(rt, ctor, "once", |_rt, _args| Ok(Value::Undefined));
     register_method(rt, ctor, "setMaxListeners", |_rt, _args| {

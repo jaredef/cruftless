@@ -8,6 +8,7 @@
 use crate::register::{new_object, register_method, set_constant};
 use rusty_js_runtime::value::Object as RtObject;
 use rusty_js_runtime::{Runtime, RuntimeError, Value};
+use std::rc::Rc;
 
 // Tier-Ω.5.yyyy: minimal stream base-class constructors. Returns an object
 // with empty _readableState / _writableState + no-op event emitter / write /
@@ -224,5 +225,60 @@ pub fn install(rt: &mut Runtime) {
     }
 
     set_constant(rt, stream, "default", Value::Object(stream));
+
+    // CNSDR-EXT 5: `readable-stream` is a userland polyfill package that
+    // Bun exposes with a package-shaped namespace, while cruft aliases it to
+    // node:stream for load-time compatibility. Keep node:stream unchanged and
+    // publish an alias-specific namespace whose enumerable keys match the
+    // package surface observed in the top-500 shape-diff cluster.
+    let readable_compat = new_object(rt);
+    for key in &[
+        "Duplex",
+        "PassThrough",
+        "Readable",
+        "Stream",
+        "Transform",
+        "Writable",
+        "default",
+        "finished",
+        "isDisturbed",
+        "isErrored",
+        "isReadable",
+        "pipeline",
+    ] {
+        let v = rt.object_get(stream, key);
+        if !matches!(v, Value::Undefined) {
+            rt.object_set(readable_compat, (*key).to_string(), v);
+        }
+    }
+    for key in &[
+        "ReadableState",
+        "_fromList",
+        "_isUint8Array",
+        "_uint8ArrayToBuffer",
+        "addAbortSignal",
+        "compose",
+        "destroy",
+        "from",
+        "fromWeb",
+        "toWeb",
+        "wrap",
+    ] {
+        register_method(rt, readable_compat, key, |_rt, _args| Ok(Value::Undefined));
+    }
+    rt.object_set(readable_compat, "length".into(), Value::Number(0.0));
+    rt.object_set(
+        readable_compat,
+        "name".into(),
+        Value::String(Rc::new("Stream".to_string())),
+    );
+    let readable_proto = new_object(rt);
+    rt.object_set(
+        readable_compat,
+        "prototype".into(),
+        Value::Object(readable_proto),
+    );
+    rt.define_global_property("__readable_stream_compat", Value::Object(readable_compat));
+
     rt.define_global_property("stream", Value::Object(stream));
 }

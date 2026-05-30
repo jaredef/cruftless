@@ -111,6 +111,7 @@ pub fn install_builtin_module_resolver(rt: &mut Runtime) {
             // Tier-Ω.5.s: assert / https / stream / url / util stubs.
             "node:assert" | "assert" => "__node_assert",
             "node:https" | "https" => "https",
+            "node:readable-stream" | "readable-stream" => "__readable_stream_compat",
             "node:stream"
             | "stream"
             | "node:stream/promises"
