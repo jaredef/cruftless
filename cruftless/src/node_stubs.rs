@@ -1335,62 +1335,16 @@ pub fn install_buffer(rt: &mut Runtime) {
             o.set_own(i.to_string(), Value::Number(0.0));
         }
         let id = rt.alloc_object(o);
-        // subarray method on the instance — slices [start..end) without
-        // copying. v1 actually copies; the visible semantics match for
-        // shape probes and indexed reads.
-        register_method(rt, id, "readUInt8", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "Buffer.readUInt8: this must be a Buffer".into(),
-                    ))
-                }
-            };
-            let offset = match args.first() {
-                Some(Value::Number(n)) => *n as usize,
-                _ => 0,
-            };
-            let v = rt.object_get(this_id, &offset.to_string());
-            Ok(match v {
-                Value::Number(n) => Value::Number(n),
-                _ => Value::Number(0.0),
-            })
-        });
+        // install_buffer_methods provides the full prototype surface
+        // (numeric readers/writers, subarray with __is_buffer__ marker +
+        // recursive method install, indexOf, equals, …). Earlier this
+        // factory registered inline readUInt8 + subarray, but the inline
+        // subarray ran AFTER install_buffer_methods and overrode the
+        // correct version with one that produced a slice missing the
+        // __is_buffer__ marker — nanoid's `Buffer.allocUnsafe(n).subarray(...)`
+        // returned a non-Buffer-shaped object. Removed; install is the
+        // single source of truth.
         install_buffer_methods(rt, id);
-        register_method(rt, id, "subarray", |rt, args| {
-            let this_id = match rt.current_this() {
-                Value::Object(o) => o,
-                _ => {
-                    return Err(RuntimeError::TypeError(
-                        "Buffer.subarray: this must be a Buffer".into(),
-                    ))
-                }
-            };
-            let len = match rt.object_get(this_id, &"length".to_string()) {
-                Value::Number(n) => n as usize,
-                _ => 0,
-            };
-            let start = match args.first() {
-                Some(Value::Number(n)) => (*n as i64).max(0) as usize,
-                _ => 0,
-            }
-            .min(len);
-            let end = match args.get(1) {
-                Some(Value::Number(n)) => (*n as i64).max(0) as usize,
-                _ => len,
-            }
-            .min(len);
-            let slice_len = end.saturating_sub(start);
-            let mut o = RtObject::new_ordinary();
-            o.set_own("length".into(), Value::Number(slice_len as f64));
-            let new_id = rt.alloc_object(o);
-            for i in 0..slice_len {
-                let v = rt.object_get(this_id, &(start + i).to_string());
-                rt.object_set(new_id, i.to_string(), v);
-            }
-            Ok(Value::Object(new_id))
-        });
         Ok(Value::Object(id))
     });
     // Tier-Ω.5.wwwww: Buffer.compare(a, b) per Node spec — returns -1/0/1

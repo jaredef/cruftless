@@ -823,3 +823,47 @@ Mongoose was the trigger; any package that does `${someBigInt}` interpolation
 benefits. The fix is in the universal Add path so the gain ripples
 implicitly to every BigInt-using package whose load path touched this
 expression form. Cross-package re-smoke is a candidate follow-up rung.
+
+## 2026-05-30 — MILF-EXT 8.1 allocUnsafe inline-override removal
+
+Continuation audit (post MILF-EXT 7.1) of buffer-creation sites for missing
+install_buffer_methods calls. All __is_buffer__ creation sites had install
+in scope; one site instead had a worse problem: ordering.
+
+### Diagnosis
+
+`Buffer.allocUnsafe` (node_stubs.rs ~1325) registered methods in this order:
+1. Inline `readUInt8`
+2. `install_buffer_methods(rt, id)` (full prototype surface)
+3. Inline `subarray`
+
+The inline subarray ran AFTER install, overriding the install version. The
+inline version did not set `__is_buffer__` on its output and did not call
+install_buffer_methods — so `nanoid.allocUnsafe(N).subarray(0, n)` returned
+an object that failed `Buffer.isBuffer` and lacked all numeric readers/writers.
+
+### Substrate
+
+Removed both inline registrations; install_buffer_methods is now the single
+source of truth for Buffer.allocUnsafe outputs (matching the alloc /
+allocUnsafeSlow / Buffer.from / Buffer.concat paths after MILF-EXT 7.1).
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke `/tmp/smoke/subarr.mjs`:
+  - `Buffer.allocUnsafe(8).subarray(2, 6).length` → 4.
+  - `s[0]` → 2, `s[3]` → 5 (byte-indexed access through subarray).
+  - **`Buffer.isBuffer(s)` → true** (was false before this rung).
+  - `s.readUInt16BE(0)` → 515 (= 0x0203, byte 2 + byte 3 BE-decoded).
+
+### Compounding
+
+nanoid is the named consumer per the comment; any package that does
+`allocUnsafe(...).subarray(...).readXxx(...)` benefits. This is the third
+buffer-shape closure rung in 24h (7 → 7.1 → 8.1); the cumulative effect
+is that all five Buffer-construction paths (alloc, allocUnsafe,
+allocUnsafeSlow, Buffer.from, Buffer.concat) and the subarray path all
+produce uniformly-shaped Buffers with the full prototype surface.
