@@ -63,3 +63,17 @@ The standing rule the ledger formalizes: **an audit session that produces classi
   - Locale manifest staleness pre-audit: 5 days old at audit start; refreshed by this audit's commit `b8249fb5`.
   - Gate-readings staleness: test262-full last canonical run 2026-05-25; sample last canonical run 2026-05-27. Post-array-exotic + MILF-batch closures likely advance both; fresh full-suite run advisable but not authored by this audit.
   - Recommended action 3 (probe rung for Entry 010 ↔ 001 cluster) authorized separately and tracked in this ledger's Entry 002.
+
+### Entry 002 — `findings-audit-2026-05-30` (2026-05-30)
+
+- **Audit type**: cross-locale-finding (variant: findings.md inventory + classification + cross-locale recurrence).
+- **Auditor**: helmsman session 2026-05-30 under keeper directive Telegram 10568 ("let's do a findings audit of all the findings.md docs in the repo locales. We need to bubble these up to a apparatus tier findings ledger").
+- **Scope**: every `findings.md` file under the repo (excluding `target/`, `node_modules/`, `.git/`). Five files enumerated: `pilots/rusty-js-jit/findings.md` (canonical 26-rule + 16-addendum ledger), `pilots/interp-hot-intrinsics/findings.md` (IHI.1), `pilots/rusty-js-jit/osr/findings.md` (OSR.1, OSR.2), `pilots/rusty-js-jit/top-level/findings.md` (TL.1, TL.2), `pilots/parser-early-error-residual/block-bound-names-dup/findings.md` (BBND yield-analysis). One trajectory-embedded finding (TAECSF.1 at `pilots/ta-element-coercion-spec-faithful/trajectory.md`) included by cross-reference.
+- **Method**: Explore sub-agent delegation per CLAUDE.md context-protection discipline. Each `findings.md` parsed for individual findings (ID + name + class + body + promotion status); cross-locale recurrence patterns identified by content match against `apparatus/docs/predictive-ruleset.md`; trajectory-embedded findings cross-referenced via locale tag lookup.
+- **Findings**: 5 `findings.md` files (4 with discrete per-finding entries, 1 with yield-analysis structure); 1 trajectory-embedded finding pending extraction; 4 cross-locale recurrence patterns identified (IC cache lifetime, JIT boundary encoding, multi-tier cascade-revival, baseline-inspection-as-locale-probe); 1 corpus-Doc-743 candidate (BBND yield-analysis) pending corroboration; 5 anomalies surfaced (rules 16–22 unconsolidated, TAECSF.1 trajectory-only, BBND non-standard structure, apparatus-pilots have no findings.md by tier convention, source-identifier-convention findings unaggregated).
+- **Authored actions**:
+  - Commit (pending this entry's commit): introduce `apparatus/docs/findings-ledger.md` modeled on deferrals/deletions/audit-ledger conventions. Per-locale inventory + 10 entries covering the JIT canonical ledger reference + per-locale extracted findings + cross-locale recurrence patterns + anomalies. Append-only per Doc 727 §X.
+- **Surfaced-but-not-acted findings**:
+  - JIT findings.md rules 16–22 remain unconsolidated to `apparatus/docs/predictive-ruleset.md`; recommended as a follow-up consolidation pass (separate audit + apparatus-tier edit).
+  - TAECSF.1 remains trajectory-embedded; per per-locale convention extraction to `pilots/ta-element-coercion-spec-faithful/findings.md` defers until the second productive rung lands in that locale.
+  - The findings-ledger is not yet wired into CLAUDE.md §Required agent reading or `apparatus/docs/repository-apparatus.md` enumeration; flagged for keeper direction in parallel with audit-ledger's same gap.

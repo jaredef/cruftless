@@ -1,0 +1,162 @@
+# Findings Ledger
+
+A standing apparatus-tier index of empirical findings surfaced at the substrate-rung tier of this engagement: substrate-pattern findings, abstract-op-discipline findings, measurement-discipline findings, error-propagation findings, apparatus-tier findings, source-identifier-convention findings. The findings-ledger is to substrate empirical discovery what the deferrals-ledger is to surfaced-but-not-founded candidates: a place where findings that otherwise live only in per-locale `findings.md` files (or, worse, only in trajectory entries) are bound into the cybernetic loop's readable surface and made cross-referenceable.
+
+## Why a ledger
+
+Per-locale `findings.md` files compound substrate insight within a locale's coordinate scope. `pilots/rusty-js-jit/findings.md` is the canonical 26-rule + 16-addendum ledger for the JIT-tier substrate (cited in CLAUDE.md §Substrate-shaped-work discipline as the "canonical 26-rule ledger"). `apparatus/docs/predictive-ruleset.md` is the consolidated 15-rule derived view downstream of findings. Between these two tiers, a gap:
+
+- Per-locale findings live at `pilots/<coord>/findings.md` (and, in nested cases, `pilots/<coord>/<sub>/findings.md`). They are coordinate-local; a future reader who is not in that locale's scope rarely finds them.
+- The JIT canonical ledger compounds JIT-tier substrate findings but does not host findings from other engine pillars (parser, runtime intrinsics, package manager, capability-passing) or from apparatus-pilots.
+- The 15-rule predictive view is the most-distilled tier — load-bearing for substrate-shaped-work discipline — but it does not preserve per-finding traceability back to the originating locale + rung + substrate move.
+
+This ledger restores the binding. Each entry records:
+
+1. **Finding ID** — the locale-tag-prefixed identifier the original `findings.md` (or trajectory) used (e.g., TAWR.3, IHI.1, OSR.1, TL.1, TAECSF.1, BBND-yield).
+2. **Locale** — the coordinate path where the finding was authored.
+3. **Originating rung** — the trajectory entry that motivated the finding.
+4. **Class** — one of:
+   - **substrate-pattern** — a shape of substrate move that recurs across rungs or locales.
+   - **abstract-op-discipline** — a rule about how an abstract op behaves spec-faithfully or how its callers must interact with it.
+   - **measurement-discipline** — a rule about how an apparatus instrument must be operated (multi-run, detectability, three-probes, canonical-fuzz, etc.).
+   - **error-propagation** — a rule about Result threading, error-kind selection, side-channels, or signature lifts.
+   - **apparatus-tier** — a rule about apparatus design: locale-as-probe, locale coordinate sizing, ledger discipline, deferral semantics.
+   - **source-identifier-convention** — a rule about the source-identifier coordinate system per Doc 738 (prefix / install helper / registration tier).
+   - **other** — named in the entry body.
+5. **Body summary** — one-sentence distillation of the finding's claim.
+6. **Promotion status** — one of:
+   - **standing-rule** — promoted to `apparatus/docs/predictive-ruleset.md` as one of the 15 + N consolidated rules. Cite the rule number.
+   - **finding-addendum** — recorded in `pilots/rusty-js-jit/findings.md` as part of the canonical 26-rule + Addenda I-XVI structure. Cite the rule or addendum.
+   - **cross-locale-recurrence** — observed in 2+ locales but not yet consolidated; promotion-ready or one-more-observation.
+   - **trajectory-embedded** — surfaced in trajectory.md but not extracted to a `findings.md`. Tracked here for visibility; promotion-pending.
+   - **none** — locale-specific only, no promotion expected.
+
+## Discipline (append-only)
+
+Per Doc 727 §X basin-stability discipline (same as findings.md, deletions-ledger.md, deferrals-ledger.md, audit-ledger.md): this file is **append-only**. New entries go at the bottom in chronological order. Older entries are never edited; if a finding is retracted (rare; see NLC.0 precedent in JIT findings.md) or promoted to a standing rule, append a new entry citing the prior with a back-reference and update the prior entry's Promotion status field in place (the single allowed in-place edit, per the deletions-ledger.md precedent for status-flips on prior entries).
+
+## Discovery hook
+
+A substrate rung that closes a chapter or surfaces a recurring pattern owes the apparatus a finding entry, not merely a trajectory note. The trajectory note records the rung-local insight; the findings-ledger entry makes the finding cross-referenceable from outside the originating locale. Promotion of a cross-locale-recurrence pattern to standing-rule status (`apparatus/docs/predictive-ruleset.md`) requires ≥2 locales corroborating the pattern + arbiter or keeper sign-off; the audit-ledger entry that authorizes the promotion is the discovery hook for the predictive-ruleset edit.
+
+The standing rule the ledger formalizes: **a substrate rung that surfaces a generalizable finding owes the apparatus an aggregator entry, not merely a coordinate-local `findings.md` line.** The locale-local file records the rung-local reasoning; the apparatus ledger makes the finding readable from outside the originating coordinate.
+
+---
+
+## Per-locale findings.md inventory (audit 2026-05-30)
+
+| Path | Findings | Notes |
+|---|---|---|
+| `pilots/rusty-js-jit/findings.md` | 26 standing rules + Addenda I-XVI | Engagement-wide canonical ledger. Compounds across JIT + IHI + OSR + TL + JSF + CharCode-EXT + TB and other JIT-touching locales. Rules 1-15, 23-26 consolidated in `apparatus/docs/predictive-ruleset.md`; rules 16-22 remain in addenda. |
+| `pilots/interp-hot-intrinsics/findings.md` | IHI.1 | IC cache lifetime; promoted as Finding VIII.4 in JIT ledger. |
+| `pilots/rusty-js-jit/osr/findings.md` | OSR.1, OSR.2 | OSR invoke calling-convention + loop-boundary; promoted as Findings VIII.2 + VIII.3. |
+| `pilots/rusty-js-jit/top-level/findings.md` | TL.1, TL.2 | Whole-body bail bounds + Φ value-domain; promoted as Findings VII.2 + VII.3. |
+| `pilots/parser-early-error-residual/block-bound-names-dup/findings.md` | BBND yield-analysis | Five-condition multiplier; non-standard structure (yield-analysis rather than discrete findings). Standing-rule-16 candidate pending corpus Doc 743 corroboration. |
+
+Trajectory-embedded findings discovered but not yet extracted to a `findings.md`:
+
+- **TAECSF.1** at `pilots/ta-element-coercion-spec-faithful/trajectory.md` TAECSF-EXT 0 (2026-05-30) — narrow dispatcher beats wide signature lift for Result-threading. Promoted-readiness: one-more-observation (see Entry 005 below).
+
+---
+
+## Entries
+
+### Entry 001 — JIT-tier 26 rules + Addenda I-XVI (canonical ledger reference)
+
+- **Finding IDs**: JIT Rules 1–26 + Addenda I–XVI (full enumeration at `pilots/rusty-js-jit/findings.md`).
+- **Locale**: `pilots/rusty-js-jit/`.
+- **Originating rungs**: distributed across the JIT locale's trajectory; cross-locale compounding from `pilots/interp-hot-intrinsics/`, `pilots/rusty-js-jit/osr/`, `pilots/rusty-js-jit/top-level/`, and JIT-touching siblings.
+- **Class**: aggregator (mixed substrate-pattern + abstract-op-discipline + measurement-discipline + apparatus-tier classes per rule).
+- **Body summary**: the canonical engagement-wide rule ledger. Rules 1–15 and 23–26 are consolidated in `apparatus/docs/predictive-ruleset.md` as the 15-rule + 4-addendum derived view. Rules 16–22 are present in addenda but not yet consolidated to the predictive view. The 16 addenda (I–XVI) layer the rules with deeper context, multi-tier cascade analyses, and Pin-Art validation traces.
+- **Promotion status**: standing-rule (multiple). Rule 4, 5, 6, 11, 13, 14, 15, 23, 24, 25, 26 consolidated to `apparatus/docs/predictive-ruleset.md`. Rules 16–22 pending consolidation.
+
+### Entry 002 — IHI.1 (Per-Frame IC caches don't amortize)
+
+- **Finding ID**: IHI.1.
+- **Locale**: `pilots/interp-hot-intrinsics/`.
+- **Originating rung**: IHI trajectory (cross-reference per Entry 001 promotion to JIT Finding VIII.4).
+- **Class**: substrate-pattern.
+- **Body summary**: per-frame IC caches do not amortize across invocations; substrate moves that introduce caching must lift the cache to Runtime-lifetime or accept that the cache is a single-frame instrument.
+- **Promotion status**: standing-rule (rules 8 + 9 of the 15-rule consolidated view) + finding-addendum (JIT Finding VIII.4).
+
+### Entry 003 — OSR.1 + OSR.2 (JIT calling-convention + loop-boundary)
+
+- **Finding IDs**: OSR.1, OSR.2.
+- **Locale**: `pilots/rusty-js-jit/osr/`.
+- **Originating rungs**: OSR-EXT trajectory entries (see locale findings.md for rung tags).
+- **Class**: abstract-op-discipline (OSR.1) + substrate-pattern (OSR.2).
+- **Body summary**: OSR.1 — the JIT calling convention's params-only-as-args closure blocks OSR-invoke; three alternatives named (marshal / extern / frame-pointer). OSR.2 — for/while loop forward-exit jumps lower out-of-bounds; only do-while extracts cleanly. Three boundary-handling options named.
+- **Promotion status**: finding-addendum (JIT Findings VIII.2 + VIII.3). Both compose into Standing Rule 11 (5-axis pre-spawn coverage: A4 locals-marshaling + A5 emission-shape).
+
+### Entry 004 — TL.1 + TL.2 (whole-body bail bounds + Φ value-domain)
+
+- **Finding IDs**: TL.1, TL.2.
+- **Locale**: `pilots/rusty-js-jit/top-level/`.
+- **Originating rungs**: TL trajectory.
+- **Class**: abstract-op-discipline.
+- **Body summary**: TL.1 — whole-body JIT bail bounds (b-narrow) reclaim to 0% yield on mixed-alphabet fixtures; the bail must be inner-loop-localized. TL.2 — JIT calling-convention encodes non-Number / non-Object Values to 0.0; Φ-tier value-domain encoding breaks IC fast-paths downstream.
+- **Promotion status**: finding-addendum (JIT Findings VII.2 + VII.3) + standing-rule (Rule 11 5-axis A2 op-set + A3 value-domain).
+
+### Entry 005 — TAECSF.1 (narrow dispatcher beats wide signature lift)
+
+- **Finding ID**: TAECSF.1.
+- **Locale**: `pilots/ta-element-coercion-spec-faithful/`.
+- **Originating rung**: TAECSF-EXT 0 (2026-05-30, founding rung; trajectory-embedded, no `findings.md` yet).
+- **Class**: error-propagation.
+- **Body summary**: when a coercion abstract op needs to propagate its error from a deep storage path through a non-Result-returning intermediate function (>~10 callers), prefer a narrow new dispatcher in the Result-returning caller's frame over lifting the intermediate's signature. The narrow dispatcher's blast radius is the named call-site; the wide lift's blast radius is every caller of the intermediate.
+- **Promotion status**: trajectory-embedded; one-more-observation required for standing-rule promotion. Promotion-readiness flips to "ready" when a second locale's substrate rung corroborates the dispatcher-over-lift heuristic at a different abstract op (candidate cells: ConvertNumberToTypedArrayElement integer path within the same locale's sub-substrate (a); ToNumber error-path in template-literal interpolation per MILF-EXT 8's BigInt-template-literal close; any future Result-thread-through-non-Result-callsite).
+
+### Entry 006 — BBND yield-analysis (five-condition multiplier)
+
+- **Finding ID**: BBND-yield (non-standard naming; the file documents a yield-analysis rather than discrete `Finding <TAG>.<N>` entries).
+- **Locale**: `pilots/parser-early-error-residual/block-bound-names-dup/`.
+- **Originating rung**: BBND trajectory.
+- **Class**: apparatus-tier.
+- **Body summary**: five-condition multiplier for substrate-tier yield — spec-rule bijection + cross-product generation + one-rule-one-site + static-semantics tier + matrix-driven targeting. The conditions compose multiplicatively rather than additively; absence of any single condition collapses the yield. Fielding-REST-correspondence-shaped constraint stacking.
+- **Promotion status**: cross-locale-recurrence pending; one-more-observation. Proposed for Standing Rule 16 + corpus Doc 743. Awaiting ≥2 additional locales corroborating the constraint-stacking pattern.
+
+### Entry 007 — Cross-locale recurrence: IC cache lifetime dependency
+
+- **Pattern name**: IC-cache-lifetime-amortization-requires-Runtime-tier-storage.
+- **Locales corroborating**: `pilots/interp-hot-intrinsics/` (IHI.1) + `pilots/rusty-js-jit/` (Findings VIII.4 + VIII.5 + VIII.6).
+- **Class**: substrate-pattern.
+- **Body summary**: per-frame IC stores do not amortize; storage must live at Runtime tier or above to compound across invocations. The fixture-dependency and bytecode-rewrite tiers (VIII.5 + VIII.6) are sub-patterns of this rule.
+- **Promotion status**: standing-rule (Rule 8 + Rule 9 of the 15-rule consolidated view). Cross-locale recurrence count: 2 locales (IHI + JIT subtree).
+
+### Entry 008 — Cross-locale recurrence: JIT calling-convention boundary constraints
+
+- **Pattern name**: JIT-boundary-encoding-shapes-IC-fast-path-eligibility.
+- **Locales corroborating**: `pilots/rusty-js-jit/osr/` (OSR.1) + `pilots/rusty-js-jit/top-level/` (TL.2) + `pilots/rusty-js-jit/` (Findings VII.2 + VII.3 + VIII.2 + VIII.3).
+- **Class**: abstract-op-discipline.
+- **Body summary**: JIT boundary encoding (locals marshaling + value-domain + emission shape) gates whether downstream IC fast-paths can engage. Substrate moves at the JIT must explicitly consider all three axes; omission collapses yield to 0%.
+- **Promotion status**: standing-rule (Rule 11 5-axis pre-spawn coverage check: A1–A5). Cross-locale recurrence count: 3 locales (OSR + TL + JIT root).
+
+### Entry 009 — Cross-locale recurrence: multi-tier cascade-revival
+
+- **Pattern name**: deeper-layer-closure-required-when-tier-N-revert.
+- **Locales corroborating**: `pilots/rusty-js-jit/` (Finding II.3 / Rule 13) + `pilots/rusty-js-jit/top-level/` (TL.1) + `pilots/typed-array-wrong-result/` (TAWR-EXT 6 NEGATIVE Rule-13 REVERT closing Phase-5 inflection of the array-exotic arc) + `pilots/rusty-js-ir/` (EXT 25→26 and EXT 29→34 per CLAUDE.md §Substrate-shaped-work discipline Addendum XVI).
+- **Class**: abstract-op-discipline.
+- **Body summary**: a negative-result rung at tier N is not the substrate's terminal state; it points to a deeper-layer closure at tier N-1 or N+1. Revert the negative round's code, retain the trajectory entry + diagnosis, identify the deeper-layer closure that the negative round's design pointed toward, and implement the deeper-layer closure as the next round. The substrate prefix left on disk often becomes the cheap enabler of the deeper-layer closure (per Finding IR.33 cumulative substrate amortization).
+- **Promotion status**: standing-rule (Rule 13 + standing-rule-13-prospective-application.md). Cross-locale recurrence count: 4+ locales.
+
+### Entry 010 — Cross-locale recurrence: baseline-inspection-as-locale-probe
+
+- **Pattern name**: locale-as-probe-surfaces-correct-coordinate.
+- **Locales corroborating**: `pilots/tokenization-arc-NLC/` (NLC.0 retraction → real-coordinate parser-permissiveness; NLC.1 lock-in) + `pilots/json-stringify-fundamental/` (JSF) Finding VII.1.
+- **Class**: apparatus-tier.
+- **Body summary**: at locale founding, baseline-inspect against current substrate state + inspect a sample of failures. If inspection reveals the substrate move-shape is at a different coordinate than the seed declared, treat the locale as a probe that surfaced the real target; land the surfaced-coordinate move first. NLC.0 was retracted in exemplary form (eval-error-class was a probe-surface; the real coordinate was parser permissiveness).
+- **Promotion status**: standing-rule (Rule 23, formalized 2026-05-25). Cross-locale recurrence count: 2 locales.
+
+---
+
+## Anomalies surfaced at audit 2026-05-30
+
+1. **Rules 16–22 unconsolidated**: `pilots/rusty-js-jit/findings.md` Addenda XII–XIII name rules 16–22, but the predictive-ruleset.md derived view only consolidates 1–15 + 23–26. A consolidation pass would close the gap. Tracked for future audit-ledger entry; not addressed by this findings-ledger introduction.
+
+2. **TAECSF.1 trajectory-embedded only**: locale `pilots/ta-element-coercion-spec-faithful/` (founded 2026-05-30) records TAECSF.1 in `trajectory.md` but has no `findings.md`. The per-locale convention (per JIT + IHI + OSR + TL precedent) is to extract single-rung findings to `findings.md` once a second rung in the locale lands; current single-rung state suggests deferring extraction until the second rung. Recorded here as Entry 005 with trajectory-embedded promotion-status.
+
+3. **BBND yield-analysis structure**: `pilots/parser-early-error-residual/block-bound-names-dup/findings.md` documents a yield-analysis rather than discrete `Finding <TAG>.<N>` entries. This is acceptable per the §Discipline append-only convention but is non-standard relative to other findings.md files in the repo. The structure is appropriate to what BBND surfaced (a multiplier rather than a discrete pattern); promotion as Standing Rule 16 will adopt the discrete form.
+
+4. **No apparatus-pilot findings.md files**: the apparatus-pilots at `pilots/apparatus/*/` do not carry `findings.md`. Their findings live in `apparatus/docs/` documents (e.g., `apparatus/docs/repository-apparatus.md`, `apparatus/docs/predictive-ruleset.md`, `apparatus/docs/ecma-conformance-parity-as-exhaustive-language-behavior-dag.md`). This is consistent with the bilateral pilot tier distinction (substrate-pilots author trajectory + findings inside the pilot directory; apparatus-pilots author articulation in `apparatus/docs/`). No anomaly; documented here for reader orientation.
+
+5. **CHARMS-EXT 9 self-checking discipline**: per source-identifier convention findings, source-identifier coordinates (Doc 738) are described in CLAUDE.md but no `findings.md` aggregates the convention's self-check pattern (a name whose prefix and install helper disagree is a bug shape). Surfaced as future-extract candidate; promotion-status: none until a sibling source-identifier-convention finding lands at a different naming axis.
