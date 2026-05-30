@@ -1282,48 +1282,69 @@ pub fn install_buffer(rt: &mut Runtime) {
         }
     });
     register_method(rt, buf_ctor, "from", |rt, args| {
-        // Buffer.from(str, encoding?) → decode according to encoding.
-        // Encodings honored: utf8 (default), hex, base64, base64url,
-        // latin1, ascii, binary. Other args (Array, ArrayBuffer, Buffer)
-        // are handled via length-fallback for now.
-        let s = match args.first() {
-            Some(Value::String(s)) => s.as_str().to_string(),
-            _ => String::new(),
-        };
-        let enc = match args.get(1) {
-            Some(Value::String(s)) => s.as_str().to_string(),
-            _ => "utf8".into(),
-        };
-        let bytes: Vec<u8> = match enc.as_str() {
-            "hex" => {
-                let mut v = Vec::with_capacity(s.len() / 2);
-                let chars: Vec<char> = s.chars().collect();
-                let mut i = 0;
-                while i + 1 < chars.len() {
-                    let hi = chars[i].to_digit(16);
-                    let lo = chars[i + 1].to_digit(16);
-                    match (hi, lo) {
-                        (Some(h), Some(l)) => v.push(((h << 4) | l) as u8),
-                        _ => break,
+        // Buffer.from accepts string | Array<number> | ArrayBuffer |
+        // SharedArrayBuffer | Buffer | Uint8Array-like. For object-shaped
+        // inputs we read length + indexed slots (which uniformly covers
+        // Buffer, Uint8Array, plain arrays, and ArrayBuffer-backed views
+        // since the engine surfaces indexed access on all of them).
+        let mut bytes: Vec<u8> = Vec::new();
+        let mut source_string: Option<String> = None;
+        match args.first() {
+            Some(Value::String(s)) => {
+                let st = s.as_str().to_string();
+                let enc = match args.get(1) {
+                    Some(Value::String(s)) => s.as_str().to_string(),
+                    _ => "utf8".into(),
+                };
+                bytes = match enc.as_str() {
+                    "hex" => {
+                        let mut v = Vec::with_capacity(st.len() / 2);
+                        let chars: Vec<char> = st.chars().collect();
+                        let mut i = 0;
+                        while i + 1 < chars.len() {
+                            let hi = chars[i].to_digit(16);
+                            let lo = chars[i + 1].to_digit(16);
+                            match (hi, lo) {
+                                (Some(h), Some(l)) => v.push(((h << 4) | l) as u8),
+                                _ => break,
+                            }
+                            i += 2;
+                        }
+                        v
                     }
-                    i += 2;
-                }
-                v
+                    "base64" | "base64url" => {
+                        let mut normalized = st.replace('-', "+").replace('_', "/");
+                        while normalized.len() % 4 != 0 {
+                            normalized.push('=');
+                        }
+                        base64_decode(&normalized)
+                    }
+                    "latin1" | "binary" => st.chars().map(|c| c as u8).collect(),
+                    "ascii" => st.chars().map(|c| (c as u32 & 0x7f) as u8).collect(),
+                    _ => st.as_bytes().to_vec(),
+                };
+                source_string = Some(st);
             }
-            "base64" | "base64url" => {
-                let mut normalized = s.replace('-', "+").replace('_', "/");
-                // Pad to multiple of 4.
-                while normalized.len() % 4 != 0 {
-                    normalized.push('=');
+            Some(Value::Object(src_id)) => {
+                let src = *src_id;
+                let len = match rt.object_get(src, "length") {
+                    Value::Number(n) => n as usize,
+                    _ => 0,
+                };
+                bytes.reserve(len);
+                for i in 0..len {
+                    match rt.object_get(src, &i.to_string()) {
+                        Value::Number(n) => bytes.push(n as u8),
+                        _ => bytes.push(0),
+                    }
                 }
-                base64_decode(&normalized)
             }
-            "latin1" | "binary" => s.chars().map(|c| c as u8).collect(),
-            "ascii" => s.chars().map(|c| (c as u32 & 0x7f) as u8).collect(),
-            _ => s.as_bytes().to_vec(), // utf8 default
-        };
+            _ => {}
+        }
         let mut o = RtObject::new_ordinary();
-        o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
+        if let Some(ref s) = source_string {
+            o.set_own_internal("__buffer_data".into(), Value::String(Rc::new(s.clone())));
+        }
         o.set_own("length".into(), Value::Number(bytes.len() as f64));
         o.set_own_internal("__is_buffer__".into(), Value::Boolean(true));
         let id = rt.alloc_object(o);

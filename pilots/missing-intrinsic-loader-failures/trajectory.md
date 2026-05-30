@@ -995,3 +995,29 @@ not populated). The current Buffer.from-array path is broken — separate
 locale from this rung's iterator surface. csv-parser uses
 `Buffer.from(string)` which works, so this rung closes the immediate
 blocker; Buffer.from-array deserves its own rung.
+
+## 2026-05-30 — MILF-EXT 11.1 Buffer.from(array | Uint8Array | Buffer)
+
+Closes the named follow-up from MILF-EXT 11. Buffer.from only handled the
+String input shape; all object-shaped inputs (Array, Uint8Array, Buffer)
+fell through to an empty byte vector, producing a length=0 Buffer.
+
+### Substrate
+
+`cruftless/src/node_stubs.rs::Buffer.from` — added an Object branch that
+reads `length` + indexed slots from the source. The uniform property-bag
+storage means the same path works for Array, Uint8Array, Buffer, and
+indexed views; no per-shape dispatch needed.
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke `Buffer.from([10,20,30])` → length 3, `[...]` → `[10,20,30]`.
+- `Buffer.from(new Uint8Array([7,8,9]))` → `[7,8,9]`.
+- `Buffer.from(Buffer.from([1,2,3]))` (round-trip) → `[1,2,3]`.
+- `Buffer.from('abc')` (string path) unchanged → `[97,98,99]`.
+- Wider iteration smoke (from MILF-EXT 11) now reports `for-of: [10,20,30]`
+  / `spread: [10,20,30]` / `[a, ...rest] = ...` works on array-input buffers
+  (was empty before this rung).
