@@ -896,6 +896,160 @@ fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) {
             _ => Ok(Value::Number(0.0)),
         }
     });
+
+    // Buffer numeric read/write integer/float family. Storage is the same
+    // index-keyed byte layout the existing readUInt8/writeUInt32BE pair use,
+    // so each method here reads/writes N consecutive byte slots.
+    // Bounds-failure semantics match Node (RangeError with ERR_OUT_OF_RANGE
+    // in the message) so consumers that pattern-match on the error code
+    // see the expected shape.
+    fn buf_len(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef) -> usize {
+        match rt.object_get(id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        }
+    }
+    fn buf_read_bytes(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef, offset: usize, n: usize) -> Option<Vec<u8>> {
+        let len = buf_len(rt, id);
+        if offset.checked_add(n).map(|e| e > len).unwrap_or(true) {
+            return None;
+        }
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            match rt.object_get(id, &(offset + i).to_string()) {
+                Value::Number(v) => out.push(v as u8),
+                _ => out.push(0),
+            }
+        }
+        Some(out)
+    }
+    fn buf_write_bytes(rt: &mut Runtime, id: rusty_js_runtime::ObjectRef, offset: usize, bytes: &[u8]) -> bool {
+        let len = buf_len(rt, id);
+        if offset.checked_add(bytes.len()).map(|e| e > len).unwrap_or(true) {
+            return false;
+        }
+        for (i, b) in bytes.iter().enumerate() {
+            rt.object_set(id, (offset + i).to_string(), Value::Number(*b as f64));
+        }
+        true
+    }
+    fn buf_oor(method: &str) -> RuntimeError {
+        RuntimeError::TypeError(format!(
+            "Buffer.{method}: offset is outside the bounds of the Buffer (ERR_OUT_OF_RANGE)"
+        ))
+    }
+    fn buf_offset_arg(args: &[Value], idx: usize) -> Result<usize, RuntimeError> {
+        match args.get(idx) {
+            Some(Value::Number(n)) => {
+                if *n < 0.0 || !n.is_finite() {
+                    return Err(RuntimeError::TypeError(format!(
+                        "Buffer: offset must be a non-negative integer (ERR_OUT_OF_RANGE), got {n}"
+                    )));
+                }
+                Ok(*n as usize)
+            }
+            Some(_) | None => Ok(0),
+        }
+    }
+    fn buf_this(rt: &mut Runtime, method: &str) -> Result<rusty_js_runtime::ObjectRef, RuntimeError> {
+        match rt.current_this() {
+            Value::Object(o) => Ok(o),
+            _ => Err(RuntimeError::TypeError(format!("Buffer.{method}: this must be a Buffer"))),
+        }
+    }
+
+    macro_rules! reg_read {
+        ($name:literal, $n:expr, $conv:expr) => {
+            register_method(rt, id, $name, |rt, args| {
+                let this_id = buf_this(rt, $name)?;
+                let offset = buf_offset_arg(args, 0)?;
+                let bytes = buf_read_bytes(rt, this_id, offset, $n).ok_or_else(|| buf_oor($name))?;
+                Ok($conv(&bytes))
+            });
+        };
+    }
+    macro_rules! reg_write {
+        ($name:literal, $n:expr, $encode:expr) => {
+            register_method(rt, id, $name, |rt, args| {
+                let this_id = buf_this(rt, $name)?;
+                let raw = match args.first() { Some(v) => v.clone(), None => Value::Number(0.0) };
+                let offset = buf_offset_arg(args, 1)?;
+                let bytes: [u8; $n] = $encode(&raw);
+                if !buf_write_bytes(rt, this_id, offset, &bytes) {
+                    return Err(buf_oor($name));
+                }
+                Ok(Value::Number((offset + $n) as f64))
+            });
+        };
+    }
+
+    // Number-coercion helpers used by the encoders.
+    fn as_f64(v: &Value) -> f64 {
+        match v {
+            Value::Number(n) => *n,
+            Value::Boolean(b) => if *b { 1.0 } else { 0.0 },
+            _ => 0.0,
+        }
+    }
+    fn as_u64(v: &Value) -> u64 {
+        match v {
+            Value::BigInt(n) => n.to_decimal().parse::<i128>().ok().map(|x| x as u64).unwrap_or(0),
+            Value::Number(n) => *n as u64,
+            _ => 0,
+        }
+    }
+    fn as_i64(v: &Value) -> i64 {
+        match v {
+            Value::BigInt(n) => n.to_decimal().parse::<i64>().unwrap_or(0),
+            Value::Number(n) => *n as i64,
+            _ => 0,
+        }
+    }
+    fn mk_bigint_u64(v: u64) -> Value {
+        Value::BigInt(std::rc::Rc::new(rusty_js_runtime::bigint::JsBigInt::from_u64(v)))
+    }
+    fn mk_bigint_i64(v: i64) -> Value {
+        Value::BigInt(std::rc::Rc::new(rusty_js_runtime::bigint::JsBigInt::from_i64(v)))
+    }
+
+    // Unsigned readers
+    reg_read!("readUInt16LE", 2, |b: &[u8]| Value::Number(u16::from_le_bytes([b[0], b[1]]) as f64));
+    reg_read!("readUInt16BE", 2, |b: &[u8]| Value::Number(u16::from_be_bytes([b[0], b[1]]) as f64));
+    reg_read!("readUInt32LE", 4, |b: &[u8]| Value::Number(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    reg_read!("readUInt32BE", 4, |b: &[u8]| Value::Number(u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    // Signed readers
+    reg_read!("readInt8", 1, |b: &[u8]| Value::Number(i8::from_le_bytes([b[0]]) as f64));
+    reg_read!("readInt16LE", 2, |b: &[u8]| Value::Number(i16::from_le_bytes([b[0], b[1]]) as f64));
+    reg_read!("readInt16BE", 2, |b: &[u8]| Value::Number(i16::from_be_bytes([b[0], b[1]]) as f64));
+    reg_read!("readInt32LE", 4, |b: &[u8]| Value::Number(i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    reg_read!("readInt32BE", 4, |b: &[u8]| Value::Number(i32::from_be_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    // Float / double
+    reg_read!("readFloatLE", 4, |b: &[u8]| Value::Number(f32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    reg_read!("readFloatBE", 4, |b: &[u8]| Value::Number(f32::from_be_bytes([b[0], b[1], b[2], b[3]]) as f64));
+    reg_read!("readDoubleLE", 8, |b: &[u8]| Value::Number(f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+    reg_read!("readDoubleBE", 8, |b: &[u8]| Value::Number(f64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+    // BigInt readers — Node returns BigInt; if the runtime lacks BigInt
+    // it falls back to Number with precision loss above 2^53.
+    reg_read!("readBigUInt64LE", 8, |b: &[u8]| mk_bigint_u64(u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+    reg_read!("readBigUInt64BE", 8, |b: &[u8]| mk_bigint_u64(u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+    reg_read!("readBigInt64LE", 8, |b: &[u8]| mk_bigint_i64(i64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+    reg_read!("readBigInt64BE", 8, |b: &[u8]| mk_bigint_i64(i64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])));
+
+    // Writers (the unsigned 8/16/32 + Int32BE family already exist above
+    // and are kept verbatim for diff cleanliness).
+    reg_write!("writeInt8", 1, |v: &Value| (as_f64(v) as i8).to_le_bytes());
+    reg_write!("writeInt16LE", 2, |v: &Value| (as_f64(v) as i16).to_le_bytes());
+    reg_write!("writeInt16BE", 2, |v: &Value| (as_f64(v) as i16).to_be_bytes());
+    reg_write!("writeInt32LE", 4, |v: &Value| (as_f64(v) as i32).to_le_bytes());
+    reg_write!("writeFloatLE", 4, |v: &Value| (as_f64(v) as f32).to_le_bytes());
+    reg_write!("writeFloatBE", 4, |v: &Value| (as_f64(v) as f32).to_be_bytes());
+    reg_write!("writeDoubleLE", 8, |v: &Value| as_f64(v).to_le_bytes());
+    reg_write!("writeDoubleBE", 8, |v: &Value| as_f64(v).to_be_bytes());
+    reg_write!("writeBigUInt64LE", 8, |v: &Value| as_u64(v).to_le_bytes());
+    reg_write!("writeBigUInt64BE", 8, |v: &Value| as_u64(v).to_be_bytes());
+    reg_write!("writeBigInt64LE", 8, |v: &Value| as_i64(v).to_le_bytes());
+    reg_write!("writeBigInt64BE", 8, |v: &Value| as_i64(v).to_be_bytes());
+
     register_method(rt, id, "indexOf", |rt, args| {
         let this_id = match rt.current_this() {
             Value::Object(o) => o,
