@@ -916,3 +916,43 @@ distinct follow-up coordinate):
 
 The cumulative install-gap-and-friends substrate (7+7.1+8+8.1+9) has
 material cross-package PASS gain pending the in-flight sweep's quantification.
+
+## 2026-05-30 — MILF-EXT 10 fs.* URL-object path coercion
+
+stylelint failed module-load on `readFileSync(new URL('../../package.json',
+import.meta.url), 'utf8')` (FileCache.mjs:19): the runtime's `arg_string`
+helper calls `to_string` on a WHATWG URL Object, which yields
+`"[object Object]"`, then `std::fs::read("[object Object]")` ENOENTs.
+Node accepts `URL | string | Buffer` for the path argument across the entire
+fs surface; cruft was string-only.
+
+### Substrate
+
+`cruftless/src/fs.rs` — added `arg_path_or_url(rt, args, i)` helper that
+recognizes the URL shape via the `href` slot starting with `file://` and
+strips the prefix, falling back to `arg_string` otherwise. Substituted into
+all 33 sites where `let path = arg_string(args, 0);` was used in fs methods.
+Five closures previously declared `|_rt, args|`; renamed to `|rt, args|`
+to hand the runtime handle into the helper.
+
+The helper avoids URL.pathname so the result is path-correct under
+`file://host/p` shapes too (consumers in scope are POSIX so this is moot,
+but is the safer default).
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke `/tmp/smoke/fs_url.mjs`: `readFileSync(new URL('./fs_url.mjs', import.meta.url), 'utf8')`
+  returns 545 bytes (was ENOENT); pathname-string path still works (length
+  parity).
+- **stylelint loads**: 2 keys (was `readFileSync ... (in-call='url')`).
+
+### Compounding
+
+Any package that does `readFileSync(new URL('...', import.meta.url))` — a
+very common pattern in ESM packages reading bundled data files — benefits.
+URL-as-path is also accepted by other fs surface methods (statSync,
+existsSync, readdirSync, mkdirSync, …), all 33 of which now share the
+same helper. Cumulative cluster-A gain pending re-sweep.

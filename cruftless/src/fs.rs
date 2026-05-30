@@ -25,6 +25,26 @@
 //! Promise creation + queue push without re-entering the runtime).
 
 use crate::register::{arg_string, make_callable, new_object, register_method};
+
+/// Resolve a path-or-URL argument to a filesystem path. Node's fs surface
+/// accepts WHATWG URL objects with `file:` protocol in addition to strings;
+/// passing the Object directly to `arg_string` would yield `"[object Object]"`
+/// because the runtime's default toString for ordinary objects is the
+/// uninformative tag. This helper recognizes the URL shape via the `href`
+/// property's `file://` prefix and strips it (rather than calling pathname
+/// which would unwrap a `file://host/p` URL incorrectly on Windows-style
+/// drive letters; consumers in scope are all POSIX). Falls back to
+/// `arg_string` for non-Object values + Objects without an href slot.
+fn arg_path_or_url(rt: &mut rusty_js_runtime::Runtime, args: &[Value], i: usize) -> String {
+    if let Some(Value::Object(id)) = args.get(i) {
+        if let Value::String(href) = rt.object_get(*id, "href") {
+            if let Some(rest) = href.strip_prefix("file://") {
+                return rest.to_string();
+            }
+        }
+    }
+    arg_string(args, i)
+}
 use rusty_js_runtime::caps;
 use rusty_js_runtime::caps::{ModuleId, ModuleProvenance};
 use rusty_js_runtime::promise::{new_promise, reject_promise, resolve_promise};
@@ -482,7 +502,7 @@ pub fn install(rt: &mut Runtime) {
     // ── sync surface ──
 
     register_method(rt, fs, "readFileSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         match std::fs::read(&path) {
@@ -492,7 +512,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "writeFileSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
@@ -506,13 +526,13 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "existsSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         Ok(Value::Boolean(std::path::Path::new(&path).exists()))
     });
 
     register_method(rt, fs, "statSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         match std::fs::metadata(&path) {
             Ok(md) => Ok(Value::Object(stat_object(rt, &md))),
@@ -521,7 +541,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "readdirSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::List(path.clone().into()))?;
         match std::fs::read_dir(&path) {
             Ok(iter) => {
@@ -540,7 +560,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "mkdirSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Mkdir(path.clone().into()))?;
         let recursive = match args.get(1) {
             Some(Value::Object(id)) => {
@@ -560,7 +580,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "unlinkSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Remove(path.clone().into()))?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Value::Undefined),
@@ -571,7 +591,7 @@ pub fn install(rt: &mut Runtime) {
     // ── async surface (routes through PendingIo + PollIo) ──
 
     register_method(rt, fs, "readFile", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         let p = new_promise(rt);
@@ -580,7 +600,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "writeFile", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
@@ -593,7 +613,7 @@ pub fn install(rt: &mut Runtime) {
     });
 
     register_method(rt, fs, "exists", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         let p = new_promise(rt);
         push_pending(p, FsOp::Exists { path });
@@ -610,7 +630,7 @@ pub fn install(rt: &mut Runtime) {
     // returned promise from stat resolves to a stat-shaped object.
     let promises = new_object(rt);
     register_method(rt, promises, "stat", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         match std::fs::metadata(&path) {
             Ok(md) => Ok(Value::Object(stat_object(rt, &md))),
@@ -618,7 +638,7 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     register_method(rt, promises, "readFile", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Read(path.clone().into()))?;
         let encoding = arg_encoding(args, 1);
         match std::fs::read(&path) {
@@ -630,7 +650,7 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     register_method(rt, promises, "writeFile", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
@@ -646,7 +666,7 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     register_method(rt, promises, "access", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Stat(path.clone().into()))?;
         if std::path::Path::new(&path).exists() {
             Ok(Value::Undefined)
@@ -658,7 +678,7 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     register_method(rt, promises, "mkdir", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Mkdir(path.clone().into()))?;
         match std::fs::create_dir_all(&path) {
             Ok(()) => Ok(Value::Undefined),
@@ -666,7 +686,7 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     register_method(rt, promises, "unlink", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Remove(path.clone().into()))?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(Value::Undefined),
@@ -738,7 +758,7 @@ pub fn install(rt: &mut Runtime) {
     // input path unchanged. Sufficient for load-time presence checks;
     // runtime semantic divergence is queued for a downstream substrate move.
     let realpath = make_callable(rt, "realpath", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let p = new_promise(rt);
         // Synchronously resolve to the input path. Callers that pass a
         // callback get it via the standard promise→callback adapter
@@ -746,19 +766,19 @@ pub fn install(rt: &mut Runtime) {
         let _ = (rt, p);
         Ok(Value::String(std::rc::Rc::new(path)))
     });
-    let realpath_native = make_callable(rt, "realpath", |_rt, args| {
-        let path = arg_string(args, 0);
+    let realpath_native = make_callable(rt, "realpath", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         Ok(Value::String(std::rc::Rc::new(path)))
     });
     rt.object_set(realpath, "native".into(), Value::Object(realpath_native));
     rt.object_set(fs, "realpath".into(), Value::Object(realpath));
 
-    let realpath_sync = make_callable(rt, "realpathSync", |_rt, args| {
-        let path = arg_string(args, 0);
+    let realpath_sync = make_callable(rt, "realpathSync", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         Ok(Value::String(std::rc::Rc::new(path)))
     });
-    let realpath_sync_native = make_callable(rt, "realpathSync", |_rt, args| {
-        let path = arg_string(args, 0);
+    let realpath_sync_native = make_callable(rt, "realpathSync", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         Ok(Value::String(std::rc::Rc::new(path)))
     });
     rt.object_set(
@@ -848,7 +868,7 @@ pub fn install(rt: &mut Runtime) {
     // access / accessSync — ECMA-262-adjacent; existence + mode check
     register_method(rt, fs, "accessSync", |rt, args| {
         let _ = check_fs(rt, caps::FsOp::Stat(arg_string(args, 0).into()))?;
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let mode = match args.get(1) {
             Some(Value::Number(n)) => *n as u32,
             _ => 0,
@@ -891,7 +911,7 @@ pub fn install(rt: &mut Runtime) {
     // appendFile / appendFileSync
     register_method(rt, fs, "appendFileSync", |rt, args| {
         use std::io::Write;
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         check_fs(rt, caps::FsOp::Write(path.clone().into()))?;
         let encoding = arg_encoding(args, 2);
         let data = match args.get(1) {
@@ -946,8 +966,8 @@ pub fn install(rt: &mut Runtime) {
             .map_err(|e| RuntimeError::TypeError(format!("linkSync: {}", e)))
     });
     // readlink / readlinkSync — read symlink target
-    register_method(rt, fs, "readlinkSync", |_rt, args| {
-        let path = arg_string(args, 0);
+    register_method(rt, fs, "readlinkSync", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         std::fs::read_link(&path)
             .map(|p| Value::String(Rc::new(p.to_string_lossy().into_owned())))
             .map_err(|e| RuntimeError::TypeError(format!("readlinkSync: {}", e)))
@@ -962,7 +982,7 @@ pub fn install(rt: &mut Runtime) {
     });
     // rm / rmSync — file or dir, with options.recursive + options.force
     register_method(rt, fs, "rmSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let (recursive, force) = match args.get(1) {
             Some(Value::Object(id)) => (
                 matches!(rt.object_get(*id, "recursive"), Value::Boolean(true)),
@@ -988,7 +1008,7 @@ pub fn install(rt: &mut Runtime) {
     });
     // rmdir / rmdirSync — empty dir only (per Node; cp/rm handle recursive)
     register_method(rt, fs, "rmdirSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let recursive = match args.get(1) {
             Some(Value::Object(id)) => {
                 matches!(rt.object_get(*id, "recursive"), Value::Boolean(true))
@@ -1022,8 +1042,8 @@ pub fn install(rt: &mut Runtime) {
         }
     });
     // truncate / truncateSync — set file length
-    register_method(rt, fs, "truncateSync", |_rt, args| {
-        let path = arg_string(args, 0);
+    register_method(rt, fs, "truncateSync", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         let len = match args.get(1) {
             Some(Value::Number(n)) => *n as u64,
             _ => 0,
@@ -1141,7 +1161,7 @@ pub fn install(rt: &mut Runtime) {
     // stored std::fs::File; subsequent fsync/writeSync/readSync/
     // ftruncateSync/futimesSync/closeSync operate on it.
     register_method(rt, fs, "openSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let flags = match args.get(1) {
             Some(Value::String(s)) => s.as_str().to_string(),
             Some(Value::Number(n)) => format!("{}", *n as i32),
@@ -1341,8 +1361,8 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Number(n as f64))
     });
     // utimesSync — path-based modify times, via std::fs::FileTimes.
-    register_method(rt, fs, "utimesSync", |_rt, args| {
-        let path = arg_string(args, 0);
+    register_method(rt, fs, "utimesSync", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         let atime_s = match args.get(1) {
             Some(Value::Number(n)) => *n,
             _ => 0.0,
@@ -1394,7 +1414,7 @@ pub fn install(rt: &mut Runtime) {
     });
     // opendirSync — returns a Dir-shaped object with read()/close()/path.
     register_method(rt, fs, "opendirSync", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let dir_entries: Vec<String> = std::fs::read_dir(&path)
             .map_err(|e| RuntimeError::TypeError(format!("opendirSync: {}", e)))?
             .flatten()
@@ -1578,7 +1598,7 @@ pub fn install(rt: &mut Runtime) {
     // openAsBlob(path, [options]) — Promise<Blob>. Reads the file
     // synchronously and wraps the bytes in a Blob-shaped object.
     register_method(rt, fs, "openAsBlob", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let mime = match args.get(1) {
             Some(Value::Object(id)) => match rt.object_get(*id, "type") {
                 Value::String(s) => s.as_str().to_string(),
@@ -1612,7 +1632,7 @@ pub fn install(rt: &mut Runtime) {
     // be lower-latency but needs the `notify` crate; polling matches
     // Node's watchFile default behavior with a configurable interval.
     register_method(rt, fs, "watch", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         let watcher = rt.alloc_object(rusty_js_runtime::value::Object::new_ordinary());
         let listener = args
             .iter()
@@ -1641,7 +1661,7 @@ pub fn install(rt: &mut Runtime) {
         Ok(Value::Object(watcher))
     });
     register_method(rt, fs, "watchFile", |rt, args| {
-        let path = arg_string(args, 0);
+        let path = arg_path_or_url(rt, args, 0);
         // watchFile signature: (filename, [options], listener). Options
         // may carry `interval`; default 5007ms per Node.
         let mut interval_ms = 5007u64;
@@ -1668,8 +1688,8 @@ pub fn install(rt: &mut Runtime) {
         register_method(rt, watcher, "unref", |rt, _args| Ok(rt.current_this()));
         Ok(Value::Object(watcher))
     });
-    register_method(rt, fs, "unwatchFile", |_rt, args| {
-        let path = arg_string(args, 0);
+    register_method(rt, fs, "unwatchFile", |rt, args| {
+        let path = arg_path_or_url(rt, args, 0);
         unregister_watchers_by_path(&path);
         Ok(Value::Undefined)
     });
