@@ -36,6 +36,7 @@ Per the substrate-shaped-work discipline (CLAUDE.md §Substrate-shaped-work disc
 | `typed-array-resizable-buffer-indexed-access` | resizable-buffer indexed access | OPEN | — |
 | `resizable-buffer-detection-per-access` | DataView per-access OOB recompute under resizable buffers | FOUNDED 2026-05-30 (RBDPA-EXT 0; lifted from deferrals-ledger Entry 009 per keeper directive Telegram 10558) | — |
 | `ta-element-coercion-spec-faithful` | Result-threaded TA element-set coercion (BigInt at founding; integer + Float32 NaN as post-rung work) | FOUNDED 2026-05-30 (TAECSF-EXT 0; lifted from deferrals-ledger Entry 010 per keeper-APPROVED proposal Telegram 10566) | +4 TAWR / +3 diff-prod at founding rung |
+| `typed-array-byte-storage-conformance` | Vec<Value> → Vec<u8> + NumberToRawBytes / RawBytesToNumeric per ECMA-262 §6.1.6.1 (architectural precursor; cascades TAECSF sub-substrates per Doc 739) | FOUNDED 2026-05-30 (TABSC-EXT 0; precursor architectural rung per pipeline-alphabet-audit + four-corpus-doc reading per keeper-APPROVED proposal Telegram 10596) | +4 TAWR / +1 TAMM at founding rung; cascade probe 10/10 PASS |
 
 ## Cumulative yield
 

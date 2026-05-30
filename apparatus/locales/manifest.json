@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 229,
-    "top_level": 142,
+    "locales": 230,
+    "top_level": 143,
     "nested": 87,
     "warnings": 0
   },
@@ -1311,7 +1311,7 @@
       "parent": null,
       "scope": "ta-element-coercion-spec-faithful",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 3,
       "status": "FOUNDED 2026-05-30 by TAECSF-EXT 0 (helmsman session, keeper directive Telegram 10566). Founding rung LANDED with positive yield on TAWR + diff-prod; sub-substrates (a) integer-coercion and (b) Float32 canonical-NaN pending."
     },
     {
@@ -1979,6 +1979,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CHAPTER CLOSED at TROI-EXT 1 (1 implementation round; standing rule 13 twelfth corroboration; LARGEST-YIELD substrate fix of the parity arc)**. Execute-parity **60.7% \u2192 69.0%** (+8.3 pp). CRUFT_FAIL count: 39 \u2192 8 (31 files unblocked by ONE 110-LOC post-strip pass). Pred-troi.3 + Pred-troi.4 HELD STRONGLY \u2014 failure-table top tag shifted from `prototype-undefined` (30 files, ESM cycle) to small unrelated singletons. **Finding TROI.2**: the rxjs ESM-cycle issue was diagnosed as a runtime-substrate concern but the actual fix was at the resolver tier (TSR elision). Substantive refinement of Doc 729 \u2014 the resolver-instance pattern is even more powerful than originally framed."
+    },
+    {
+      "coord": "typed-array-byte-storage-conformance",
+      "tag": "L.typed-array-byte-storage-conformance",
+      "parent": null,
+      "scope": "typed-array-byte-storage-conformance",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED 2026-05-30 by TABSC-EXT 0 (helmsman session, keeper directive Telegram 10596). Founding rung LANDED with empirically validated cascade-revival of TAECSF sub-substrates (a) + (b); cluster yield +4 TAWR, +1 TAMM, diff-prod stable; view-aliasing probe 3/3 PASS; cascade probe 10/10 PASS."
     },
     {
       "coord": "typed-array-missing-method",

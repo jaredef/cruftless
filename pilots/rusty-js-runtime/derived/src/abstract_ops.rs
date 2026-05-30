@@ -427,6 +427,92 @@ fn to_uint8_clamp(n: f64) -> u8 {
     }
 }
 
+/// TABSC-EXT 0 (2026-05-30): NumberToRawBytes per ECMA-262 §6.1.6.1.
+/// Encodes a Value (already coerced via `convert_number_to_typed_array_element`
+/// or `to_bigint`) to its 8-byte little-endian representation per the kind's
+/// Element Size (Table 75). Caller writes only `typed_array_byte_width(kind)`
+/// bytes of the returned array. Big-endian dispatch lives in DataView's setter
+/// wrapper (which reverses the LE bytes when isLittleEndian is false).
+pub fn number_to_raw_bytes(kind: &str, value: &Value) -> [u8; 8] {
+    let mut out = [0u8; 8];
+    match kind {
+        "Int8Array" => out[0] = (to_number(value) as i64) as i8 as u8,
+        "Uint8Array" | "Uint8ClampedArray" => out[0] = (to_number(value) as i64) as u8,
+        "Int16Array" => {
+            let v = (to_number(value) as i64) as i16;
+            out[..2].copy_from_slice(&v.to_le_bytes());
+        }
+        "Uint16Array" => {
+            let v = (to_number(value) as i64) as u16;
+            out[..2].copy_from_slice(&v.to_le_bytes());
+        }
+        "Int32Array" => {
+            let v = (to_number(value) as i64) as i32;
+            out[..4].copy_from_slice(&v.to_le_bytes());
+        }
+        "Uint32Array" => {
+            let v = (to_number(value) as i64) as u32;
+            out[..4].copy_from_slice(&v.to_le_bytes());
+        }
+        "Float32Array" => {
+            let v = to_number(value) as f32;
+            out[..4].copy_from_slice(&v.to_le_bytes());
+        }
+        "Float64Array" => out[..8].copy_from_slice(&to_number(value).to_le_bytes()),
+        "BigInt64Array" => {
+            let v = match value {
+                Value::BigInt(b) => b.to_f64() as i64,
+                _ => to_number(value) as i64,
+            };
+            out[..8].copy_from_slice(&v.to_le_bytes());
+        }
+        "BigUint64Array" => {
+            let v = match value {
+                Value::BigInt(b) => b.to_f64() as u64,
+                _ => to_number(value) as u64,
+            };
+            out[..8].copy_from_slice(&v.to_le_bytes());
+        }
+        _ => {}
+    }
+    out
+}
+
+/// TABSC-EXT 0: byte width per typed-array kind per §6.1.6.1 Element Size.
+pub fn typed_array_byte_width(kind: &str) -> usize {
+    match kind {
+        "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1,
+        "Int16Array" | "Uint16Array" => 2,
+        "Int32Array" | "Uint32Array" | "Float32Array" => 4,
+        "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8,
+        _ => 1,
+    }
+}
+
+/// TABSC-EXT 0: RawBytesToNumeric per ECMA-262 §6.1.6.1. Decodes a
+/// little-endian byte slice per the kind's Element Type. DataView's getter
+/// wrapper reverses the byte order pre-call when isLittleEndian is false.
+pub fn raw_bytes_to_numeric(kind: &str, bytes: &[u8]) -> Value {
+    use crate::bigint::JsBigInt;
+    let width = typed_array_byte_width(kind);
+    let take: usize = bytes.len().min(width);
+    let mut buf = [0u8; 8];
+    buf[..take].copy_from_slice(&bytes[..take]);
+    match kind {
+        "Int8Array" => Value::Number(i8::from_le_bytes([buf[0]]) as f64),
+        "Uint8Array" | "Uint8ClampedArray" => Value::Number(buf[0] as f64),
+        "Int16Array" => Value::Number(i16::from_le_bytes([buf[0], buf[1]]) as f64),
+        "Uint16Array" => Value::Number(u16::from_le_bytes([buf[0], buf[1]]) as f64),
+        "Int32Array" => Value::Number(i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64),
+        "Uint32Array" => Value::Number(u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64),
+        "Float32Array" => Value::Number(f32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as f64),
+        "Float64Array" => Value::Number(f64::from_le_bytes(buf)),
+        "BigInt64Array" => Value::BigInt(Rc::new(JsBigInt::from_i64(i64::from_le_bytes(buf)))),
+        "BigUint64Array" => Value::BigInt(Rc::new(JsBigInt::from_i64(u64::from_le_bytes(buf) as i64))),
+        _ => Value::Number(0.0),
+    }
+}
+
 /// Apply `+` semantics per §13.15. ToPrimitive-coerces operands; if either
 /// is a String, concatenate; else arithmetic add.
 pub fn op_add(x: &Value, y: &Value) -> Value {

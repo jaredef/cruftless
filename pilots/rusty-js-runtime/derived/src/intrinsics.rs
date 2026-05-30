@@ -5429,6 +5429,15 @@ impl Runtime {
         // {w:t, e:f, c:t} descriptor.
         self.define_global_property("globalThis", Value::Object(gt));
         self.define_global_property("global", Value::Object(gt));
+        // Node sets globalThis's prototype to Object.prototype so free
+        // identifiers like `toString` / `isPrototypeOf` / `hasOwnProperty`
+        // resolve via the global proto chain. ESLint-utils' callAllowed Set
+        // (xo's load chain) lists `isPrototypeOf` as a bare identifier;
+        // ESLint utility plugins use `toString` the same way. Without this
+        // link, every such reference is a ReferenceError at module init.
+        if let Some(obj_proto) = self.object_prototype {
+            self.obj_mut(gt).proto = Some(obj_proto);
+        }
         // Browser/worker aliases: many npm packages target both Node and
         // worker contexts via `self` (HTML5 + WorkerGlobalScope spec) and
         // `window`. workerpool/src/environment.js dispatches on `typeof self`;
@@ -18521,7 +18530,7 @@ impl Runtime {
             };
             let new_id = make_typed_array_like_args(rt, this_id, species_args)?;
             rt.object_set(new_id, "length".into(), Value::Number(slice_len as f64));
-            rt.object_set(new_id, "__kind".into(), Value::String(Rc::new(kind)));
+            rt.object_set(new_id, "__kind".into(), Value::String(Rc::new(kind.clone())));
             if let Value::Object(_) = parent_buf {
                 rt.object_set(new_id, "buffer".into(), parent_buf.clone());
                 rt.object_set(
@@ -18547,6 +18556,7 @@ impl Runtime {
                         byte_offset: new_offset,
                         fixed_length: Some(slice_len),
                         bytes_per_element: bpe,
+                        element_kind: kind.clone(),
                     },
                 );
             }
@@ -19640,7 +19650,7 @@ impl Runtime {
                 crate::interp::ArrayBufferRecord {
                     byte_length,
                     max_byte_length,
-                    data: vec![Value::Number(0.0); byte_length],
+                    data: vec![0u8; byte_length],
                     detached: false,
                 },
             );
@@ -19909,6 +19919,7 @@ impl Runtime {
                     byte_offset,
                     fixed_length,
                     bytes_per_element: 1,
+                    element_kind: "DataView".to_string(),
                 },
             );
             Ok(Value::Object(id))
@@ -20004,7 +20015,7 @@ impl Runtime {
                         crate::interp::ArrayBufferRecord {
                             byte_length,
                             max_byte_length: byte_length,
-                            data: vec![Value::Number(0.0); byte_length],
+                            data: vec![0u8; byte_length],
                             detached: false,
                         },
                     );
@@ -20047,6 +20058,7 @@ impl Runtime {
                                 byte_offset,
                                 fixed_length,
                                 bytes_per_element: bpe,
+                                element_kind: n.clone(),
                             },
                         );
                         return Ok(Value::Object(id));
@@ -20131,7 +20143,7 @@ impl Runtime {
                     crate::interp::ArrayBufferRecord {
                         byte_length,
                         max_byte_length: byte_length,
-                        data: vec![Value::Number(0.0); byte_length],
+                        data: vec![0u8; byte_length],
                         detached: false,
                     },
                 );
@@ -20151,6 +20163,7 @@ impl Runtime {
                         byte_offset: 0,
                         fixed_length: Some(len as usize),
                         bytes_per_element: bpe,
+                        element_kind: n.clone(),
                     },
                 );
                 // Copy from source if first arg was an object.
@@ -21877,10 +21890,7 @@ fn data_view_read_bytes(
     })?;
     let mut bytes = [0_u8; 8];
     for i in 0..byte_count {
-        let b = match buf.data.get(abs + i) {
-            Some(Value::Number(n)) => *n as u8,
-            _ => 0,
-        };
+        let b = buf.data.get(abs + i).copied().unwrap_or(0);
         if little_endian {
             bytes[i] = b;
         } else {
@@ -21976,7 +21986,7 @@ fn data_view_set_number(
         ))
     })?;
     if buf.data.len() < abs + byte_count {
-        buf.data.resize(abs + byte_count, Value::Number(0.0));
+        buf.data.resize(abs + byte_count, 0u8);
     }
     for i in 0..byte_count {
         let b = if little_endian {
@@ -21984,7 +21994,7 @@ fn data_view_set_number(
         } else {
             bytes[byte_count - 1 - i]
         };
-        buf.data[abs + i] = Value::Number(b as f64);
+        buf.data[abs + i] = b;
     }
     Ok(Value::Undefined)
 }

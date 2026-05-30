@@ -448,7 +448,13 @@ pub struct Runtime {
 pub struct ArrayBufferRecord {
     pub byte_length: usize,
     pub max_byte_length: usize,
-    pub data: Vec<Value>,
+    // TABSC-EXT 0 (2026-05-30): byte-level storage per ECMA-262 §6.1.6.1.
+    // Pre-migration was Vec<Value> with views storing Values at byte indices,
+    // which broke view-aliasing pass-through under spec-faithful coercion
+    // (Finding TAECSF.3). Each cell now holds one byte of the buffer's
+    // physical representation; views interpret bytes via per-kind NumberToRawBytes
+    // / RawBytesToNumeric encoding at read/write boundaries.
+    pub data: Vec<u8>,
     pub detached: bool,
 }
 
@@ -458,6 +464,11 @@ pub struct TypedArrayViewRecord {
     pub byte_offset: usize,
     pub fixed_length: Option<usize>,
     pub bytes_per_element: usize,
+    // TABSC-EXT 0: per-view element kind used to dispatch NumberToRawBytes /
+    // RawBytesToNumeric encode/decode. Populated at view construction from
+    // the typed-array constructor name (e.g., "Uint8Array", "Int32Array",
+    // "BigInt64Array", "DataView" for the DataView byte-shaped view).
+    pub element_kind: String,
 }
 
 /// TAWR-EXT 2: classification of a property-key string for
@@ -593,12 +604,15 @@ impl Runtime {
             .byte_offset
             .saturating_add(idx.saturating_mul(view.bytes_per_element));
         let buf = self.array_buffers.get(&view.buffer)?;
-        Some(
-            buf.data
-                .get(byte_index)
-                .cloned()
-                .unwrap_or(Value::Number(0.0)),
-        )
+        let end = byte_index.saturating_add(view.bytes_per_element);
+        if end > buf.data.len() {
+            return Some(Value::Number(0.0));
+        }
+        // TABSC-EXT 0: decode bytes per element_kind via RawBytesToNumeric.
+        Some(crate::abstract_ops::raw_bytes_to_numeric(
+            &view.element_kind,
+            &buf.data[byte_index..end],
+        ))
     }
 
     fn typed_array_set_index(&mut self, id: ObjectRef, idx: usize, value: Value) -> bool {
@@ -611,16 +625,41 @@ impl Runtime {
         if idx >= len {
             return true;
         }
+        // TABSC-EXT 0: silent (lossy) coercion + byte encoding for the
+        // internal infrastructure path. Spec-faithful Result-threaded path
+        // is `typed_array_set_index_checked` (which coerces upstream and
+        // calls into this helper with an already-coerced value).
+        let coerced = match view.element_kind.as_str() {
+            "BigInt64Array" | "BigUint64Array" => {
+                // Lossy: if not BigInt-coercible, fall back to BigInt(0)
+                // to preserve current internal-caller behavior.
+                match crate::abstract_ops::to_bigint(self, &value) {
+                    Ok(v) => v,
+                    Err(_) => Value::BigInt(std::rc::Rc::new(
+                        crate::bigint::JsBigInt::zero(),
+                    )),
+                }
+            }
+            "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array"
+            | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array"
+            | "Float64Array" => crate::abstract_ops::convert_number_to_typed_array_element(
+                &value,
+                &view.element_kind,
+            ),
+            _ => value,
+        };
+        let bytes = crate::abstract_ops::number_to_raw_bytes(&view.element_kind, &coerced);
         let byte_index = view
             .byte_offset
             .saturating_add(idx.saturating_mul(view.bytes_per_element));
         let Some(buf) = self.array_buffers.get_mut(&view.buffer) else {
             return true;
         };
-        if byte_index >= buf.data.len() {
-            buf.data.resize(byte_index + 1, Value::Number(0.0));
+        let end = byte_index.saturating_add(view.bytes_per_element);
+        if end > buf.data.len() {
+            buf.data.resize(end, 0u8);
         }
-        buf.data[byte_index] = value;
+        buf.data[byte_index..end].copy_from_slice(&bytes[..view.bytes_per_element]);
         true
     }
 
@@ -638,17 +677,22 @@ impl Runtime {
         idx: usize,
         value: Value,
     ) -> Result<bool, RuntimeError> {
-        if !self.typed_array_views.contains_key(&id) {
+        let Some(view) = self.typed_array_views.get(&id).cloned() else {
             return Ok(false);
-        }
-        let kind_is_bigint = matches!(
-            self.object_get(id, "__kind"),
-            Value::String(ref s) if matches!(s.as_str(), "BigInt64Array" | "BigUint64Array")
-        );
-        let coerced = if kind_is_bigint {
-            crate::abstract_ops::to_bigint(self, &value)?
-        } else {
-            value
+        };
+        // TABSC-EXT 0: spec-faithful coercion propagates RuntimeError per
+        // §10.4.5.16 + §7.1.13 ToBigInt. The byte-encoding + storage delegate
+        // is `typed_array_set_index` which silently re-coerces; this layer's
+        // role is the Result-threading for the user-visible `ta[i] = v` path.
+        let coerced = match view.element_kind.as_str() {
+            "BigInt64Array" | "BigUint64Array" => crate::abstract_ops::to_bigint(self, &value)?,
+            "Int8Array" | "Uint8Array" | "Uint8ClampedArray" | "Int16Array"
+            | "Uint16Array" | "Int32Array" | "Uint32Array" | "Float32Array"
+            | "Float64Array" => crate::abstract_ops::convert_number_to_typed_array_element(
+                &value,
+                &view.element_kind,
+            ),
+            _ => value,
         };
         let _ = self.typed_array_set_index(id, idx, coerced);
         Ok(true)
@@ -675,7 +719,7 @@ impl Runtime {
             ));
         }
         buf.byte_length = new_len;
-        buf.data.resize(new_len, Value::Number(0.0));
+        buf.data.resize(new_len, 0u8);
         Ok(())
     }
 
