@@ -624,6 +624,36 @@ impl Runtime {
         true
     }
 
+    // TAECSF-EXT 0: spec-faithful Result-threaded TA element-set for the user-
+    // visible `ta[i] = v` path. Probe scope is BigInt64Array / BigUint64Array
+    // coercion through ToBigInt; non-BigInt kinds delegate to the unchanged
+    // storage path (integer-kind ConvertNumberToTypedArrayElement + Float32
+    // canonical-NaN are deferred per deferrals-ledger Entry 010 sub-substrates).
+    // Returns Ok(true) when the target is a TA (handled, possibly OOB-noop);
+    // Ok(false) when not a TA (caller falls through to ordinary property-set);
+    // Err on coercion failure (caller propagates per ECMA-262 §10.4.5).
+    fn typed_array_set_index_checked(
+        &mut self,
+        id: ObjectRef,
+        idx: usize,
+        value: Value,
+    ) -> Result<bool, RuntimeError> {
+        if !self.typed_array_views.contains_key(&id) {
+            return Ok(false);
+        }
+        let kind_is_bigint = matches!(
+            self.object_get(id, "__kind"),
+            Value::String(ref s) if matches!(s.as_str(), "BigInt64Array" | "BigUint64Array")
+        );
+        let coerced = if kind_is_bigint {
+            crate::abstract_ops::to_bigint(self, &value)?
+        } else {
+            value
+        };
+        let _ = self.typed_array_set_index(id, idx, coerced);
+        Ok(true)
+    }
+
     pub fn resize_array_buffer(
         &mut self,
         id: ObjectRef,
@@ -14095,7 +14125,24 @@ impl Runtime {
                                 }
                             };
                             if has_own || self.obj(*id).extensible {
-                                self.object_set_pk(*id, key_pk.clone(), value.clone());
+                                // TAECSF-EXT 0: route the user-visible TA
+                                // element-set through the Result-threaded
+                                // checked path so BigInt64Array / BigUint64Array
+                                // ToBigInt coercion errors propagate spec-
+                                // faithfully. Ok(false) falls through to the
+                                // ordinary property-set.
+                                let routed = if let crate::value::PropertyKey::String(ref s) = key_pk {
+                                    if let Some(ta_idx) = Self::canonical_array_index_key(s) {
+                                        self.typed_array_set_index_checked(*id, ta_idx, value.clone())?
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+                                if !routed {
+                                    self.object_set_pk(*id, key_pk.clone(), value.clone());
+                                }
                             } else if frame.strict {
                                 return Err(RuntimeError::TypeError(format!(
                                     "Cannot add property '{}': object is not extensible",

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 228,
-    "top_level": 141,
+    "locales": 229,
+    "top_level": 142,
     "nested": 87,
     "warnings": 0
   },
@@ -1304,6 +1304,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": "**CLOSED at SPTW-EXT 1**."
+    },
+    {
+      "coord": "ta-element-coercion-spec-faithful",
+      "tag": "L.ta-element-coercion-spec-faithful",
+      "parent": null,
+      "scope": "ta-element-coercion-spec-faithful",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED 2026-05-30 by TAECSF-EXT 0 (helmsman session, keeper directive Telegram 10566). Founding rung LANDED with positive yield on TAWR + diff-prod; sub-substrates (a) integer-coercion and (b) Float32 canonical-NaN pending."
     },
     {
       "coord": "tagged-template-object-boundary",
