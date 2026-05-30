@@ -956,3 +956,42 @@ very common pattern in ESM packages reading bundled data files — benefits.
 URL-as-path is also accepted by other fs surface methods (statSync,
 existsSync, readdirSync, mkdirSync, …), all 33 of which now share the
 same helper. Cumulative cluster-A gain pending re-sweep.
+
+## 2026-05-30 — MILF-EXT 11 Buffer @@iterator returns real Iterator object
+
+csv-parser failed on `const [cr] = Buffer.from('\r')` (index.js:3). Two-stage
+diagnosis:
+1. Buffer instances had no `@@iterator` slot → destructure dead-ended on
+   "value is not iterable (no @@iterator)".
+2. Aliasing `@@iterator` to the pre-existing `values()` (which returns a
+   bare Array, not an Iterator) hit the next protocol step: the destructure
+   protocol's `__destr_iter_step` calls `.next()` on whatever `@@iterator`
+   returned, and Arrays don't have `.next()`.
+
+### Substrate
+
+Real Iterator factory registered on each Buffer instance in
+`install_buffer_methods`. The returned iterator carries closure state on
+itself via internal slots (`__i` cursor, `__src` source-buffer Object,
+`__len` cached length) and exposes a `.next()` method that returns
+`{value, done}` per the iterator protocol. Source is held via
+`Value::Object(ObjectRef)` directly (no need for the gc crate dep — Object
+values ARE ObjectRefs wrapped).
+
+### Verification
+
+- `cargo build --release --bin cruft -p cruftless` PASS.
+- `cargo test --release -p rusty-js-runtime --lib`: 74 passed, 1 ignored.
+- `cargo test --release -p cruftless --lib`: 11 passed.
+- Smoke `/tmp/smoke/bufiter.mjs`:
+  - `typeof Buffer.from('\r')[Symbol.iterator]` → `"function"` (was undefined).
+  - `const [cr] = Buffer.from('\r')` → `cr` is 13 (carriage-return byte).
+- **csv-parser loads**: 3 keys (was `value is not iterable`).
+
+### Named follow-up
+
+`Buffer.from([10, 20, 30])` returns a buffer with length=0 (indexed slots
+not populated). The current Buffer.from-array path is broken — separate
+locale from this rung's iterator surface. csv-parser uses
+`Buffer.from(string)` which works, so this rung closes the immediate
+blocker; Buffer.from-array deserves its own rung.

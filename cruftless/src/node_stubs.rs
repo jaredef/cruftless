@@ -1182,6 +1182,55 @@ pub(crate) fn install_buffer_methods(rt: &mut Runtime, id: rusty_js_runtime::Obj
         rt.object_set(arr, "length".into(), Value::Number(len as f64));
         Ok(Value::Object(arr))
     });
+
+    // Buffer extends Uint8Array → @@iterator returns a real iterator
+    // object with .next() (and itself iterable). The pre-existing values()
+    // method returns a bare Array, which is iterable enough for `for...of`
+    // (via the array's own @@iterator) but is NOT an Iterator object — the
+    // destructure protocol's __destr_iter_step calls .next() on whatever
+    // @@iterator returned. csv-parser's `const [cr] = Buffer.from('\r')`
+    // dead-ends there. Register an iterator-shaped @@iterator on the
+    // instance: { next: () => { value, done }, @@iterator: self }.
+    register_method(rt, id, "@@iterator", |rt, _args| {
+        let this_id = match rt.current_this() {
+            Value::Object(o) => o,
+            _ => return Ok(Value::Undefined),
+        };
+        let len = match rt.object_get(this_id, "length") {
+            Value::Number(n) => n as usize,
+            _ => 0,
+        };
+        let iter = RtObject::new_ordinary();
+        let iter_id = rt.alloc_object(iter);
+        // Closure state lives on the iterator object itself: __i (cursor),
+        // __src (the Buffer's ObjectRef as f64). Both are non-enumerable
+        // so they don't leak via Object.keys.
+        rt.obj_mut(iter_id).set_own_internal("__i".into(), Value::Number(0.0));
+        rt.obj_mut(iter_id).set_own_internal("__src".into(), Value::Object(this_id));
+        rt.obj_mut(iter_id).set_own_internal("__len".into(), Value::Number(len as f64));
+        register_method(rt, iter_id, "next", |rt, _args| {
+            let it = match rt.current_this() { Value::Object(o) => o, _ => return Ok(Value::Undefined) };
+            let i = match rt.object_get(it, "__i") { Value::Number(n) => n as usize, _ => 0 };
+            let len = match rt.object_get(it, "__len") { Value::Number(n) => n as usize, _ => 0 };
+            let src_id = match rt.object_get(it, "__src") {
+                Value::Object(o) => o,
+                _ => return Ok(Value::Undefined),
+            };
+            let result = RtObject::new_ordinary();
+            let result_id = rt.alloc_object(result);
+            if i >= len {
+                rt.object_set(result_id, "value".into(), Value::Undefined);
+                rt.object_set(result_id, "done".into(), Value::Boolean(true));
+            } else {
+                let v = rt.object_get(src_id, &i.to_string());
+                rt.object_set(result_id, "value".into(), v);
+                rt.object_set(result_id, "done".into(), Value::Boolean(false));
+                rt.obj_mut(it).set_own_internal("__i".into(), Value::Number((i + 1) as f64));
+            }
+            Ok(Value::Object(result_id))
+        });
+        Ok(Value::Object(iter_id))
+    });
 }
 
 pub fn install_buffer(rt: &mut Runtime) {
