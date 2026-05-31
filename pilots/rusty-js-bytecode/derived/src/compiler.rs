@@ -1643,6 +1643,22 @@ impl Compiler {
                     }
                     self.in_finalizer_emission = false;
                 }
+                // ICES-EXT 2: IteratorClose for every for-of frame in this
+                // function between the return site and the function frame,
+                // innermost first per ECMA-262 §14.7.5.6 step 5 +
+                // §13.15.7 abrupt-completion propagation. Each
+                // emit_iter_close_call is stack-neutral; the return value
+                // pushed above stays at the top through the close
+                // sequence and is consumed by Op::Return below.
+                let close_slots: Vec<u16> = self
+                    .loop_stack
+                    .iter()
+                    .rev()
+                    .filter_map(|f| f.for_of_iter_slot)
+                    .collect();
+                for slot in close_slots {
+                    self.emit_iter_close_call(slot);
+                }
                 encode_op(&mut self.bytecode, Op::Return);
             }
             Stmt::Empty { .. } => {}
