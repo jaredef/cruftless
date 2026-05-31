@@ -4781,15 +4781,23 @@ impl Runtime {
         // is installed through the shape-backed property path, so a manual
         // get_own-only prototype walk misses it and turns .catch into a call
         // to undefined.
-        let then_fn = match &source {
-            Value::Object(_) => self.get_via(&source, &Value::String(std::rc::Rc::new("then".into())))?,
-            _ => {
-                return Err(RuntimeError::TypeError(
-                    "Promise.prototype.catch: this is not an Object".into(),
-                ))
-            }
+        // §27.2.5.1 Promise.prototype.catch: `Return ? Invoke(this, "then",
+        // « undefined, onRejected »)`. Invoke uses GetV which ToObject-
+        // wraps primitives; primitive receivers therefore resolve .then
+        // via the wrapper-prototype chain (test262 catch this-value-obj-
+        // coercible.js installs Boolean/Number/String/Symbol.prototype.then
+        // and expects each to fire).
+        if matches!(source, Value::Undefined | Value::Null) {
+            return Err(RuntimeError::TypeError(
+                "Promise.prototype.catch: this is null or undefined".into(),
+            ));
+        }
+        let receiver = match &source {
+            Value::Object(_) => source.clone(),
+            _ => self.to_object(&source)?,
         };
-        self.call_function(then_fn, source, vec![Value::Undefined, on_rejected])
+        let then_fn = self.get_via(&receiver, &Value::String(std::rc::Rc::new("then".into())))?;
+        self.call_function(then_fn, receiver, vec![Value::Undefined, on_rejected])
     }
 
     /// Promise.prototype.finally(onFinally) per ECMA §27.2.5.3.
