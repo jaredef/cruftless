@@ -4733,7 +4733,69 @@ impl Runtime {
         };
         let on_fulfilled = args.get(1).cloned().filter(|v| self.is_callable(v));
         let on_rejected = args.get(2).cloned().filter(|v| self.is_callable(v));
-        let chain = crate::promise::new_promise(self);
+        // PTHEN-EXT 1 §27.2.5.4 step 3: Let C be SpeciesConstructor(promise,
+        // %Promise%). §7.3.22 SpeciesConstructor: Get(O, "constructor"); if
+        // undefined return default; if non-Object throw; otherwise Get(C,
+        // @@species), undefined/null -> default, callable -> return, else
+        // throw. The chain promise is then constructed via NewPromiseCapability
+        // when C !== native Promise (subclass routing). Without this the
+        // ctor-null / ctor-poisoned / ctor-throws / ctor-custom test family
+        // at Promise.prototype.then fails: those rely on Get(promise,
+        // "constructor") propagating + IsConstructor validation.
+        let default_promise = self.global_get("Promise");
+        let default_promise_id = match &default_promise {
+            Value::Object(id) => Some(*id),
+            _ => None,
+        };
+        let species_ctor = {
+            let ctor_v = self
+                .spec_get(&Value::Object(source), "constructor")?;
+            if matches!(ctor_v, Value::Undefined) {
+                default_promise.clone()
+            } else if !matches!(ctor_v, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Promise.prototype.then: constructor is not an Object".into(),
+                ));
+            } else {
+                // Get @@species via PropertyKey::Symbol fall-through to string.
+                let species_key =
+                    crate::value::PropertyKey::Symbol(std::rc::Rc::new("@@species".to_string()));
+                let species = if let Value::Object(cid) = ctor_v {
+                    match self.read_property_pk(cid, &species_key)? {
+                        Value::Undefined => self.object_get(cid, "@@species"),
+                        other => other,
+                    }
+                } else {
+                    Value::Undefined
+                };
+                if matches!(species, Value::Undefined | Value::Null) {
+                    ctor_v
+                } else if self.is_callable(&species) {
+                    species
+                } else {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.prototype.then: constructor[@@species] is not a constructor".into(),
+                    ));
+                }
+            }
+        };
+        // If species_ctor is the native Promise, fast-path via new_promise.
+        // Otherwise route through NewPromiseCapability(C) for subclass support.
+        let chain = match &species_ctor {
+            Value::Object(cid) if Some(*cid) == default_promise_id => {
+                crate::promise::new_promise(self)
+            }
+            _ => {
+                let (cap_promise, _resolve, _reject) =
+                    self.new_promise_capability(&species_ctor)?;
+                match cap_promise {
+                    Value::Object(id) => id,
+                    _ => return Err(RuntimeError::TypeError(
+                        "Promise.prototype.then: capability promise is not an object".into(),
+                    )),
+                }
+            }
+        };
         let (status, value) = {
             let s = self.obj(source);
             if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
