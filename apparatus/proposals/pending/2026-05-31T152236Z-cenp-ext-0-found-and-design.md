@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-31-cenp-principal
 proposed_commits:
-  - f3a8f312dbd86d7a01bbc57d797920e8e4a70adb
+  - 47840493397d27f60235e451d1399a9edd5ba996
 target_branch: main
 summary: Found cjs-esm-namespace-pipeline locale + Node-convergence pipeline design (design-only)
 risk_class: design

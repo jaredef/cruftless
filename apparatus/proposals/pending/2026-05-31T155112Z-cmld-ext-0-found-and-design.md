@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-31-cenp-principal
 proposed_commits:
-  - a46cc047399669ea65bda15f145cefa36558eebc
+  - 4129a6f44b066e4f2de1b409c6fc27ef517c0735
 target_branch: main
 summary: Found cjs-module-lexer-derived nested locale + Stage-L static export-scanner design (design-only)
 risk_class: design
@@ -19,7 +19,7 @@ gates_post:
 
 ## Substrate moves
 
-Commit `a46cc047` founds the nested `cjs-esm-namespace-pipeline/cjs-module-lexer-derived` (CMLD) locale and lands a design-only scanner architecture. No runtime source changed.
+Commit `4129a6f4` founds the nested `cjs-esm-namespace-pipeline/cjs-module-lexer-derived` (CMLD) locale and lands a design-only scanner architecture. No runtime source changed.
 
 - **M** (Mechanism) — a pure static scanner `cjs_lex(source) -> {names, reexports, esmodule}` that determines a CJS module's named-export set from source text without executing it, functionally equivalent to Node's `cjs-module-lexer`. Six detection rungs enumerated (R1 direct member assignment, R2 object-literal, R3 defineProperty/`__esModule`, R4 transpiler prologue, R5 reexport stars, R6 dynamic-guard negative). It produces the name set; the parent (CENP Stage L) consumes it and applies fixed keys + value binding.
 - **T** (Trigger) — CENP-EXT 1 baseline-inspect: Stage L cannot suppress runtime enumeration alone without regressing statically-detectable CJS packages. Fidelity probe across chalk/uuid/debug/semver/lodash/ms confirmed: chalk(12)/uuid(14) are real ESM (out of CJS-lexer scope); debug(9)/semver(40) are static-detectable CJS (lexer targets); lodash(0)/ms(0) are dynamic (lexer correctly empty).

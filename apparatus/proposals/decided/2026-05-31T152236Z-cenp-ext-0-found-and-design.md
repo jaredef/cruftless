@@ -4,7 +4,7 @@ decision: APPROVED
 arbiter_session: keeper-override-2026-05-31
 decided_at: 2026-05-31T15:25:40Z
 covers_commits:
-  - f3a8f312dbd86d7a01bbc57d797920e8e4a70adb
+  - 47840493397d27f60235e451d1399a9edd5ba996
 ---
 
 ## Findings
