@@ -21316,16 +21316,38 @@ impl Runtime {
         let ip_for_helpers = iter_proto;
 
         register_method(self, iter_proto, "map", move |rt, args| {
+            // IPHD-EXT 0 (Iterator helpers discipline): same eager-collect
+            // anti-pattern as AFID. Interleave + iter_close_rt on cb throw.
+            // (Returning a lazy mapped-iterator instead of an eagerly-built
+            // array-iterator is a separable rung — present rung closes the
+            // close-on-throw + spec-error-propagation surface only.)
             let fn_v = args.first().cloned().unwrap_or(Value::Undefined);
             if !rt.is_callable(&fn_v) {
                 return Err(RuntimeError::TypeError(
                     "Iterator.prototype.map: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            let mut out = Vec::with_capacity(items.len());
-            for v in items {
-                out.push(rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?);
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.map: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            let mut out = Vec::new();
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => {
+                        let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+                        return Err(RuntimeError::TypeError("iterator next did not return an object".into()));
+                    }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![v]) {
+                    Ok(mapped) => out.push(mapped),
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
+                }
             }
             Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
         });
@@ -21336,23 +21358,53 @@ impl Runtime {
                     "Iterator.prototype.filter: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.filter: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
             let mut out = Vec::new();
-            for v in items {
-                let keep = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
-                if abstract_ops::to_boolean(&keep) {
-                    out.push(v);
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()]) {
+                    Ok(keep) => { if abstract_ops::to_boolean(&keep) { out.push(v); } }
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
                 }
             }
             Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
         });
         register_method(self, iter_proto, "take", move |rt, args| {
+            // IPHD-EXT 0: short-circuit at n with iter_close_rt; was OOM
+            // on infinite iter under spec-incorrect eager-drain.
             let n = match args.first() {
                 Some(Value::Number(n)) if *n >= 0.0 => *n as usize,
                 _ => 0,
             };
-            let items = drain_iterator(rt, rt.current_this())?;
-            let out: Vec<Value> = items.into_iter().take(n).collect();
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.take: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            let mut out = Vec::with_capacity(n);
+            while out.len() < n {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                out.push(rt.object_get(rid, "value"));
+            }
+            // If we stopped because of limit (not natural exhaustion), close.
+            if out.len() == n {
+                let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+            }
             Ok(Value::Object(make_array_iterator(rt, ip_for_helpers, out)))
         });
         register_method(self, iter_proto, "drop", move |rt, args| {
@@ -21394,12 +21446,25 @@ impl Runtime {
 
         // Terminal helpers — consume only.
         register_method(self, iter_proto, "toArray", |rt, _args| {
-            let items = drain_iterator(rt, rt.current_this())?;
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.toArray: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
             let arr = rt.alloc_object(crate::value::Object::new_array());
-            for (i, v) in items.iter().enumerate() {
-                rt.object_set(arr, i.to_string(), v.clone());
+            let mut k: usize = 0;
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                rt.object_set(arr, k.to_string(), v);
+                k += 1;
             }
-            rt.object_set(arr, "length".into(), Value::Number(items.len() as f64));
+            rt.object_set(arr, "length".into(), Value::Number(k as f64));
             Ok(Value::Object(arr))
         });
         register_method(self, iter_proto, "reduce", |rt, args| {
@@ -21409,18 +21474,36 @@ impl Runtime {
                     "Iterator.prototype.reduce: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            let (start_idx, mut acc) = if args.len() >= 2 {
-                (0usize, args[1].clone())
-            } else if !items.is_empty() {
-                (1usize, items[0].clone())
-            } else {
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.reduce: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            let has_initial = args.len() >= 2;
+            let mut seeded = has_initial;
+            let mut acc: Value = if has_initial { args[1].clone() } else { Value::Undefined };
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                if !seeded {
+                    acc = v;
+                    seeded = true;
+                    continue;
+                }
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![acc.clone(), v]) {
+                    Ok(next) => acc = next,
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
+                }
+            }
+            if !seeded {
                 return Err(RuntimeError::TypeError(
                     "Iterator.prototype.reduce: empty iterator with no initial value".into(),
                 ));
-            };
-            for v in items.into_iter().skip(start_idx) {
-                acc = rt.call_function(fn_v.clone(), Value::Undefined, vec![acc, v])?;
             }
             Ok(acc)
         });
@@ -21431,9 +21514,23 @@ impl Runtime {
                     "Iterator.prototype.forEach: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            for v in items {
-                let _ = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.forEach: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                if let Err(e) = rt.call_function(fn_v.clone(), Value::Undefined, vec![v]) {
+                    let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+                    return Err(e);
+                }
             }
             Ok(Value::Undefined)
         });
@@ -21444,11 +21541,27 @@ impl Runtime {
                     "Iterator.prototype.some: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            for v in items {
-                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
-                if abstract_ops::to_boolean(&r) {
-                    return Ok(Value::Boolean(true));
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.some: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![v]) {
+                    Ok(r) => {
+                        if abstract_ops::to_boolean(&r) {
+                            let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+                            return Ok(Value::Boolean(true));
+                        }
+                    }
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
                 }
             }
             Ok(Value::Boolean(false))
@@ -21460,11 +21573,27 @@ impl Runtime {
                     "Iterator.prototype.every: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            for v in items {
-                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v])?;
-                if !abstract_ops::to_boolean(&r) {
-                    return Ok(Value::Boolean(false));
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.every: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![v]) {
+                    Ok(r) => {
+                        if !abstract_ops::to_boolean(&r) {
+                            let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+                            return Ok(Value::Boolean(false));
+                        }
+                    }
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
                 }
             }
             Ok(Value::Boolean(true))
@@ -21476,11 +21605,27 @@ impl Runtime {
                     "Iterator.prototype.find: callback is not callable".into(),
                 ));
             }
-            let items = drain_iterator(rt, rt.current_this())?;
-            for v in items {
-                let r = rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()])?;
-                if abstract_ops::to_boolean(&r) {
-                    return Ok(v);
+            let this_id = match rt.current_this() {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("Iterator.prototype.find: this is not an Object".into())),
+            };
+            let next_fn = rt.object_get(this_id, "next");
+            loop {
+                let res = rt.call_function(next_fn.clone(), Value::Object(this_id), Vec::new())?;
+                let rid = match res {
+                    Value::Object(id) => id,
+                    _ => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(RuntimeError::TypeError("iterator next did not return an object".into())); }
+                };
+                if abstract_ops::to_boolean(&rt.object_get(rid, "done")) { break; }
+                let v = rt.object_get(rid, "value");
+                match rt.call_function(fn_v.clone(), Value::Undefined, vec![v.clone()]) {
+                    Ok(r) => {
+                        if abstract_ops::to_boolean(&r) {
+                            let _ = crate::intrinsics::iter_close_rt(rt, this_id);
+                            return Ok(v);
+                        }
+                    }
+                    Err(e) => { let _ = crate::intrinsics::iter_close_rt(rt, this_id); return Err(e); }
                 }
             }
             Ok(Value::Undefined)
@@ -21529,8 +21674,46 @@ impl Runtime {
                     }
                 }
             };
-            let items = drain_iterator(rt, Value::Object(inner))?;
-            Ok(Value::Object(make_array_iterator(rt, ip_for_from, items)))
+            // IPHD-EXT 0: spec-correct lazy wrapper instead of eager drain.
+            // Prior impl drain_iterator-collected the source into a Vec
+            // before wrapping as an array-iterator — OOM on infinite iters
+            // + lost source-iter's IteratorClose forwarding. New shape:
+            // store inner as __wrapped_iter sentinel; install next + return
+            // methods that forward to inner's next / return.
+            let mut o = Object::new_ordinary();
+            o.proto = Some(ip_for_from);
+            let wrap_id = rt.alloc_object(o);
+            rt.obj_mut(wrap_id)
+                .set_own_internal("__wrapped_iter".into(), Value::Object(inner));
+            let next_fn = make_native("next", |rt, _args| {
+                let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let inner_id = match rt.object_get(this_id, "__wrapped_iter") {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
+                };
+                let inner_next = rt.object_get(inner_id, "next");
+                rt.call_function(inner_next, Value::Object(inner_id), Vec::new())
+            });
+            let next_id = rt.alloc_object(next_fn);
+            rt.object_set(wrap_id, "next".into(), Value::Object(next_id));
+            let return_fn = make_native("return", |rt, _args| {
+                let this_id = match rt.current_this() { Value::Object(id) => id, _ => return Ok(Value::Undefined) };
+                let inner_id = match rt.object_get(this_id, "__wrapped_iter") {
+                    Value::Object(id) => id,
+                    _ => return Ok(Value::Undefined),
+                };
+                let inner_ret = rt.object_get(inner_id, "return");
+                if matches!(inner_ret, Value::Undefined | Value::Null) {
+                    let mut o = Object::new_ordinary();
+                    o.set_own("value".into(), Value::Undefined);
+                    o.set_own("done".into(), Value::Boolean(true));
+                    return Ok(Value::Object(rt.alloc_object(o)));
+                }
+                rt.call_function(inner_ret, Value::Object(inner_id), Vec::new())
+            });
+            let return_id = rt.alloc_object(return_fn);
+            rt.object_set(wrap_id, "return".into(), Value::Object(return_id));
+            Ok(Value::Object(wrap_id))
         });
         self.define_global_property("Iterator", Value::Object(iter_id));
 

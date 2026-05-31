@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 234,
-    "top_level": 147,
+    "locales": 235,
+    "top_level": 148,
     "nested": 87,
     "warnings": 0
   },
@@ -150,7 +150,7 @@
       "parent": null,
       "scope": "array-from-interleave-discipline",
       "depth": 1,
-      "rung_count": 3,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -730,6 +730,15 @@
       "status": "**CLOSED at ICOA-EXT 1**."
     },
     {
+      "coord": "iterator-helpers-discipline",
+      "tag": "L.iterator-helpers-discipline",
+      "parent": null,
+      "scope": "iterator-helpers-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
+    },
+    {
       "coord": "iterator-protocol-error-propagation",
       "tag": "L.iterator-protocol-error-propagation",
       "parent": null,
@@ -951,7 +960,7 @@
       "parent": null,
       "scope": "promise-iteration-interleave-discipline",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 3,
       "status": null
     },
     {
