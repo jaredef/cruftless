@@ -70,15 +70,33 @@ impl Runtime {
         // still call new_promise + resolve_promise / reject_promise; the
         // IR is a 2-step wrapper that exposes the spec's PromiseResolve
         // / PromiseReject step granularity to the linter.
+        // PSCV-EXT 0 (Promise static-method ctx-validation): per ECMA-262
+        // §27.2.4.4 + §27.2.4.7 step 1-2 "Let C be the this value. If
+        // Type(C) is not Object, throw TypeError." Closure inlines the
+        // Object check before delegating to the generated *_via path.
         crate::intrinsics::register_intrinsic_method(
             self,
             promise_obj,
             "resolve",
             1,
-            |rt, args| crate::generated::promise_resolve(rt, Value::Undefined, args),
+            |rt, args| {
+                let c = rt.current_this();
+                if !matches!(c, Value::Object(_)) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.resolve: this is not an Object".into(),
+                    ));
+                }
+                crate::generated::promise_resolve(rt, c, args)
+            },
         );
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
-            crate::generated::promise_reject(rt, Value::Undefined, args)
+            let c = rt.current_this();
+            if !matches!(c, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Promise.reject: this is not an Object".into(),
+                ));
+            }
+            crate::generated::promise_reject(rt, c, args)
         });
         // Ω.5.P63.E52: Promise.then / catch_ routed through IR.
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "then", 3, |rt, args| {
@@ -95,21 +113,52 @@ impl Runtime {
         // a large fraction of test262 cases without requiring full async
         // event-loop choreography.
         // Ω.5.P63.E52: Promise.all / allSettled / any / race routed through IR.
+        // PSCV-EXT 0: §27.2.4.1/2/3/5 step 1-2 "Let C be the this value.
+        // If Type(C) is not Object, throw TypeError." Closure inlines
+        // the Object check; the silent default-Promise fallback in the
+        // *_via methods is preserved for the case where C is an Object
+        // but not callable (NewPromiseCapability then throws inside).
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "all", 1, |rt, args| {
-            crate::generated::promise_all(rt, rt.current_this(), args)
+            let c = rt.current_this();
+            if !matches!(c, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Promise.all: this is not an Object".into(),
+                ));
+            }
+            crate::generated::promise_all(rt, c, args)
         });
         crate::intrinsics::register_intrinsic_method(
             self,
             promise_obj,
             "allSettled",
             1,
-            |rt, args| crate::generated::promise_all_settled(rt, rt.current_this(), args),
+            |rt, args| {
+                let c = rt.current_this();
+                if !matches!(c, Value::Object(_)) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.allSettled: this is not an Object".into(),
+                    ));
+                }
+                crate::generated::promise_all_settled(rt, c, args)
+            },
         );
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "any", 1, |rt, args| {
-            crate::generated::promise_any(rt, rt.current_this(), args)
+            let c = rt.current_this();
+            if !matches!(c, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Promise.any: this is not an Object".into(),
+                ));
+            }
+            crate::generated::promise_any(rt, c, args)
         });
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "race", 1, |rt, args| {
-            crate::generated::promise_race(rt, rt.current_this(), args)
+            let c = rt.current_this();
+            if !matches!(c, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "Promise.race: this is not an Object".into(),
+                ));
+            }
+            crate::generated::promise_race(rt, c, args)
         });
         // Ω.5.P63.E55 Stage 2: routed through IR (uses Expr::Closure for the
         // resolve/reject functions; first IR section to demonstrate the

@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 235,
-    "top_level": 148,
+    "locales": 236,
+    "top_level": 149,
     "nested": 87,
     "warnings": 0
   },
@@ -87,7 +87,7 @@
       "parent": "L.apparatus.test262-categorize",
       "scope": "full-suite",
       "depth": 3,
-      "rung_count": 5,
+      "rung_count": 6,
       "status": "founded 2026-05-25 as the full-suite interpretation apparatus for the upstream 53,289-path Test262 run."
     },
     {
@@ -971,6 +971,15 @@
       "depth": 1,
       "rung_count": 0,
       "status": "CHAPTER CLOSED at PIND-EXT 4. The named 40-row Promise.all/allSettled/race `Symbol.iterator` + not-callable cluster measures 40/40 PASS after Promise-local iterator acquisition and `C.resolve` rejection routing."
+    },
+    {
+      "coord": "promise-static-ctx-validation",
+      "tag": "L.promise-static-ctx-validation",
+      "parent": null,
+      "scope": "promise-static-ctx-validation",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "realm-substrate",
