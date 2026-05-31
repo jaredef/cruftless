@@ -1,7 +1,7 @@
 ---
 helmsman_session: helmsman-2026-05-31-cenp-principal
 proposed_commits:
-  - 3ff3ddca0654a1ff6d7d9fdaf16ea3a7d5e9f9a0
+  - fbe8f80a2dac452eee75670ca50d2598bc51bc13
 target_branch: main
 summary: CMLD-EXT 1 — R1+R2 static CJS export-name scanner (pure, unit-tested, unwired)
 risk_class: substrate
@@ -19,7 +19,7 @@ gates_post:
 
 ## Substrate moves
 
-Commit `3ff3ddca` lands the first detection rungs of the CMLD Stage-L static export-name scanner.
+Commit `fbe8f80a` lands the first detection rungs of the CMLD Stage-L static export-name scanner.
 
 - **M** (Mechanism) — new pure module `pilots/rusty-js-runtime/derived/src/cjs_lexer.rs`: `cjs_lex(source) -> CjsExportSet { names, esmodule }`. AST-walk (not text-scan): re-wraps the source as `evaluate_cjs_module` does, parses, extracts the wrapper function body, and detects **R1** (`exports.NAME =`, `module.exports.NAME =`, incl. computed string keys) + **R2** (`module.exports = { … }` literal members) + `__esModule` flag (assignment and `Object.defineProperty(exports,"__esModule",…)`). Descends into block + if-branch nesting; does NOT descend into nested function bodies. Registered `pub mod cjs_lexer` in the crate lib.rs.
 - **T** (Trigger) — CMLD-EXT 0 design (Stage-L name-set producer); seam-resolution baseline-inspect found `evaluate_cjs_module` already parses the CJS AST (`module.rs:1580`, discarded as `_ast_rc`), so AST-walk is both available and more robust than text-scan.
