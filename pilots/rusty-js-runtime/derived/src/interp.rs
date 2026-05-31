@@ -5182,31 +5182,196 @@ impl Runtime {
             self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
             return Ok(capability_promise);
         }
-        let iter = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = match self.promise_collect_iterable_or_reject(iter, &cap_reject)? {
-            Some(entries) => entries,
-            None => return Ok(capability_promise),
+        // PIID-EXT 0 (Promise.race): interleaved per-element iteration
+        // per ECMA-262 §27.2.4.5 + PerformPromiseRace. Prior impl drained
+        // the iterable via promise_collect_iterable_or_reject before
+        // chaining .then on each element, OOMing on infinite iters. The
+        // interleaved shape calls iter.next() → Promise.resolve →
+        // .then(cap_resolve, cap_reject) per element; on any abrupt
+        // completion inside the loop, IteratorClose-best-effort then
+        // reject the capability with the original error per §7.4.9 step 4.
+        let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
+        match self.promise_race_interleave(
+            iter_v,
+            &ctor,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+        ) {
+            Ok(()) => {}
+            Err(e) => {
+                // Already-rejected path: nothing more to do; the
+                // capability has been rejected via cap_reject.
+                if !matches!(e, RuntimeError::Thrown(Value::Undefined)) {
+                    // Defensive: propagate any unexpected Rust-side error.
+                    return Err(e);
+                }
+            }
+        }
+        Ok(capability_promise)
+    }
+
+    /// PIID-EXT 0: interleaved Promise.race body. Returns Ok on completion
+    /// (normal or already-rejected via cap_reject); returns
+    /// Err(Thrown(Undefined)) as the sentinel for "iteration aborted and
+    /// capability already rejected". Any Rust-side error other than the
+    /// sentinel propagates up.
+    fn promise_race_interleave(
+        &mut self,
+        iter_v: Value,
+        ctor: &Value,
+        promise_resolve: &Value,
+        cap_resolve: &Value,
+        cap_reject: &Value,
+    ) -> Result<(), RuntimeError> {
+        // GetIterator + cache next. Any error here -> reject capability.
+        let iter_id = match self.promise_iter_get_iterator(iter_v) {
+            Ok(id) => id,
+            Err(e) => {
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Err(RuntimeError::Thrown(Value::Undefined));
+            }
         };
-        for v in entries {
-            let next_promise =
-                self.call_function(promise_resolve.clone(), ctor.clone(), vec![v])?;
-            // next_promise.then(cap_resolve, cap_reject)
+        let next_fn = self.object_get(iter_id, "next");
+        loop {
+            let result = match self.call_function(
+                next_fn.clone(),
+                Value::Object(iter_id),
+                Vec::new(),
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    // iter.next() abrupt -> reject; do NOT close (close-on-
+                    // IteratorNext-throw is suppressed per §7.4.9 step 8
+                    // commentary — IteratorNext sets done=true implicitly).
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Err(RuntimeError::Thrown(Value::Undefined));
+                }
+            };
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(
+                        cap_reject,
+                        RuntimeError::TypeError(
+                            "iterator next did not return an object".into(),
+                        ),
+                    )?;
+                    return Err(RuntimeError::Thrown(Value::Undefined));
+                }
+            };
+            if to_boolean(&self.object_get(rid, "done")) {
+                break;
+            }
+            let value = self.object_get(rid, "value");
+            // Per-element: resolve + then. Any abrupt -> close + reject.
+            let next_promise = match self.call_function(
+                promise_resolve.clone(),
+                ctor.clone(),
+                vec![value],
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Err(RuntimeError::Thrown(Value::Undefined));
+                }
+            };
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
-                return Err(RuntimeError::TypeError(
-                    "Promise.race: next.then is not callable".into(),
-                ));
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(
+                    cap_reject,
+                    RuntimeError::TypeError(
+                        "Promise.race: next.then is not callable".into(),
+                    ),
+                )?;
+                return Err(RuntimeError::Thrown(Value::Undefined));
             }
-            self.call_function(
+            if let Err(e) = self.call_function(
                 then_fn,
                 next_promise,
                 vec![cap_resolve.clone(), cap_reject.clone()],
-            )?;
+            ) {
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Err(RuntimeError::Thrown(Value::Undefined));
+            }
         }
-        Ok(capability_promise)
+        Ok(())
+    }
+
+    /// PIID-EXT 0: GetIterator(iter_v) Rust-side. Returns iter_id on Ok,
+    /// or a RuntimeError on TypeError (which the caller turns into a
+    /// capability rejection via promise_reject_with_error).
+    fn promise_iter_get_iterator(&mut self, iter_v: Value) -> Result<crate::value::ObjectRef, RuntimeError> {
+        let id = match iter_v {
+            Value::Object(id) => id,
+            Value::Undefined | Value::Null => {
+                return Err(RuntimeError::TypeError(
+                    "iterable: cannot iterate undefined or null".into(),
+                ));
+            }
+            ref other => match self.to_object(other)? {
+                Value::Object(id) => id,
+                _ => return Err(RuntimeError::TypeError("iterable: ToObject failed".into())),
+            },
+        };
+        let iterator_key =
+            crate::value::PropertyKey::Symbol(Rc::new("@@iterator".to_string()));
+        let method = match self.read_property_pk(id, &iterator_key)? {
+            Value::Undefined => self.object_get(id, "@@iterator"),
+            other => other,
+        };
+        let iter = self.call_function(method, Value::Object(id), Vec::new())?;
+        match iter {
+            Value::Object(id) => Ok(id),
+            _ => Err(RuntimeError::TypeError("iterator is not an object".into())),
+        }
+    }
+
+    /// PIID-EXT 0: convert a RuntimeError into a JS error object (or
+    /// fall-through Value) and call cap_reject with it. Mirrors the
+    /// promise_collect_iterable_or_reject mapping.
+    fn promise_reject_with_error(
+        &mut self,
+        cap_reject: &Value,
+        err: RuntimeError,
+    ) -> Result<(), RuntimeError> {
+        let rejection = match err {
+            RuntimeError::Thrown(v) => v,
+            RuntimeError::TypeError(msg) => {
+                match crate::intrinsics::make_error_instance(self, "TypeError", &msg) {
+                    Some(id) => Value::Object(id),
+                    None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+                }
+            }
+            RuntimeError::RangeError(msg) => {
+                match crate::intrinsics::make_error_instance(self, "RangeError", &msg) {
+                    Some(id) => Value::Object(id),
+                    None => Value::String(Rc::new(format!("RangeError({:?})", msg))),
+                }
+            }
+            RuntimeError::ReferenceError(msg) => {
+                match crate::intrinsics::make_error_instance(self, "ReferenceError", &msg) {
+                    Some(id) => Value::Object(id),
+                    None => Value::String(Rc::new(format!("ReferenceError({:?})", msg))),
+                }
+            }
+            RuntimeError::SyntaxError(msg) => {
+                match crate::intrinsics::make_error_instance(self, "SyntaxError", &msg) {
+                    Some(id) => Value::Object(id),
+                    None => Value::String(Rc::new(format!("SyntaxError({:?})", msg))),
+                }
+            }
+            other => return Err(other),
+        };
+        self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+        Ok(())
     }
 
     /// ECMA-262 §24.1: Map keys compare by SameValueZero. cruftless's
