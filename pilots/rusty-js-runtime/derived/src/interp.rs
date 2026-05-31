@@ -3240,8 +3240,21 @@ impl Runtime {
             std::cell::RefCell::new((Value::Undefined, Value::Undefined)),
         );
         let cell_for_exec = cell.clone();
+        // PCEXC (per §27.2.1.5.1 GetCapabilitiesExecutor steps 3-4 + test262
+        // sec-newpromisecapability behavior): throw TypeError if the
+        // executor has been invoked previously, regardless of whether the
+        // stored resolve/reject were undefined arguments. Track a
+        // per-capability already_called flag.
+        let already = std::rc::Rc::new(std::cell::RefCell::new(false));
+        let already_for_exec = already.clone();
         let executor =
-            crate::intrinsics::make_native("<NewPromiseCapability executor>", move |_rt, args| {
+            crate::intrinsics::make_native("", move |_rt, args| {
+                if *already_for_exec.borrow() {
+                    return Err(RuntimeError::TypeError(
+                        "NewPromiseCapability executor already invoked".into(),
+                    ));
+                }
+                *already_for_exec.borrow_mut() = true;
                 let r = args.first().cloned().unwrap_or(Value::Undefined);
                 let j = args.get(1).cloned().unwrap_or(Value::Undefined);
                 *cell_for_exec.borrow_mut() = (r, j);
