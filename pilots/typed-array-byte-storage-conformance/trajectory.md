@@ -125,4 +125,3 @@ The cluster instruments did not flip at this rung — the DataView coercion cell
 **Promotion-readiness**: one-more-observation. TABSC.2 has two instances within TABSC's own trajectory (EXT 0's TA coercion + EXT 1's DataView coercion); both consume the same helper but at adjacent dispatch sites within one locale's scope. Awaits a cross-locale instance (e.g., a non-TA non-DataView abstract op pattern exploiting a sibling locale's helper as substrate prefix) before standing-rule promotion.
 
 **Status**: TABSC-EXT 1 LANDED. Cascade-revival of the original DataView-coercion-faithfulness gap per Rule 27 + Rule 28. Substrate prefix from TABSC-EXT 0 consumed at ~15 LOC marginal cost. Cluster gates preserved; direct probe 7/7 PASS.
-
