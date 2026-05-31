@@ -483,6 +483,12 @@ struct LoopFrame {
     /// LabelledStatement. `break LABEL` / `continue LABEL` match the
     /// innermost frame with this label. None for unlabelled loops.
     label: Option<String>,
+    /// ICES-EXT 1: for `for-of` frames, the local slot holding the
+    /// iterator object. `break` (and labelled-break that crosses this
+    /// frame) must invoke IteratorClose per ECMA-262 §14.7.5.6 step 5
+    /// before the exit jump. `None` for non-for-of frames (regular
+    /// `while`, `do-while`, C-style `for`, switch).
+    for_of_iter_slot: Option<u16>,
 }
 
 /// Tier-Ω.5.o: frame for a LabelledStatement wrapping a non-loop body.
@@ -1929,6 +1935,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
+                    for_of_iter_slot: None,
                 });
                 self.compile_expr(test)?;
                 let jump_if_false = self.emit_jump(Op::JumpIfFalse);
@@ -1959,6 +1966,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
+                    for_of_iter_slot: None,
                 });
                 self.compile_stmt(body)?;
                 let test_pos = self.bytecode.len();
@@ -2029,6 +2037,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
+                    for_of_iter_slot: None,
                 });
                 let jump_if_false = if let Some(t) = test {
                     self.compile_expr(t)?;
@@ -2271,6 +2280,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
+                    for_of_iter_slot: Some(iter_slot),
                 });
                 // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
                 // locale): emit Op::ForOfFastNext as the first op of the
@@ -2479,6 +2489,9 @@ impl Compiler {
                 None => {
                     if let Some(frame) = self.loop_stack.last() {
                         let finalizers = frame.pending_finalizers.clone();
+                        // ICES-EXT 1: IteratorClose for the for-of frame
+                        // being exited per ECMA-262 §14.7.5.6 step 5.
+                        let close_slot = frame.for_of_iter_slot;
                         if !self.in_finalizer_emission {
                             self.in_finalizer_emission = true;
                             for fin in finalizers.iter().rev() {
@@ -2486,6 +2499,9 @@ impl Compiler {
                                 self.compile_stmt(fin)?;
                             }
                             self.in_finalizer_emission = false;
+                        }
+                        if let Some(slot) = close_slot {
+                            self.emit_iter_close_call(slot);
                         }
                         let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                         encode_i32(&mut self.bytecode, 0);
@@ -2506,9 +2522,20 @@ impl Compiler {
                         .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
                     {
                         let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                        // ICES-EXT 1: IteratorClose for every for-of frame
+                        // the labelled break crosses, innermost first per
+                        // §14.7.5.6 step 5 + §13.15.7 abrupt-completion
+                        // propagation.
+                        let close_slots: Vec<u16> = (idx..self.loop_stack.len())
+                            .rev()
+                            .filter_map(|i| self.loop_stack[i].for_of_iter_slot)
+                            .collect();
                         for fin in finalizers.iter().rev() {
                             encode_op(&mut self.bytecode, Op::TryExit);
                             self.compile_stmt(fin)?;
+                        }
+                        for slot in close_slots {
+                            self.emit_iter_close_call(slot);
                         }
                         let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                         encode_i32(&mut self.bytecode, 0);
@@ -2858,6 +2885,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: None,
+                    for_of_iter_slot: None,
                 });
 
                 // 5. Emit each case body in textual order. Patch its
@@ -3069,6 +3097,7 @@ impl Compiler {
                     try_depth: 0,
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
+                    for_of_iter_slot: None,
                 });
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, idx_slot);
@@ -3425,6 +3454,23 @@ impl Compiler {
         encode_op(&mut self.bytecode, Op::PushUndef);
         self.patch_jump(j_end);
         Ok(())
+    }
+
+    /// ICES-EXT 1: unconditional IteratorClose call. Used at for-of break
+    /// (and labelled-break crossing for-of frames) per ECMA-262 §14.7.5.6
+    /// step 5. Emits `LoadGlobal __destr_iter_close; LoadLocal iter_slot;
+    /// Call 1; Pop`. Stack-neutral.
+    fn emit_iter_close_call(&mut self, iter_slot: u16) {
+        let close_idx = self
+            .constants
+            .intern(Constant::String("__destr_iter_close".into()));
+        encode_op(&mut self.bytecode, Op::LoadGlobal);
+        encode_u16(&mut self.bytecode, close_idx);
+        encode_op(&mut self.bytecode, Op::LoadLocal);
+        encode_u16(&mut self.bytecode, iter_slot);
+        encode_op(&mut self.bytecode, Op::Call);
+        encode_u8(&mut self.bytecode, 1);
+        encode_op(&mut self.bytecode, Op::Pop);
     }
 
     /// ICOA-EXT 1: emit IteratorClose check + call per §13.15.5.3 step 5.
