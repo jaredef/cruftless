@@ -1,0 +1,7 @@
+test262 representative sample — 2026-05-31
+Sample size:    7785
+Results emitted: 7742
+PASS:           6920
+FAIL:           806
+SKIP:           16  (frontmatter feature flags, not runnable)
+Runnable pass rate: 89.6%  (6920 / 7726)
