@@ -56,3 +56,59 @@ ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8, AFID-EXT 1 7/7.
 - **Async iterables**: not applicable — Promise.* statics consume sync iterables.
 
 **Status**: PIID-EXT 0 LANDED. Promise.race now spec-correct on error-to-rejection plumbing + iter_close on abrupt + interleaved iteration. PromiseCapability tracking surface fully exercised; sibling rungs reuse the helpers without modification.
+
+## PIID-EXT 1+2+3 — LANDED (2026-05-31) — Promise.all + allSettled + any interleave
+
+**Trigger**: Keeper Telegram 10696 ("Push all and continue") authorizing the full Promise.* family.
+
+**Substrate** (~450 LOC across one file, `pilots/rusty-js-runtime/derived/src/interp.rs`):
+
+Three new `promise_*_interleave` helpers, each ~150 LOC, all sharing the PIID-EXT 0 helpers (`promise_iter_get_iterator`, `promise_reject_with_error`, `iter_close_rt`):
+
+- `promise_all_interleave` (§27.2.4.1.2 PerformPromiseAll): per element append undefined to values + remaining++; per-index `promise_all_resolve_element_factory`; chain `.then(resolve_element, cap_reject)`. On done, `promise_all_maybe_complete_via`.
+- `promise_all_settled_interleave` (§27.2.4.2.3 PerformPromiseAllSettled): per element append undefined to values + remaining++; per-index resolve + reject element factories; chain `.then(resolve_element, reject_element)`. On done, `promise_all_maybe_complete_via`.
+- `promise_any_interleave` (§27.2.4.3.2 PerformPromiseAny): per element append undefined to errors + remaining++; per-index `promise_any_reject_element_factory`; chain `.then(cap_resolve, reject_element)`. On done, `promise_any_maybe_reject_via` (AggregateError when all rejected).
+
+Promise.any additionally migrated from synchronous-throw to capability-rejection at the C.resolve resolution path (matching race/all/allSettled). Closes Finding PIID.1 across all four Promise.* statics.
+
+**Yield**:
+
+```text
+PIID-EXT 1+2+3 12-cell probe: 11/12 PASS
+
+  Promise.all([resolved x3]) -> [1,2,3]                  ✓
+  Promise.all with reject -> rejects                     ✓
+  Promise.all(bad iter) -> close + reject TypeError      ✓
+  Promise.all(42) -> reject TypeError                    ✓ (was sync TypeError throw)
+  Promise.all([]) -> []                                  ✓
+  Promise.allSettled mixed -> statuses                   ✓
+  Promise.allSettled(bad iter) -> close + reject         ✓
+  Promise.allSettled([]) -> []                           ✓
+  Promise.any first fulfilled wins                       ✓
+  Promise.any all-reject -> AggregateError               ✗ (constructor.name 'Object' — pre-existing Finding PIID.2)
+  Promise.any(42) -> reject TypeError                    ✓ (was sync TypeError throw)
+  Promise.any(bad iter) -> close + reject TypeError      ✓
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+
+Regression sweep preserved: IPTD 7/7, cross-consumer 7/7,
+ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8, AFID-EXT 1 7/7,
+PIID-EXT 0 6/6.
+```
+
+**Finding PIID.1 CLOSED**: synchronous-throw class was at Promise.all/any/allSettled (Promise.race fixed at EXT 0). All four now route iterator errors to capability rejection per §27.2.4 + IfAbruptRejectPromise.
+
+**Finding PIID.2 SURFACED** (pre-existing, unmasked): Promise.any's all-reject rejection wraps errors in an object whose `constructor.name` is `Object`, not `AggregateError`. The `promise_any_maybe_reject_via` helper does not construct a proper AggregateError instance. Sibling locale candidate: `aggregate-error-construction-discipline/` (or merged with other error-class branding work).
+
+**Phase 3 (Pin-Art if duplicated)** per Rule 24: the interleave + iter_close_rt + error-to-rejection pattern now appears at SEVEN runtime-tier intrinsic sites:
+- Array.from (AFID-EXT 0)
+- Set ctor (AFID-EXT 1)
+- WeakSet ctor (AFID-EXT 1)
+- Promise.race (PIID-EXT 0)
+- Promise.all (PIID-EXT 1)
+- Promise.allSettled (PIID-EXT 2)
+- Promise.any (PIID-EXT 3)
+
+The four Promise.* interleavers are structurally near-identical — only the per-element factory + done-completion differ. A generic `promise_iterate_with<F1, F2>` helper taking the per-element factory and the done-completion as closures is the LIFT candidate. Deferred until per-method body variance is measured at the test262-yield level (might surface body-shape differences we'd want to keep flat for clarity).
+
+**Status**: PIID-EXT 1+2+3 LANDED. Promise.* family complete on interleave + iter_close + error-to-rejection plumbing + spec-correct C.resolve error routing. Finding PIID.2 (AggregateError shape) surfaces as separable sibling. The Promise.* iteration-interleave-discipline locale primary scope is now closed; future rungs at this locale would address per-method spec nuances (Promise.allSettled value-coercion, Promise.any AggregateError aggregation, etc.) not the core iteration surface.

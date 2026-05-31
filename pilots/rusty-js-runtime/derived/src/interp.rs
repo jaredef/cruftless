@@ -4907,72 +4907,164 @@ impl Runtime {
             self.call_function(cap_reject, Value::Undefined, vec![rejection])?;
             return Ok(capability_promise);
         }
+        // PIID-EXT 1 (Promise.all): interleaved per-element iteration
+        // per ECMA-262 §27.2.4.1 + PerformPromiseAll. Prior impl drained
+        // the iterable into a Vec before sizing the values array; the new
+        // shape grows values lazily per element. Any abrupt completion
+        // during iteration calls iter_close_rt-best-effort then rejects
+        // the capability with the ORIGINAL error per §7.4.9 step 4.
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
-            Some(entries) => entries,
-            None => return Ok(capability_promise),
+        let _ = self.promise_all_interleave(
+            iter_v,
+            &ctor,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+        );
+        Ok(capability_promise)
+    }
+
+    /// PIID-EXT 1: interleaved Promise.all body. Returns Ok on completion
+    /// (normal or already-rejected). Per-element shape mirrors §27.2.4.1.2
+    /// PerformPromiseAll: append undefined to values; create per-index
+    /// resolve_element closure; remaining++; chain .then(resolve_element,
+    /// cap_reject); on iteration done, decrement remaining and possibly
+    /// resolve the capability.
+    fn promise_all_interleave(
+        &mut self,
+        iter_v: Value,
+        ctor: &Value,
+        promise_resolve: &Value,
+        cap_resolve: &Value,
+        cap_reject: &Value,
+    ) -> Result<(), RuntimeError> {
+        let iter_id = match self.promise_iter_get_iterator(iter_v) {
+            Ok(id) => id,
+            Err(e) => {
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
         };
-        let n = entries.len();
-        // Cells via IR-shaped helpers: values array preallocated, remaining cell at count=1.
+        let next_fn = self.object_get(iter_id, "next");
         let values_arr = self.alloc_object(crate::value::Object::new_array());
-        for j in 0..n {
-            self.object_set(values_arr, j.to_string(), Value::Undefined);
-        }
-        self.object_set(values_arr, "length".into(), Value::Number(n as f64));
+        self.object_set(values_arr, "length".into(), Value::Number(0.0));
         let values_v = Value::Object(values_arr);
         let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
-        for (i, entry) in entries.into_iter().enumerate() {
-            // remaining += 1
-            let cur = match self.object_get(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0",
+        let mut index: usize = 0;
+        loop {
+            let result = match self.call_function(
+                next_fn.clone(),
+                Value::Object(iter_id),
+                Vec::new(),
             ) {
+                Ok(v) => v,
+                Err(e) => {
+                    // IteratorNext throw -> reject capability (no close
+                    // per §7.4.9 + spec commentary).
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(
+                        cap_reject,
+                        RuntimeError::TypeError(
+                            "iterator next did not return an object".into(),
+                        ),
+                    )?;
+                    return Ok(());
+                }
+            };
+            if to_boolean(&self.object_get(rid, "done")) {
+                // Final decrement: if last pending element, resolve now.
+                self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve)?;
+                return Ok(());
+            }
+            let value = self.object_get(rid, "value");
+            // Append undefined to values; length += 1.
+            self.object_set(values_arr, index.to_string(), Value::Undefined);
+            self.object_set(
+                values_arr,
+                "length".into(),
+                Value::Number((index + 1) as f64),
+            );
+            // remaining++
+            let remaining_id = match &remaining_v {
+                Value::Object(id) => *id,
+                _ => unreachable!(),
+            };
+            let cur = match self.object_get(remaining_id, "0") {
                 Value::Number(n) => n,
                 _ => 0.0,
             };
-            self.object_set(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0".into(),
-                Value::Number(cur + 1.0),
-            );
-            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
-            let resolve_element = crate::generated::promise_all_resolve_element_factory(
+            self.object_set(remaining_id, "0".into(), Value::Number(cur + 1.0));
+            // resolve_element factory.
+            let already_v = match self.cell_array_new_via(&Value::Boolean(false)) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let resolve_element = match crate::generated::promise_all_resolve_element_factory(
                 self,
                 Value::Undefined,
                 &[
-                    Value::Number(i as f64),
+                    Value::Number(index as f64),
                     values_v.clone(),
                     already_v,
                     remaining_v.clone(),
                     cap_resolve.clone(),
                 ],
-            )?;
-            let next_promise =
-                self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let next_promise = match self.call_function(
+                promise_resolve.clone(),
+                ctor.clone(),
+                vec![value],
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
-                return Err(RuntimeError::TypeError(
-                    "Promise.all: next.then is not callable".into(),
-                ));
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(
+                    cap_reject,
+                    RuntimeError::TypeError(
+                        "Promise.all: next.then is not callable".into(),
+                    ),
+                )?;
+                return Ok(());
             }
-            self.call_function(
+            if let Err(e) = self.call_function(
                 then_fn,
                 next_promise,
                 vec![resolve_element, cap_reject.clone()],
-            )?;
+            ) {
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
+            index += 1;
         }
-        // Final loop-self decrement via the same maybe-complete primitive.
-        self.promise_all_maybe_complete_via(&values_v, &remaining_v, &cap_resolve)?;
-        Ok(capability_promise)
     }
 
     /// Promise.allSettled(iterable) per ECMA §27.2.4.2 — capability + per-element
@@ -5003,71 +5095,166 @@ impl Runtime {
             self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
             return Ok(capability_promise);
         }
+        // PIID-EXT 2 (Promise.allSettled): interleaved per ECMA-262
+        // §27.2.4.2 + PerformPromiseAllSettled. Same body shape as
+        // Promise.all: per element appends undefined to values, increments
+        // remaining, creates per-index resolve + reject element closures
+        // that always fulfill the slot with {status, value/reason}.
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = match self.promise_collect_iterable_or_reject(iter_v, &cap_reject)? {
-            Some(entries) => entries,
-            None => return Ok(capability_promise),
+        let _ = self.promise_all_settled_interleave(
+            iter_v,
+            &ctor,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+        );
+        Ok(capability_promise)
+    }
+
+    fn promise_all_settled_interleave(
+        &mut self,
+        iter_v: Value,
+        ctor: &Value,
+        promise_resolve: &Value,
+        cap_resolve: &Value,
+        cap_reject: &Value,
+    ) -> Result<(), RuntimeError> {
+        let iter_id = match self.promise_iter_get_iterator(iter_v) {
+            Ok(id) => id,
+            Err(e) => {
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
         };
-        let n = entries.len();
+        let next_fn = self.object_get(iter_id, "next");
         let values_arr = self.alloc_object(crate::value::Object::new_array());
-        for j in 0..n {
-            self.object_set(values_arr, j.to_string(), Value::Undefined);
-        }
-        self.object_set(values_arr, "length".into(), Value::Number(n as f64));
+        self.object_set(values_arr, "length".into(), Value::Number(0.0));
         let values_v = Value::Object(values_arr);
         let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
-        for (i, entry) in entries.into_iter().enumerate() {
-            let cur = match self.object_get(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0",
+        let mut index: usize = 0;
+        loop {
+            let result = match self.call_function(
+                next_fn.clone(),
+                Value::Object(iter_id),
+                Vec::new(),
             ) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(
+                        cap_reject,
+                        RuntimeError::TypeError(
+                            "iterator next did not return an object".into(),
+                        ),
+                    )?;
+                    return Ok(());
+                }
+            };
+            if to_boolean(&self.object_get(rid, "done")) {
+                self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve)?;
+                return Ok(());
+            }
+            let value = self.object_get(rid, "value");
+            self.object_set(values_arr, index.to_string(), Value::Undefined);
+            self.object_set(
+                values_arr,
+                "length".into(),
+                Value::Number((index + 1) as f64),
+            );
+            let remaining_id = match &remaining_v {
+                Value::Object(id) => *id,
+                _ => unreachable!(),
+            };
+            let cur = match self.object_get(remaining_id, "0") {
                 Value::Number(n) => n,
                 _ => 0.0,
             };
-            self.object_set(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0".into(),
-                Value::Number(cur + 1.0),
-            );
-            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
+            self.object_set(remaining_id, "0".into(), Value::Number(cur + 1.0));
+            let already_v = match self.cell_array_new_via(&Value::Boolean(false)) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
             let factory_args = vec![
-                Value::Number(i as f64),
+                Value::Number(index as f64),
                 values_v.clone(),
                 already_v,
                 remaining_v.clone(),
                 cap_resolve.clone(),
             ];
-            let resolve_element = crate::generated::promise_all_settled_resolve_element_factory(
-                self,
-                Value::Undefined,
-                &factory_args,
-            )?;
-            let reject_element = crate::generated::promise_all_settled_reject_element_factory(
-                self,
-                Value::Undefined,
-                &factory_args,
-            )?;
-            let next_promise =
-                self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
+            let resolve_element =
+                match crate::generated::promise_all_settled_resolve_element_factory(
+                    self,
+                    Value::Undefined,
+                    &factory_args,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                };
+            let reject_element =
+                match crate::generated::promise_all_settled_reject_element_factory(
+                    self,
+                    Value::Undefined,
+                    &factory_args,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                };
+            let next_promise = match self.call_function(
+                promise_resolve.clone(),
+                ctor.clone(),
+                vec![value],
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
-                return Err(RuntimeError::TypeError(
-                    "Promise.allSettled: next.then is not callable".into(),
-                ));
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(
+                    cap_reject,
+                    RuntimeError::TypeError(
+                        "Promise.allSettled: next.then is not callable".into(),
+                    ),
+                )?;
+                return Ok(());
             }
-            self.call_function(then_fn, next_promise, vec![resolve_element, reject_element])?;
+            if let Err(e) = self.call_function(
+                then_fn,
+                next_promise,
+                vec![resolve_element, reject_element],
+            ) {
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
+            index += 1;
         }
-        self.promise_all_maybe_complete_via(&values_v, &remaining_v, &cap_resolve)?;
-        Ok(capability_promise)
     }
 
     /// Promise.any(iterable) per ECMA §27.2.4.3 — capability + per-element
@@ -5082,75 +5269,165 @@ impl Runtime {
             default_promise.clone()
         };
         let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&ctor)?;
-        let promise_resolve = match &ctor {
-            Value::Object(cid) => self.object_get(*cid, "resolve"),
-            _ => Value::Undefined,
+        // PIID-EXT 3: route C.resolve resolution + iteration through the
+        // capability-rejection pattern (matching race/all/allSettled).
+        let promise_resolve = match self.spec_get(&ctor, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
         };
         if !self.is_callable(&promise_resolve) {
-            return Err(RuntimeError::TypeError(
-                "Promise.any: C.resolve is not callable".into(),
-            ));
+            let msg = "Promise.any: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
         }
         let iter_v = args.first().cloned().unwrap_or(Value::Undefined);
-        let entries = crate::intrinsics::collect_iterable(self, iter_v)?;
-        let n = entries.len();
+        let _ = self.promise_any_interleave(
+            iter_v,
+            &ctor,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+        );
+        Ok(capability_promise)
+    }
+
+    fn promise_any_interleave(
+        &mut self,
+        iter_v: Value,
+        ctor: &Value,
+        promise_resolve: &Value,
+        cap_resolve: &Value,
+        cap_reject: &Value,
+    ) -> Result<(), RuntimeError> {
+        let iter_id = match self.promise_iter_get_iterator(iter_v) {
+            Ok(id) => id,
+            Err(e) => {
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
+        };
+        let next_fn = self.object_get(iter_id, "next");
         let errors_arr = self.alloc_object(crate::value::Object::new_array());
-        for j in 0..n {
-            self.object_set(errors_arr, j.to_string(), Value::Undefined);
-        }
-        self.object_set(errors_arr, "length".into(), Value::Number(n as f64));
+        self.object_set(errors_arr, "length".into(), Value::Number(0.0));
         let errors_v = Value::Object(errors_arr);
         let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
-        for (i, entry) in entries.into_iter().enumerate() {
-            let cur = match self.object_get(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0",
+        let mut index: usize = 0;
+        loop {
+            let result = match self.call_function(
+                next_fn.clone(),
+                Value::Object(iter_id),
+                Vec::new(),
             ) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(
+                        cap_reject,
+                        RuntimeError::TypeError(
+                            "iterator next did not return an object".into(),
+                        ),
+                    )?;
+                    return Ok(());
+                }
+            };
+            if to_boolean(&self.object_get(rid, "done")) {
+                self.promise_any_maybe_reject_via(&errors_v, &remaining_v, cap_reject)?;
+                return Ok(());
+            }
+            let value = self.object_get(rid, "value");
+            self.object_set(errors_arr, index.to_string(), Value::Undefined);
+            self.object_set(
+                errors_arr,
+                "length".into(),
+                Value::Number((index + 1) as f64),
+            );
+            let remaining_id = match &remaining_v {
+                Value::Object(id) => *id,
+                _ => unreachable!(),
+            };
+            let cur = match self.object_get(remaining_id, "0") {
                 Value::Number(n) => n,
                 _ => 0.0,
             };
-            self.object_set(
-                match &remaining_v {
-                    Value::Object(id) => *id,
-                    _ => unreachable!(),
-                },
-                "0".into(),
-                Value::Number(cur + 1.0),
-            );
-            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
-            let reject_element = crate::generated::promise_any_reject_element_factory(
+            self.object_set(remaining_id, "0".into(), Value::Number(cur + 1.0));
+            let already_v = match self.cell_array_new_via(&Value::Boolean(false)) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let reject_element = match crate::generated::promise_any_reject_element_factory(
                 self,
                 Value::Undefined,
                 &[
-                    Value::Number(i as f64),
+                    Value::Number(index as f64),
                     errors_v.clone(),
                     already_v,
                     remaining_v.clone(),
                     cap_reject.clone(),
                 ],
-            )?;
-            let next_promise =
-                self.call_function(promise_resolve.clone(), ctor.clone(), vec![entry])?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let next_promise = match self.call_function(
+                promise_resolve.clone(),
+                ctor.clone(),
+                vec![value],
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
             let then_fn = match &next_promise {
                 Value::Object(id) => self.object_get(*id, "then"),
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
-                return Err(RuntimeError::TypeError(
-                    "Promise.any: next.then is not callable".into(),
-                ));
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(
+                    cap_reject,
+                    RuntimeError::TypeError(
+                        "Promise.any: next.then is not callable".into(),
+                    ),
+                )?;
+                return Ok(());
             }
-            self.call_function(
+            if let Err(e) = self.call_function(
                 then_fn,
                 next_promise,
                 vec![cap_resolve.clone(), reject_element],
-            )?;
+            ) {
+                let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
+            index += 1;
         }
-        self.promise_any_maybe_reject_via(&errors_v, &remaining_v, &cap_reject)?;
-        Ok(capability_promise)
     }
 
     /// Promise.race(iterable) per ECMA §27.2.4.5.
