@@ -60,3 +60,17 @@ These five packages all import successfully under cruft, but the exported namesp
 ### Recommendation
 
 Route the next substrate move to `pilots/cjs-ns-shape-diff-residual/`, not back to CITPT. CITPT controls held: 6 of the 9 CITPT packages in this sample passed (`prettier`, `csso`, `rehype`, `puppeteer-core`, `svgo`, `config`), and the remaining CITPT residuals stayed in their already-known non-TDZ families.
+
+---
+
+## TFRS-EXT — full top500 sweep on fresh main (2026-05-31)
+
+**Trigger**: keeper directive to run the full top500 npm parity sweep on a freshly rebuilt cruft against current `main`.
+
+**Apparatus**: `legacy/host-rquickjs/tools/parity-measure.sh` over `parity-top500.txt` (1,026 packages), Bun 1.3.14 as the oracle, `PARITY_SANDBOX` on the sidecar. Raw artifact: `legacy/host-rquickjs/tools/parity-results-top500-2026-05-31.json` (also at sidecar `results/top500/top500-2026-05-31T064711Z.json`).
+
+**Headline**: 1,026 total. PASS 813, MATCH_OK_ERR_BOTH 44, FAIL 114, TIMEOUT 3, SKIP 52 (install failures). **Parity 88.0%** (857 / 974 runnable); 83.5% counting install-failures in the denominator.
+
+**FAIL clusters (114)**: cruft empty/crash 19 (mathjs, exceljs, iconv, keccak, ava, biome); one-off cruft-ERR 18; both-OK shape-diff 31 (15 rb>bun, 8 same-count, 8 rb<bun); cannot-read-property 11 (mnemonist, brotli, aws-sdk); CJS-wrapper parse 7 (typeorm, 3x rollup-plugin, tsdown); callee-not-callable 7 (chai, @octokit/request, pm2, ts-loader); X-is-not-defined 5 (node-forge, apollo-client); cruft-OK/bun-ERR cruft-wins 3 (later, collections, sentry); misc one-offs (ast-types/recast missing-name, protobufjs Object.create, sinon regexp, nock _http_common missing, @databases/pg private-field).
+
+**Read**: ~18 of the 114 "failures" are plausibly Bun being wrong, not cruft (15 cases where cruft exposes MORE exports than Bun + 3 outright cruft-wins). This motivates the next move: re-run the basket against Node as the reference engine, not Bun. Highest-leverage real fixes: cruft empty/crash (19), callee-not-callable (7, single mechanism), CJS-wrapper parse (7, single parser gap).
