@@ -26,7 +26,7 @@ Cruft executes `.ts` and `.tsx` source files directly. There is no `tsc` invocat
 
 ## Status
 
-Cruft passes a curated 7,663-test representative sample of test262 at 84.3% runnable, with a hand-derived prototype chain across the language and a hand-derived host platform across the Node and Web APIs that production packages exercise. The engineering surface and its parity baselines are documented in detail at the RESOLVE corpus reference (link below).
+Cruft passes a curated 7,785-test representative sample of test262 at 89.6% runnable (6,920 of 7,726 runnable tests), and the full test262 suite at 72.6% runnable (34,946 of 48,107 runnable tests across 53,289 paths). Measured through an identical test harness, Cruft reaches roughly 91% of V8's pass count on the production-relevant sample surface and roughly 82% on the full suite — a hand-derived, independent runtime within close reach of the most mature JavaScript engine, on exactly the features production packages exercise. These figures stand on a hand-derived prototype chain across the language and a hand-derived host platform across the Node and Web APIs. The engineering surface and its parity baselines are documented in detail at the RESOLVE corpus reference (link below).
 
 The repository is organized as the Cruftless apparatus: a substrate-pilot directory tree where each substrate-shaped problem lives in a discoverable locale, and an arc-tier coordinate registry that subsumes locales under coherent multi-substrate programs. The apparatus is itself the engine's development environment; it is also the engine's discovery method.
 
