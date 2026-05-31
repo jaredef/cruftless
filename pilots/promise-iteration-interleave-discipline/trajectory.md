@@ -112,3 +112,35 @@ PIID-EXT 0 6/6.
 The four Promise.* interleavers are structurally near-identical — only the per-element factory + done-completion differ. A generic `promise_iterate_with<F1, F2>` helper taking the per-element factory and the done-completion as closures is the LIFT candidate. Deferred until per-method body variance is measured at the test262-yield level (might surface body-shape differences we'd want to keep flat for clarity).
 
 **Status**: PIID-EXT 1+2+3 LANDED. Promise.* family complete on interleave + iter_close + error-to-rejection plumbing + spec-correct C.resolve error routing. Finding PIID.2 (AggregateError shape) surfaces as separable sibling. The Promise.* iteration-interleave-discipline locale primary scope is now closed; future rungs at this locale would address per-method spec nuances (Promise.allSettled value-coercion, Promise.any AggregateError aggregation, etc.) not the core iteration surface.
+
+## PIID-EXT 4 — LANDED (2026-05-31) — AggregateError construction closes Finding PIID.2
+
+**Trigger**: Finding PIID.2 surfaced by PIID-EXT 1+2+3 (Promise.any all-reject produced an object with `constructor.name === "Object"` instead of `"AggregateError"`). Keeper APPROVED via Telegram 10698 ("Push and continue").
+
+**Substrate** (~40 LOC at `make_aggregate_error_via`, interp.rs:3435):
+- Lookup `AggregateError.prototype` via `global_get("AggregateError")` + `object_get(cid, "prototype")`.
+- New object: `internal_kind = InternalKind::Error`, `proto = Some(aggregate_error_proto)`.
+- Install `message` (canonical "All promises were rejected") + `errors` as non-enumerable own properties per §20.5.7.4 CreateNonEnumerableDataPropertyOrThrow. `name` inherits from prototype chain.
+
+**Yield**:
+
+```text
+PIID-EXT 4 probe (/tmp/probe-piid-4.js): 9/9 PASS
+  constructor.name === "AggregateError"           ✓ (was "Object")
+  instanceof AggregateError                       ✓
+  instanceof Error (AggregateError extends Error) ✓
+  message canonical                               ✓
+  errors array shape                              ✓
+  .name on prototype (not own)                    ✓
+  .message + .errors own non-enumerable           ✓
+
+PIID-EXT 1+2+3 re-run: 12/12 PASS (was 11/12; PIID.2 cell now passes).
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+Regression sweep preserved: IPTD 7/7, cross-consumer 7/7,
+ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8, AFID-EXT 1 7/7,
+PIID-EXT 0 6/6.
+```
+
+**Finding PIID.2 CLOSED**. Promise.any all-reject now produces a proper AggregateError instance with prototype-correct branding.
+
+**Status**: PIID-EXT 4 LANDED. The PIID locale's primary scope (Promise.* iteration + close + error-rejection + AggregateError construction) is now closed. All test262 entries that depend on `aggregate-error.constructor.name === "AggregateError"` for Promise.any all-reject paths should now pass.

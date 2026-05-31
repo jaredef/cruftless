@@ -3431,18 +3431,51 @@ impl Runtime {
     }
 
     /// IR-EXT 55 Stage 3 helper: build the §27.2.4.3 AggregateError that
-    /// Promise.any throws when all input promises reject.
+    /// Promise.any throws when all input promises reject. PIID-EXT 4
+    /// (Finding PIID.2): wire the resulting object's [[Prototype]] to
+    /// the AggregateError.prototype and mark internal_kind Error so
+    /// `(new Promise.any(allReject)).constructor.name === "AggregateError"`
+    /// and `instanceof Error / AggregateError` hold per §20.5.7.4.
     pub fn make_aggregate_error_via(&mut self, errors_arr: &Value) -> Result<Value, RuntimeError> {
+        let ctor = self.global_get("AggregateError");
+        let proto = match &ctor {
+            Value::Object(cid) => match self.object_get(*cid, "prototype") {
+                Value::Object(pid) => Some(pid),
+                _ => None,
+            },
+            _ => None,
+        };
         let mut agg = crate::value::Object::new_ordinary();
-        agg.set_own(
-            "name".into(),
-            Value::String(std::rc::Rc::new("AggregateError".into())),
+        agg.internal_kind = crate::value::InternalKind::Error;
+        if let Some(pid) = proto {
+            agg.proto = Some(pid);
+        }
+        // §20.5.6.{1,2}: name lives on the prototype; instance overrides
+        // only when constructed with a different ctor. message + errors
+        // install as non-enumerable own properties per §20.5.7.1 step 6
+        // and §20.5.7.4 CreateNonEnumerableDataPropertyOrThrow.
+        agg.dict_mut().insert(
+            crate::value::PropertyKey::String("message".into()),
+            crate::value::PropertyDescriptor {
+                value: Value::String(std::rc::Rc::new("All promises were rejected".into())),
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
         );
-        agg.set_own(
-            "message".into(),
-            Value::String(std::rc::Rc::new("All promises were rejected".into())),
+        agg.dict_mut().insert(
+            crate::value::PropertyKey::String("errors".into()),
+            crate::value::PropertyDescriptor {
+                value: errors_arr.clone(),
+                writable: true,
+                enumerable: false,
+                configurable: true,
+                getter: None,
+                setter: None,
+            },
         );
-        agg.set_own("errors".into(), errors_arr.clone());
         Ok(Value::Object(self.alloc_object(agg)))
     }
 
