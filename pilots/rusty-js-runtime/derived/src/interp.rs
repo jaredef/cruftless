@@ -5026,7 +5026,7 @@ impl Runtime {
             };
             if to_boolean(&self.object_get(rid, "done")) {
                 // Final decrement: if last pending element, resolve now.
-                self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve)?;
+                if let Err(e) = self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve) { self.promise_reject_with_error(cap_reject, e)?; }
                 return Ok(());
             }
             let value = self.object_get(rid, "value");
@@ -5204,7 +5204,7 @@ impl Runtime {
                 }
             };
             if to_boolean(&self.object_get(rid, "done")) {
-                self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve)?;
+                if let Err(e) = self.promise_all_maybe_complete_via(&values_v, &remaining_v, cap_resolve) { self.promise_reject_with_error(cap_reject, e)?; }
                 return Ok(());
             }
             let value = self.object_get(rid, "value");
