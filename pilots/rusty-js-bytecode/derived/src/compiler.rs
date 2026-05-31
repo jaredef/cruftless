@@ -2305,6 +2305,25 @@ impl Compiler {
                 encode_u16(&mut self.bytecode, next_key);
                 encode_op(&mut self.bytecode, Op::CallMethod);
                 encode_u8(&mut self.bytecode, 0);
+                // IPTD-EXT 1: ECMA-262 §7.4.5 IteratorNext step 3 — throw
+                // TypeError when the iterator result is not an Object.
+                // Without this gate a non-Object .next() result drives an
+                // unbounded for-of loop (.done coerces to undefined→falsy),
+                // allocating per-iteration until OOM. Stack discipline:
+                // [result] in, [result] out; the helper returns its arg or
+                // throws. Skip on for-await heads — async-iter routes the
+                // result through __await first; the type-check still applies
+                // post-await per §7.4.6 but is deferred to a sibling rung.
+                if forawait_tmp.is_none() {
+                    let check_nm = self
+                        .constants
+                        .intern(Constant::String("__iter_result_check".into()));
+                    encode_op(&mut self.bytecode, Op::LoadGlobal);
+                    encode_u16(&mut self.bytecode, check_nm);
+                    encode_op(&mut self.bytecode, Op::Swap);
+                    encode_op(&mut self.bytecode, Op::Call);
+                    encode_u8(&mut self.bytecode, 1);
+                }
                 // AGFA-EXT 1: for-await-of consumes an async iterator result
                 // promise before reading `done` / `value`. This is still a
                 // synchronous await stand-in via the existing __await helper,

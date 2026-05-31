@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 231,
-    "top_level": 144,
+    "locales": 232,
+    "top_level": 145,
     "nested": 87,
     "warnings": 0
   },
@@ -213,7 +213,7 @@
       "parent": null,
       "scope": "array-strict-throw-discipline",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": "FOUNDED 2026-05-30 by ASTA-EXT 0 (helmsman session, keeper directive Telegram 10614). Founding rung LANDED with probe 7/7 PASS and cluster gates preserved. test262-sample marginal +0.1 PP (88.7% \u2192 88.8% with \u00b11 PASS variance across n=2; Rule 29 falsifier event recorded). Sibling sub-bundles deferred per seed \u00a7Carve-outs."
     },
     {
@@ -728,6 +728,15 @@
       "depth": 1,
       "rung_count": 2,
       "status": "**CLOSED at IPEP-EXT 1** (1 implementation round; Doc 740 multi-tier closure)."
+    },
+    {
+      "coord": "iterator-protocol-throw-discipline",
+      "tag": "L.iterator-protocol-throw-discipline",
+      "parent": null,
+      "scope": "iterator-protocol-throw-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "json-parse-reviver-semantics",

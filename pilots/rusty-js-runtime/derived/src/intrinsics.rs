@@ -7586,7 +7586,33 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("iterator is not an object".into())),
             };
             let next_fn = rt.object_get(iter_obj, "next");
-            rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())
+            let result = rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())?;
+            // ECMA-262 §7.4.5 IteratorNext step 3: if Type(result) is not
+            // Object, throw TypeError. IPTD-EXT 1 reinstates the helper-tier
+            // discipline (covers destructuring lowering); the bytecode for-of
+            // slow path covers plain for-of via __iter_result_check.
+            if !matches!(result, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "iterator.next() returned a non-object value".into(),
+                ));
+            }
+            Ok(result)
+        });
+        register_engine_helper(self, "__iter_result_check", |_rt, args| {
+            // IPTD-EXT 1: post-call IteratorNext result-type check, invoked
+            // from the bytecode for-of slow path between the .next() call and
+            // the .done/.value reads. Throws TypeError per ECMA-262 §7.4.5
+            // step 3 when the iterator result is not an Object. Without this
+            // gate a non-Object next() result drives an unbounded for-of loop
+            // (undefined .done coerces to falsy), allocating per-iteration
+            // until OOM — the IPTD-EXT 0 regression that hard-reset the Pi.
+            let v = args.first().cloned().unwrap_or(Value::Undefined);
+            if !matches!(v, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "iterator.next() returned a non-object value".into(),
+                ));
+            }
+            Ok(v)
         });
         register_engine_helper(self, "__destr_iter_close", |rt, args| {
             // ECMA-262 §7.4.9 IteratorClose. Called when the destructure
@@ -7604,9 +7630,14 @@ impl Runtime {
                 return Ok(Value::Undefined);
             }
             if !matches!(ret, Value::Object(_)) {
-                // Per §7.4.9 step 4-5: GetMethod returns undefined for non-callable;
-                // callable check is implicit via Value::Object above.
-                return Ok(Value::Undefined);
+                // ECMA-262 §7.4.9 IteratorClose step 2 routes through §7.3.10
+                // GetMethod, which throws TypeError when the value is non-null,
+                // non-undefined, and non-callable. The earlier silent-undefined
+                // branch masked the spec-mandated throw; IPTD-EXT 1 narrows it
+                // to the spec classification.
+                return Err(RuntimeError::TypeError(
+                    "iterator.return is not callable".into(),
+                ));
             }
             let inner = rt.call_function(ret, Value::Object(iter_obj), Vec::new())?;
             if !matches!(inner, Value::Object(_)) {
