@@ -202,6 +202,41 @@ impl Runtime {
             }
             crate::generated::promise_race(rt, c, args)
         });
+        // PAKD-EXT 0: Promise.allKeyed + Promise.allSettledKeyed per the
+        // await-dictionary Stage 1 proposal. Input is an Object (own
+        // enumerable string keys); output is a null-proto Object with
+        // the same keys mapped to resolved values (allKeyed) or
+        // {status, value/reason} entries (allSettledKeyed).
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "allKeyed",
+            1,
+            |rt, args| {
+                let c = rt.current_this();
+                if !matches!(c, Value::Object(_)) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.allKeyed: this is not an Object".into(),
+                    ));
+                }
+                rt.promise_all_keyed_via(args)
+            },
+        );
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "allSettledKeyed",
+            1,
+            |rt, args| {
+                let c = rt.current_this();
+                if !matches!(c, Value::Object(_)) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.allSettledKeyed: this is not an Object".into(),
+                    ));
+                }
+                rt.promise_all_settled_keyed_via(args)
+            },
+        );
         // Ω.5.P63.E55 Stage 2: routed through IR (uses Expr::Closure for the
         // resolve/reject functions; first IR section to demonstrate the
         // alphabet-closures primitive).

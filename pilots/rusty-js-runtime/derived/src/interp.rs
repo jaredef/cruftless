@@ -5388,6 +5388,319 @@ impl Runtime {
         }
     }
 
+    /// Promise.allKeyed(obj) per the await-dictionary Stage 1 proposal —
+    /// like Promise.all but the input is an Object whose own enumerable
+    /// string-keyed values are awaited; the result is a null-proto Object
+    /// with the same keys mapped to the resolved values.
+    pub fn promise_all_keyed_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
+        let c = self.current_this();
+        if !matches!(c, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Promise.allKeyed: this is not an Object".into(),
+            ));
+        }
+        let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&c)?;
+        // C.resolve resolution (matches PIID interleave shape).
+        let promise_resolve = match self.spec_get(&c, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
+        };
+        if !self.is_callable(&promise_resolve) {
+            let msg = "Promise.allKeyed: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(std::rc::Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
+        }
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        if !matches!(arg, Value::Object(_)) {
+            let msg = "Promise.allKeyed: argument is not an Object";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(std::rc::Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
+        }
+        let _ = self.promise_all_keyed_interleave(
+            arg,
+            &c,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+            false,
+        );
+        Ok(capability_promise)
+    }
+
+    /// Promise.allSettledKeyed(obj) — like Promise.allSettled but with the
+    /// dictionary input/output shape. Each value in the result object is
+    /// `{status: "fulfilled", value}` or `{status: "rejected", reason}`.
+    pub fn promise_all_settled_keyed_via(
+        &mut self,
+        args: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let c = self.current_this();
+        if !matches!(c, Value::Object(_)) {
+            return Err(RuntimeError::TypeError(
+                "Promise.allSettledKeyed: this is not an Object".into(),
+            ));
+        }
+        let (capability_promise, cap_resolve, cap_reject) = self.new_promise_capability(&c)?;
+        let promise_resolve = match self.spec_get(&c, "resolve") {
+            Ok(v) => v,
+            Err(RuntimeError::Thrown(v)) => {
+                self.call_function(cap_reject.clone(), Value::Undefined, vec![v])?;
+                return Ok(capability_promise);
+            }
+            Err(e) => return Err(e),
+        };
+        if !self.is_callable(&promise_resolve) {
+            let msg = "Promise.allSettledKeyed: C.resolve is not callable";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(std::rc::Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
+        }
+        let arg = args.first().cloned().unwrap_or(Value::Undefined);
+        if !matches!(arg, Value::Object(_)) {
+            let msg = "Promise.allSettledKeyed: argument is not an Object";
+            let rejection = match crate::intrinsics::make_error_instance(self, "TypeError", msg) {
+                Some(id) => Value::Object(id),
+                None => Value::String(std::rc::Rc::new(format!("TypeError({:?})", msg))),
+            };
+            self.call_function(cap_reject.clone(), Value::Undefined, vec![rejection])?;
+            return Ok(capability_promise);
+        }
+        let _ = self.promise_all_keyed_interleave(
+            arg,
+            &c,
+            &promise_resolve,
+            &cap_resolve,
+            &cap_reject,
+            true,
+        );
+        Ok(capability_promise)
+    }
+
+    /// PAKD-EXT 0: shared interleave body for Promise.allKeyed +
+    /// Promise.allSettledKeyed. Iterates own enumerable string keys in
+    /// insertion order (per ordinary_own_enumerable_string_keys); per
+    /// key, resolves the value through Promise.resolve and chains
+    /// resolve / reject element closures that populate the keyed result
+    /// object. When `settled` is true, each slot is wrapped in
+    /// `{status, value/reason}` and no early-reject is emitted.
+    fn promise_all_keyed_interleave(
+        &mut self,
+        arg: Value,
+        ctor: &Value,
+        promise_resolve: &Value,
+        cap_resolve: &Value,
+        cap_reject: &Value,
+        settled: bool,
+    ) -> Result<(), RuntimeError> {
+        let arg_id = match arg {
+            Value::Object(id) => id,
+            _ => return Ok(()),
+        };
+        // Null-proto result object — alloc_object auto-wires Object.prototype
+        // when proto is None, so set proto = None after allocation.
+        let result_obj = self.alloc_object(crate::value::Object::new_ordinary());
+        self.obj_mut(result_obj).proto = None;
+        let result_v = Value::Object(result_obj);
+        let remaining_v = self.cell_array_new_via(&Value::Number(1.0))?;
+        // Snapshot the keys before iterating to avoid mutation during
+        // resolution races (resolve_element writes back to result_obj).
+        let keys = self.ordinary_own_enumerable_string_keys(arg_id);
+        if keys.is_empty() {
+            // Empty dictionary -> immediately resolve with empty result.
+            self.call_function(cap_resolve.clone(), Value::Undefined, vec![result_v])?;
+            return Ok(());
+        }
+        for key in keys {
+            // remaining++
+            let remaining_id = match &remaining_v {
+                Value::Object(id) => *id,
+                _ => unreachable!(),
+            };
+            let cur = match self.object_get(remaining_id, "0") {
+                Value::Number(n) => n,
+                _ => 0.0,
+            };
+            self.object_set(remaining_id, "0".into(), Value::Number(cur + 1.0));
+            let already_v = self.cell_array_new_via(&Value::Boolean(false))?;
+            let value = self.object_get(arg_id, &key);
+            let next_promise = match self.call_function(
+                promise_resolve.clone(),
+                ctor.clone(),
+                vec![value],
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.promise_reject_with_error(cap_reject, e)?;
+                    return Ok(());
+                }
+            };
+            let then_fn = match &next_promise {
+                Value::Object(_) => match self.spec_get(&next_promise, "then") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                },
+                _ => Value::Undefined,
+            };
+            if !self.is_callable(&then_fn) {
+                self.promise_reject_with_error(
+                    cap_reject,
+                    RuntimeError::TypeError(
+                        "Promise.allKeyed: next.then is not callable".into(),
+                    ),
+                )?;
+                return Ok(());
+            }
+            // Per-element resolve closure: writes result_obj[key] (raw value
+            // for allKeyed; {status:'fulfilled', value} for allSettledKeyed),
+            // decrements remaining; on 0, cap_resolve(result_obj).
+            let key_for_resolve = key.clone();
+            let already_resolve = already_v.clone();
+            let result_for_resolve = result_v.clone();
+            let remaining_for_resolve = remaining_v.clone();
+            let cap_resolve_for_elem = cap_resolve.clone();
+            let resolve_element = crate::intrinsics::make_native_with_length(
+                "",
+                1,
+                move |rt, args| {
+                    let already_id = match &already_resolve {
+                        Value::Object(id) => *id,
+                        _ => return Ok(Value::Undefined),
+                    };
+                    if matches!(rt.object_get(already_id, "0"), Value::Boolean(true)) {
+                        return Ok(Value::Undefined);
+                    }
+                    rt.object_set(already_id, "0".into(), Value::Boolean(true));
+                    let v = args.first().cloned().unwrap_or(Value::Undefined);
+                    let slot = if settled {
+                        let entry = rt.alloc_object(crate::value::Object::new_ordinary());
+                        rt.object_set(entry, "status".into(), Value::String(std::rc::Rc::new("fulfilled".into())));
+                        rt.object_set(entry, "value".into(), v);
+                        Value::Object(entry)
+                    } else {
+                        v
+                    };
+                    if let Value::Object(rid) = &result_for_resolve {
+                        rt.object_set(*rid, key_for_resolve.clone(), slot);
+                    }
+                    let remaining_id = match &remaining_for_resolve {
+                        Value::Object(id) => *id,
+                        _ => return Ok(Value::Undefined),
+                    };
+                    let cur = match rt.object_get(remaining_id, "0") {
+                        Value::Number(n) => n,
+                        _ => 0.0,
+                    };
+                    let new_n = cur - 1.0;
+                    rt.object_set(remaining_id, "0".into(), Value::Number(new_n));
+                    if new_n == 0.0 {
+                        rt.call_function(
+                            cap_resolve_for_elem.clone(),
+                            Value::Undefined,
+                            vec![result_for_resolve.clone()],
+                        )?;
+                    }
+                    Ok(Value::Undefined)
+                },
+            );
+            let resolve_element_id = self.alloc_object(resolve_element);
+            // Per-element reject closure:
+            // - allKeyed: chain .then(resolve_element, cap_reject).
+            // - allSettledKeyed: chain .then(resolve_element, reject_element)
+            //   where reject_element wraps {status:'rejected', reason}.
+            let reject_arg: Value = if settled {
+                let key_for_reject = key.clone();
+                let already_reject = already_v.clone();
+                let result_for_reject = result_v.clone();
+                let remaining_for_reject = remaining_v.clone();
+                let cap_resolve_for_rej = cap_resolve.clone();
+                let reject_element = crate::intrinsics::make_native_with_length(
+                    "",
+                    1,
+                    move |rt, args| {
+                        let already_id = match &already_reject {
+                            Value::Object(id) => *id,
+                            _ => return Ok(Value::Undefined),
+                        };
+                        if matches!(rt.object_get(already_id, "0"), Value::Boolean(true)) {
+                            return Ok(Value::Undefined);
+                        }
+                        rt.object_set(already_id, "0".into(), Value::Boolean(true));
+                        let reason = args.first().cloned().unwrap_or(Value::Undefined);
+                        let entry = rt.alloc_object(crate::value::Object::new_ordinary());
+                        rt.object_set(entry, "status".into(), Value::String(std::rc::Rc::new("rejected".into())));
+                        rt.object_set(entry, "reason".into(), reason);
+                        if let Value::Object(rid) = &result_for_reject {
+                            rt.object_set(*rid, key_for_reject.clone(), Value::Object(entry));
+                        }
+                        let remaining_id = match &remaining_for_reject {
+                            Value::Object(id) => *id,
+                            _ => return Ok(Value::Undefined),
+                        };
+                        let cur = match rt.object_get(remaining_id, "0") {
+                            Value::Number(n) => n,
+                            _ => 0.0,
+                        };
+                        let new_n = cur - 1.0;
+                        rt.object_set(remaining_id, "0".into(), Value::Number(new_n));
+                        if new_n == 0.0 {
+                            rt.call_function(
+                                cap_resolve_for_rej.clone(),
+                                Value::Undefined,
+                                vec![result_for_reject.clone()],
+                            )?;
+                        }
+                        Ok(Value::Undefined)
+                    },
+                );
+                let id = self.alloc_object(reject_element);
+                Value::Object(id)
+            } else {
+                cap_reject.clone()
+            };
+            if let Err(e) = self.call_function(
+                then_fn,
+                next_promise,
+                vec![Value::Object(resolve_element_id), reject_arg],
+            ) {
+                self.promise_reject_with_error(cap_reject, e)?;
+                return Ok(());
+            }
+        }
+        // Final loop-self decrement.
+        let remaining_id = match &remaining_v {
+            Value::Object(id) => *id,
+            _ => unreachable!(),
+        };
+        let cur = match self.object_get(remaining_id, "0") {
+            Value::Number(n) => n,
+            _ => 0.0,
+        };
+        let new_n = cur - 1.0;
+        self.object_set(remaining_id, "0".into(), Value::Number(new_n));
+        if new_n == 0.0 {
+            self.call_function(cap_resolve.clone(), Value::Undefined, vec![result_v])?;
+        }
+        Ok(())
+    }
+
     /// Promise.any(iterable) per ECMA §27.2.4.3 — capability + per-element
     /// reject tracking; resolves on first fulfillment, rejects with
     /// AggregateError when all reject.

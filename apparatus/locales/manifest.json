@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/Developer/cruftless/.claude/worktrees/bridge-cse_01Wd1hEjajHFetR5shGMWmjS/pilots",
+  "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 237,
-    "top_level": 150,
+    "locales": 238,
+    "top_level": 151,
     "nested": 87,
     "warnings": 0
   },
@@ -952,6 +952,15 @@
       "scope": "private-name-lexing",
       "depth": 1,
       "rung_count": 2,
+      "status": null
+    },
+    {
+      "coord": "promise-await-dictionary-discipline",
+      "tag": "L.promise-await-dictionary-discipline",
+      "parent": null,
+      "scope": "promise-await-dictionary-discipline",
+      "depth": 1,
+      "rung_count": 1,
       "status": null
     },
     {
