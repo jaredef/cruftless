@@ -2,7 +2,7 @@
 arc: 2026-05-25-ecmascript-parity-shared-upstream
 trigger: Successor arc to T262C's first ECMAScript-parity round per T262C-EXT 2 prospective analysis (2026-05-25). Promoted from pilots/ecmascript-parity-shared-upstream-arc/ on 2026-05-28 per apparatus/docs/coverage-gap-orphan-disposition-2026-05-28.md (the seed was filed as a locale but is structurally an arc per Doc 744 + 745 candidate; canonical instance of pattern III.1 arc-tier-as-locale mis-categorization).
 opened: 2026-05-25
-closed: IN PROGRESS
+closed: 2026-05-28 (CHAPTER CLOSED at EPSUA-EXT 4 per log; header reconciled 2026-05-31 per Telegram 10751)
 close_condition: post-five-shared-substrates target ~85% runnable rate on test262-sample (+340 PASS cascade from the 80.6% baseline); zero PASS→FAIL regressions per round per Finding T262C.5 default discipline.
 ---
 
