@@ -1964,6 +1964,35 @@ impl Runtime {
         exports_reassigned: bool,
         url: Option<&str>,
     ) {
+        // CENP-EXT 1 (Stage L): Node-faithful CJS->ESM namespace, env-gated.
+        // When `CRUFT_CJS_INTEROP=node`, build the namespace from the static
+        // cjs-module-lexer name set (read from the module source at `url`) plus
+        // Node's fixed keys (`default`, `module.exports`, optional `__esModule`),
+        // matching `import(pkg)` under Node. Default (unset/other) preserves the
+        // existing Bun-shaped runtime-enumeration behavior below — flipping the
+        // default is a later rung gated on canonical fuzz (Rule 5+10).
+        if cjs_interop_node_mode() {
+            if let Some(u) = url {
+                if let Some(path) = u.strip_prefix("file://") {
+                    if let Ok(src) = std::fs::read_to_string(path) {
+                        let lex = crate::cjs_lexer::cjs_lex(&src);
+                        if let Value::Object(oid) = exports {
+                            for name in &lex.names {
+                                let v = self.object_get(*oid, name);
+                                self.object_set(ns, name.clone(), v);
+                            }
+                        }
+                        self.object_set(ns, "default".to_string(), exports.clone());
+                        self.object_set(ns, "module.exports".to_string(), exports.clone());
+                        if lex.esmodule {
+                            self.object_set(ns, "__esModule".to_string(), Value::Boolean(true));
+                        }
+                        let _ = exports_reassigned;
+                        return;
+                    }
+                }
+            }
+        }
         match exports {
             Value::Object(oid) => {
                 // Mirror own properties + a `default` pointer at the
@@ -2516,6 +2545,15 @@ fn with_suffix(p: &std::path::Path, suffix: &str) -> std::path::PathBuf {
 /// Walk up from a file:// URL to the nearest package.json and return whether
 /// it declares an `exports` field. Cheap text scan; full JSON parse would
 /// pull in the cached package.json (which requires &mut self).
+/// CENP-EXT 1 Stage-L gate: true when `CRUFT_CJS_INTEROP=node` selects the
+/// Node-faithful CJS->ESM namespace policy. Default (unset/any-other-value)
+/// keeps the existing Bun-shaped runtime-enumeration behavior.
+fn cjs_interop_node_mode() -> bool {
+    std::env::var("CRUFT_CJS_INTEROP")
+        .map(|v| v == "node")
+        .unwrap_or(false)
+}
+
 fn package_has_exports_field_walk(url: &str) -> bool {
     let path_str = match url.strip_prefix("file://") {
         Some(p) => p,
