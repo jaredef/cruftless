@@ -11760,6 +11760,29 @@ impl Runtime {
                 }
                 return None;
             }
+            // WKSL-EXT 1: when looking up a well-known-Symbol-shaped key
+            // (e.g. "@@iterator") via the string-key path, also scan the
+            // Symbol-keyed bucket. Object.defineProperty(o, Symbol.X,
+            // {get(){...}}) installs under PropertyKey::Symbol whose
+            // Rc::ptr_eq differs from any freshly-allocated Rc; matching
+            // by content via the rc's string view is the structural
+            // fall-through. Lets Op::GetProp's accessor probe fire for
+            // Symbol-keyed @@-property getters at for-of slow-path,
+            // [Symbol.toPrimitive], [Symbol.hasInstance], etc.
+            if key.starts_with("@@") {
+                for (pk, d) in o.properties.iter() {
+                    if let crate::value::PropertyKey::Symbol(rc) = pk {
+                        if rc.as_str() == key {
+                            if let Some(g) = &d.getter {
+                                if !matches!(g, Value::Undefined) {
+                                    return Some(g.clone());
+                                }
+                            }
+                            return None;
+                        }
+                    }
+                }
+            }
             cur = o.proto;
         }
         None
@@ -14098,14 +14121,18 @@ impl Runtime {
                                     // descriptor actually has one. Walking find_getter
                                     // for every prop access has a cost; gate on
                                     // direct-property existence first.
+                                    // WKSL-EXT 1: for "@@"-prefixed well-known-Symbol
+                                    // shaped keys, also scan the Symbol bucket so a
+                                    // getter installed via Object.defineProperty(o,
+                                    // Symbol.X, {get(){...}}) fires from a bytecode
+                                    // GetProp.
                                     let has_accessor = {
                                         let mut cur = Some(*id);
                                         let mut found = false;
+                                        let probe_sym = key.starts_with("@@");
                                         while let Some(c) = cur {
-                                            if let Some(d) = self.obj(c).get_own(&key) {
-                                                // GOPD-EXT 1: only count callable getters
-                                                // (Some(Undefined) means accessor-with-no-
-                                                // getter; OrdinaryGet returns undefined).
+                                            let o = self.obj(c);
+                                            if let Some(d) = o.get_own(&key) {
                                                 if let Some(g) = &d.getter {
                                                     if !matches!(g, Value::Undefined) {
                                                         found = true;
@@ -14113,7 +14140,26 @@ impl Runtime {
                                                 }
                                                 break;
                                             }
-                                            cur = self.obj(c).proto;
+                                            if probe_sym {
+                                                let mut sym_hit = false;
+                                                for (pk, d) in o.properties.iter() {
+                                                    if let crate::value::PropertyKey::Symbol(rc) = pk {
+                                                        if rc.as_str() == key {
+                                                            if let Some(g) = &d.getter {
+                                                                if !matches!(g, Value::Undefined) {
+                                                                    found = true;
+                                                                }
+                                                            }
+                                                            sym_hit = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if sym_hit {
+                                                    break;
+                                                }
+                                            }
+                                            cur = o.proto;
                                         }
                                         found
                                     };
@@ -14121,7 +14167,38 @@ impl Runtime {
                                         let getter = self.find_getter(*id, &key).unwrap();
                                         self.call_function(getter, obj_v.clone(), Vec::new())?
                                     } else {
-                                        self.object_get(*id, &key)
+                                        // WKSL-EXT 1: object_get returns undefined for
+                                        // Symbol-keyed value properties when only the
+                                        // string-key path is taken. Scan the Symbol bucket
+                                        // for "@@" keys before falling back.
+                                        if key.starts_with("@@") {
+                                            let mut found_val: Option<Value> = None;
+                                            let mut cur = Some(*id);
+                                            while let Some(c) = cur {
+                                                let o = self.obj(c);
+                                                if let Some(d) = o.get_own(&key) {
+                                                    found_val = Some(d.value.clone());
+                                                    break;
+                                                }
+                                                let mut sym_hit = false;
+                                                for (pk, d) in o.properties.iter() {
+                                                    if let crate::value::PropertyKey::Symbol(rc) = pk {
+                                                        if rc.as_str() == key {
+                                                            found_val = Some(d.value.clone());
+                                                            sym_hit = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if sym_hit {
+                                                    break;
+                                                }
+                                                cur = o.proto;
+                                            }
+                                            found_val.unwrap_or_else(|| self.object_get(*id, &key))
+                                        } else {
+                                            self.object_get(*id, &key)
+                                        }
                                     }
                                 }
                             }
