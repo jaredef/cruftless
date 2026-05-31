@@ -3,9 +3,9 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/Developer/cruftless/.claude/worktrees/bridge-cse_01Wd1hEjajHFetR5shGMWmjS/pilots",
   "totals": {
-    "locales": 237,
+    "locales": 238,
     "top_level": 150,
-    "nested": 87,
+    "nested": 88,
     "warnings": 0
   },
   "locales": [
@@ -314,6 +314,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": "FOUNDED at CENP-EXT 0 (design-only). Phase 1 spawn + Phase 2 baseline-inspect + design articulation; no runtime substrate lands in this founding round."
+    },
+    {
+      "coord": "cjs-esm-namespace-pipeline/cjs-module-lexer-derived",
+      "tag": "L.cjs-esm-namespace-pipeline.cjs-module-lexer-derived",
+      "parent": "L.cjs-esm-namespace-pipeline",
+      "scope": "cjs-module-lexer-derived",
+      "depth": 2,
+      "rung_count": 1,
+      "status": "FOUNDED at CMLD-EXT 0 (design + fidelity probe). No runtime substrate lands in this founding round."
     },
     {
       "coord": "cjs-ns-shape-diff-residual",
