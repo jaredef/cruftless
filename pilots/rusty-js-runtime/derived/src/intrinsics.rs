@@ -21550,32 +21550,35 @@ impl Runtime {
                         "Map.groupBy: callback is not callable".into(),
                     ));
                 }
-                // Drain the iterable. Array-shape primary, iterator-shape fallback.
-                let items: Vec<Value> = match iterable {
-                    Value::Object(id) => {
-                        let len = rt.array_length(id);
-                        if len > 0 || matches!(rt.object_get(id, "length"), Value::Number(_)) {
-                            (0..len)
-                                .map(|i| rt.object_get(id, &i.to_string()))
-                                .collect()
-                        } else {
-                            let it_m = rt.object_get(id, "@@iterator");
-                            if rt.is_callable(&it_m) {
-                                let it = rt.call_function(it_m, Value::Object(id), Vec::new())?;
-                                drain_iterator(rt, it)?
-                            } else {
-                                return Err(RuntimeError::TypeError(
-                                    "Map.groupBy: argument is not iterable".into(),
-                                ));
-                            }
-                        }
-                    }
+                // AFID-EXT 3 (Map.groupBy sibling): interleaved iteration
+                // per ECMA-262 §24.1.2.2 + GroupBy. Prior impl array-shape-
+                // first + drain_iterator fallback eager-collected; rewrite
+                // routes through the same interleave-shape as Object.groupBy
+                // with iter_close_rt on abrupt completion.
+                let id = match iterable {
+                    Value::Object(id) => id,
                     _ => {
                         return Err(RuntimeError::TypeError(
                             "Map.groupBy: argument is not iterable".into(),
                         ))
                     }
                 };
+                let it_m = rt.object_get(id, "@@iterator");
+                if !rt.is_callable(&it_m) {
+                    return Err(RuntimeError::TypeError(
+                        "Map.groupBy: argument is not iterable".into(),
+                    ));
+                }
+                let iter = rt.call_function(it_m, Value::Object(id), Vec::new())?;
+                let iter_id = match iter {
+                    Value::Object(iid) => iid,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "iterator is not an object".into(),
+                        ))
+                    }
+                };
+                let next_fn = rt.object_get(iter_id, "next");
                 // Construct a new Map via the ctor so it's properly wired.
                 let new_map =
                     rt.call_function(Value::Object(map_ctor), Value::Undefined, Vec::new())?;
@@ -21587,11 +21590,33 @@ impl Runtime {
                     Value::Object(id) => id,
                     _ => return Ok(Value::Object(map_id)),
                 };
-                // Group items by ToString(cb(item)). Within each bucket, append.
-                for v in items {
-                    let key_v = rt.call_function(cb.clone(), Value::Undefined, vec![v.clone()])?;
+                loop {
+                    let result = rt.call_function(
+                        next_fn.clone(),
+                        Value::Object(iter_id),
+                        Vec::new(),
+                    )?;
+                    let rid = match result {
+                        Value::Object(id) => id,
+                        _ => {
+                            let _ = crate::intrinsics::iter_close_rt(rt, iter_id);
+                            return Err(RuntimeError::TypeError(
+                                "iterator next did not return an object".into(),
+                            ));
+                        }
+                    };
+                    if abstract_ops::to_boolean(&rt.object_get(rid, "done")) {
+                        break;
+                    }
+                    let v = rt.object_get(rid, "value");
+                    let key_v = match rt.call_function(cb.clone(), Value::Undefined, vec![v.clone()]) {
+                        Ok(kv) => kv,
+                        Err(e) => {
+                            let _ = crate::intrinsics::iter_close_rt(rt, iter_id);
+                            return Err(e);
+                        }
+                    };
                     let key_s = abstract_ops::to_string(&key_v).as_str().to_string();
-                    // Get or create the bucket array.
                     let bucket_id = match rt.object_get(storage, &key_s) {
                         Value::Object(id) => id,
                         _ => {

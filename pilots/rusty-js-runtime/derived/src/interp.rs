@@ -5969,14 +5969,67 @@ impl Runtime {
             .get(1)
             .cloned()
             .ok_or_else(|| RuntimeError::TypeError("Object.groupBy: callbackFn required".into()))?;
-        let entries = crate::intrinsics::collect_iterable(self, items)?;
+        // AFID-EXT 3: interleaved iteration per ECMA-262 §23.1.2.5
+        // Object.groupBy + GroupBy abstract op. Prior impl eager-drained
+        // via collect_iterable then ran cb per element, OOMing on infinite
+        // iters when cb would throw. Rewrite calls iter.next() per
+        // element + cb + assign; on any abrupt completion, IteratorClose-
+        // best-effort then propagate the original error per §7.4.9 step 4.
+        let iter_id = match items {
+            Value::Object(id) => match self.object_get(id, "@@iterator") {
+                Value::Undefined => {
+                    return Err(RuntimeError::TypeError(
+                        "Object.groupBy: argument is not iterable".into(),
+                    ))
+                }
+                method => {
+                    let it = self.call_function(method, Value::Object(id), Vec::new())?;
+                    match it {
+                        Value::Object(iid) => iid,
+                        _ => {
+                            return Err(RuntimeError::TypeError(
+                                "iterator is not an object".into(),
+                            ))
+                        }
+                    }
+                }
+            },
+            _ => {
+                return Err(RuntimeError::TypeError(
+                    "Object.groupBy: argument is not iterable".into(),
+                ))
+            }
+        };
+        let next_fn = self.object_get(iter_id, "next");
         let out = self.alloc_object(crate::value::Object::new_ordinary());
-        for (i, v) in entries.into_iter().enumerate() {
-            let key_v = self.call_function(
+        let mut k: usize = 0;
+        loop {
+            let result =
+                self.call_function(next_fn.clone(), Value::Object(iter_id), Vec::new())?;
+            let rid = match result {
+                Value::Object(id) => id,
+                _ => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    return Err(RuntimeError::TypeError(
+                        "iterator next did not return an object".into(),
+                    ));
+                }
+            };
+            if to_boolean(&self.object_get(rid, "done")) {
+                break;
+            }
+            let v = self.object_get(rid, "value");
+            let key_v = match self.call_function(
                 cb.clone(),
                 Value::Undefined,
-                vec![v.clone(), Value::Number(i as f64)],
-            )?;
+                vec![v.clone(), Value::Number(k as f64)],
+            ) {
+                Ok(kv) => kv,
+                Err(e) => {
+                    let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                    return Err(e);
+                }
+            };
             let key = crate::abstract_ops::to_string(&key_v).as_str().to_string();
             let arr_id = match self.object_get(out, &key) {
                 Value::Object(id) => id,
@@ -5990,6 +6043,7 @@ impl Runtime {
             let n = self.array_length(arr_id);
             self.object_set(arr_id, n.to_string(), v);
             self.object_set(arr_id, "length".into(), Value::Number((n + 1) as f64));
+            k += 1;
         }
         Ok(Value::Object(out))
     }

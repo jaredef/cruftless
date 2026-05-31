@@ -129,3 +129,31 @@ ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8.
 **Finding AFID.3 CLOSED**. WeakMap ctor would have the analogous issue if it had its own ctor block (current WeakMap ctor was OK at the ctor stage per the earlier triage, so no separate AFID-EXT 2 work needed for it — Map ctor path doesn't go through the same Set/WeakSet ctor closure).
 
 **Status**: AFID-EXT 2 LANDED. Set + WeakSet ctor now uses identity-stable storage keys matching set_proto_add_via + Set.has + Set.delete. Object members compare by reference at every dispatch surface.
+
+## AFID-EXT 3 — LANDED (2026-05-31) — Object.groupBy + Map.groupBy interleave + close-on-cb-throw
+
+**Trigger**: AFID.2 audit residual. Object.groupBy and Map.groupBy still used eager-collect (collect_iterable / array-length-fallback + drain_iterator) + for-loop, missing IteratorClose on cb abrupt completion. Keeper APPROVED via Telegram 10700 ("Continue").
+
+**Substrate** (~80 LOC across two sites in `pilots/rusty-js-runtime/derived/src/`):
+- `interp.rs:5966` `object_group_by_via`: rewrite to per-element next → cb → bucket-assign loop. On any per-element abrupt, iter_close_rt-best-effort + propagate original.
+- `intrinsics.rs:21537` Map.groupBy intrinsic closure: same shape but constructs the output Map via the ctor + stores into __map_data.
+
+**Yield**:
+
+```text
+AFID-EXT 3 7-cell probe: 7/7 PASS
+  Object.groupBy([1..5], odd/even) regression                 ✓
+  Object.groupBy cb throws -> close + propagate cb Error      ✓
+  Object.groupBy next non-Object -> close + TypeError         ✓
+  Object.groupBy(42) -> TypeError                             ✓
+  Map.groupBy([1..5], odd/even) regression                    ✓
+  Map.groupBy cb throws -> close + propagate                  ✓
+  Object.groupBy(Set([1..4])) regression                      ✓
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+Full regression sweep preserved (9 probes across IPTD, ICES, AFID, PIID).
+```
+
+**Phase 3 (Pin-Art if duplicated)** per Rule 24: the interleave + iter_close_rt + propagate-original pattern now appears at NINE runtime-tier intrinsic sites: Array.from, Set ctor, WeakSet ctor, Promise.race, Promise.all, Promise.allSettled, Promise.any, Object.groupBy, Map.groupBy. Generic `interleave_iter_with<F>` helper threshold long met; deferred pending body-shape variance review (the Promise.* variants have PromiseCapability tracking; AFID variants are direct mutation; gnerifying would need a closure boxing approach).
+
+**Status**: AFID-EXT 3 LANDED. Object.groupBy + Map.groupBy now spec-correct on interleave + close-on-throw. The runtime-tier iterable-consumer audit's primary scope (collect_iterable callers needing spec-correct IteratorClose) is now closed across the surveyed intrinsics.
