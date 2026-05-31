@@ -87,7 +87,6 @@ impl Runtime {
         // §27.2.4.4 + §27.2.4.7 step 1-2 "Let C be the this value. If
         // Type(C) is not Object, throw TypeError." Closure inlines the
         // Object check before delegating to the generated *_via path.
-        let promise_obj_id = promise_obj;
         crate::intrinsics::register_intrinsic_method(
             self,
             promise_obj,
@@ -101,18 +100,15 @@ impl Runtime {
                     ));
                 }
                 let x = args.first().cloned().unwrap_or(Value::Undefined);
-                // PSCV-EXT 1 §27.2.4.7 PromiseResolve: if C === Promise
-                // (the native built-in), short-circuit through the fast
-                // promise_resolve_via path. Otherwise route through
-                // NewPromiseCapability(C) + capability.[[Resolve]](x) so
-                // subclasses receive a C-shaped instance.
-                if matches!(c, Value::Object(cid) if cid == promise_obj_id) {
-                    return rt.promise_resolve_via(&x);
-                }
-                // §27.2.4.7 step 1.a: if IsPromise(x) and x.constructor === C, return x.
+                // PRESOLVE-EXT 1 §27.2.4.7 PromiseResolve step 1: if
+                // IsPromise(x), let xConstructor be Get(x, "constructor"),
+                // and if SameValue(xConstructor, C), return x.  Spec routes
+                // ALL other cases through NewPromiseCapability(C) +
+                // cap.[[Resolve]](x), so x.constructor=null or a different
+                // ctor results in a fresh C-shaped capability promise.
                 if let Value::Object(xid) = &x {
                     if matches!(rt.obj(*xid).internal_kind, InternalKind::Promise(_)) {
-                        let xc = rt.object_get(*xid, "constructor");
+                        let xc = rt.spec_get(&x, "constructor")?;
                         if matches!((&xc, &c), (Value::Object(a), Value::Object(b)) if a == b) {
                             return Ok(x);
                         }
@@ -137,9 +133,8 @@ impl Runtime {
                     ));
                 }
                 let r = args.first().cloned().unwrap_or(Value::Undefined);
-                if matches!(c, Value::Object(cid) if cid == promise_obj_id) {
-                    return rt.promise_reject_via(&r);
-                }
+                // §27.2.4.4 Promise.reject always uses NewPromiseCapability(C)
+                // + cap.[[Reject]](r); there's no IsPromise short-circuit.
                 let (cap_promise, _cap_resolve, cap_reject) = rt.new_promise_capability(&c)?;
                 rt.call_function(cap_reject, Value::Undefined, vec![r])?;
                 Ok(cap_promise)
