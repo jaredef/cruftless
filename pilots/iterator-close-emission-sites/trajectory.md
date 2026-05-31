@@ -86,3 +86,59 @@ Regression sweep:
 **Finding ICES.1 empirical validation**: Finding ICES.1 (LoopFrame as cross-frame IteratorClose anchor) called for a single optional iter slot per frame to suffice across break, return, and throw paths regardless of nesting depth. EXT 2 lands as the predicted-and-confirmed first cross-path application. The break (target-frame range) and return (top-to-bottom range) emission patterns both consume the same primitive without auxiliary state. ICES-EXT 3 (throw) will be the third instance, completing the predicted abstraction. Two of three applications validated; recurrence threshold for findings-disposition lift-to-arc or standing-rule promotion approaches.
 
 **Status**: ICES-EXT 2 LANDED. Return path now spec-correct. ICES-EXT 3 (throw inside for-of body) is the final residual within this locale's primary scope.
+
+## ICES-EXT 3 — LANDED (2026-05-31) — for-of body-throw IterClose via synthetic try-catch + per-frame TryExit unwind
+
+**Trigger**: Direct carry-forward from ICES-EXT 2 chapter-close (last residual within ICES primary scope). Keeper APPROVED via Telegram 10680.
+
+**Substrate** (~70 LOC across one file, `pilots/rusty-js-bytecode/derived/src/compiler.rs`):
+
+1. `LoopFrame` gains `for_of_body_try_open: bool`. Set `true` while compiling the for-of body inside the synthetic try wrap; reset to `false` after.
+
+2. For-of body wrap: `Op::TryEnter <catch_off>` before `compile_stmt(body)`, `Op::TryExit` after. Per-loop catch stub after the back-jump (unreachable from fall-through; reached only via the runtime's catch-dispatch on throw): spill thrown value to fresh `<for-of.body.throw>` temp, `emit_iter_close_call(iter_slot)`, reload thrown value, `Op::Throw`. If close itself throws (non-callable iter.return), that throw replaces body's per §14.7.5.6 step 5 + §13.15.7 `IfAbruptCloseIterator`.
+
+3. Break / continue / return paths now emit `Op::TryExit` per crossed for-of frame with `for_of_body_try_open = true`, BEFORE the existing `emit_iter_close_call` and BEFORE the control-flow jump. Per-frame semantics:
+   - **break** (target = exited): `TryExit + close` per crossed frame including target.
+   - **continue crossed** (frames ABOVE target, exited): `TryExit + close` per frame.
+   - **continue target** (re-entered): `TryExit` only (the iter is NOT closed; the try-frame is re-pushed at the next iteration's TryEnter).
+   - **return** (all frames in function exited): `TryExit + close` per for-of frame innermost-first.
+
+**Yield**:
+
+```text
+ICES-EXT 3 probe (/tmp/probe-ices-ext-3.js): 9/9 PASS
+  throw in body -> iter.return() called                       ✓
+  nested for-of throw -> close inner first then outer         ✓ (["IN","OUT"])
+  thrown value preserved through close                        ✓ ("propagate")
+  non-callable iter.return -> close-throw replaces body-throw ✓ (TypeError surfaces)
+  outer try-catch sees close before catch handler runs        ✓
+  break-close (regression)                                    ✓
+  return-close (regression)                                   ✓
+  continue keeps iterating across n=3 (try-stack balanced)    ✓
+  continue-then-break close                                   ✓
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+
+Regression sweep:
+  Original 7-cell IPTD probe:                7/7 preserved
+  Cross-consumer 7-cell probe:               7/7 preserved
+  Labelled-break probe (innermost-first):    ["B","A"] preserved
+  ICES-EXT 2 6-cell probe:                   6/6 preserved
+```
+
+**Phase 2 (Baseline-inspect)** per Rule 23: confirmed the runtime's `TryFrame` (interp.rs:13225-13238) pushes on `Op::TryEnter`, pops on `Op::TryExit`, and is per-call-frame (`frame.try_stack`). Bare try-without-finalizer leaks the frame if escape paths don't TryExit — the EXT 3 unwind discipline is structurally required for synthetic body-throw wraps and was the binding constraint on the abrupt-completion path design.
+
+**Phase 3 (Pin-Art if duplicated)** per Rule 24: empirically validated — the `(try_open, close_slot)` unwind walk now appears at 3 sites (break-labelled, continue-crossed, return) PLUS the synthetic catch stub. Rule 24 threshold met. The factoring helper `emit_frame_unwind(frame_indices, mode: Exits | ReEntersTarget)` is a candidate for a Rule-24 follow-up rung at the next emit-site recurrence (yield* delegation close, async-iter unwind, or for-await body throw).
+
+**Phase 4 (Revert-then-deeper-layer if negative)** per Rule 13: not invoked — closure positive on first probe.
+
+**Phase 5 (Chapter-close-inspect)** per Rule 15: ICES primary scope (break + return + throw inside plain for-of body) now closed. Residuals are sibling locales, not within ICES:
+- **for-await body throw**: parallel synthetic try wrap at the for-await emission site (uses `forawait_tmp` path); deferred to a for-await-specific rung.
+- **yield\* delegation close**: separate adjacent locale `iterator-close-on-abrupt/`.
+- **spread/Array.from close on throw**: per the ICES seed §Methodology rung 5, lower-priority; deferred.
+
+**Finding ICES.1 closed**: cross-frame LoopFrame anchor predicted across break/return/throw, validated three times (EXT 1, 2, 3) + extended to the synthetic catch stub. Recurrence threshold for standing-rule promotion satisfied; surface to findings-disposition cycle as candidate for `apparatus/docs/predictive-ruleset.md` lift.
+
+**Finding ICES.2 surfaced**: Rule 24 emit-site coherence threshold met at three sites for the `(try_open, close_slot)` unwind walk pattern. `emit_frame_unwind` helper promotion deferred pending a fourth emit-site appearance.
+
+**Status**: ICES-EXT 3 LANDED. ICES locale's primary scope (plain-for-of break + return + throw IteratorClose discipline) is now spec-complete at the bytecode compiler tier. Plain-for-of, destructuring, array-spread, Array.from, spread-call, yield*, destructuring-rest — all consume the same helper-tier `__destr_iter_close` discipline; the for-of-specific control-flow paths now emit the matching IteratorClose calls per §14.7.5.6 step 5 + §13.15.7. for-await + yield* delegation + spread-on-throw remain as separable sibling locales.

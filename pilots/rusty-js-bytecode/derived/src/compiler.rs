@@ -489,6 +489,15 @@ struct LoopFrame {
     /// before the exit jump. `None` for non-for-of frames (regular
     /// `while`, `do-while`, C-style `for`, switch).
     for_of_iter_slot: Option<u16>,
+    /// ICES-EXT 3: true while the compiler is emitting the body of a
+    /// for-of loop wrapped in a synthetic `Op::TryEnter` / `Op::TryExit`
+    /// for body-throw IteratorClose discipline per §14.7.5.6 step 5 +
+    /// §13.15.7 abrupt-completion propagation. Any abrupt completion
+    /// from inside the body (break, continue, return) that crosses
+    /// this frame must emit a matching `Op::TryExit` before the
+    /// control-flow jump so the synthetic try-frame is popped from the
+    /// runtime's per-call try_stack.
+    for_of_body_try_open: bool,
 }
 
 /// Tier-Ω.5.o: frame for a LabelledStatement wrapping a non-loop body.
@@ -1643,21 +1652,26 @@ impl Compiler {
                     }
                     self.in_finalizer_emission = false;
                 }
-                // ICES-EXT 2: IteratorClose for every for-of frame in this
-                // function between the return site and the function frame,
-                // innermost first per ECMA-262 §14.7.5.6 step 5 +
-                // §13.15.7 abrupt-completion propagation. Each
-                // emit_iter_close_call is stack-neutral; the return value
-                // pushed above stays at the top through the close
-                // sequence and is consumed by Op::Return below.
-                let close_slots: Vec<u16> = self
+                // ICES-EXT 2 + 3: per for-of frame between the return site
+                // and the function frame, pop the synthetic body try-frame
+                // (if open) then call IteratorClose, innermost first per
+                // §14.7.5.6 step 5 + §13.15.7. Each emit_iter_close_call
+                // is stack-neutral; the return value pushed above stays at
+                // the top through the unwind sequence and is consumed by
+                // Op::Return below.
+                let frame_unwinds: Vec<(bool, Option<u16>)> = self
                     .loop_stack
                     .iter()
                     .rev()
-                    .filter_map(|f| f.for_of_iter_slot)
+                    .map(|f| (f.for_of_body_try_open, f.for_of_iter_slot))
                     .collect();
-                for slot in close_slots {
-                    self.emit_iter_close_call(slot);
+                for (try_open, close_slot) in frame_unwinds {
+                    if try_open {
+                        encode_op(&mut self.bytecode, Op::TryExit);
+                    }
+                    if let Some(slot) = close_slot {
+                        self.emit_iter_close_call(slot);
+                    }
                 }
                 encode_op(&mut self.bytecode, Op::Return);
             }
@@ -1952,6 +1966,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                     for_of_iter_slot: None,
+                    for_of_body_try_open: false,
                 });
                 self.compile_expr(test)?;
                 let jump_if_false = self.emit_jump(Op::JumpIfFalse);
@@ -1983,6 +1998,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                     for_of_iter_slot: None,
+                    for_of_body_try_open: false,
                 });
                 self.compile_stmt(body)?;
                 let test_pos = self.bytecode.len();
@@ -2054,6 +2070,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                     for_of_iter_slot: None,
+                    for_of_body_try_open: false,
                 });
                 let jump_if_false = if let Some(t) = test {
                     self.compile_expr(t)?;
@@ -2297,6 +2314,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                     for_of_iter_slot: Some(iter_slot),
+                    for_of_body_try_open: false,
                 });
                 // IPBR-EXT 2 (2026-05-24, iter-protocol-bytecode-rewrite
                 // locale): emit Op::ForOfFastNext as the first op of the
@@ -2473,8 +2491,43 @@ impl Compiler {
                         self.emit_destructure(pat, bind_slot)?;
                     }
                 }
+                // ICES-EXT 3: wrap the user body in a synthetic try-catch
+                // so a body-thrown exception triggers IteratorClose before
+                // re-throw per ECMA-262 §14.7.5.6 step 5. The catch-pos
+                // stub at end-of-loop spills the thrown value, calls
+                // __destr_iter_close, reloads, and re-throws. Break /
+                // continue / return inside the body emit Op::TryExit
+                // before their control-flow jump to pop the synthetic
+                // try-frame from the runtime per-call try_stack.
+                encode_op(&mut self.bytecode, Op::TryEnter);
+                let body_catch_patch = self.bytecode.len();
+                encode_u32(&mut self.bytecode, 0);
+                self.loop_stack.last_mut().unwrap().for_of_body_try_open = true;
                 self.compile_stmt(body)?;
+                self.loop_stack.last_mut().unwrap().for_of_body_try_open = false;
+                encode_op(&mut self.bytecode, Op::TryExit);
                 self.emit_back_jump(loop_start);
+                // Synthetic catch handler: thrown value on stack on entry.
+                // Spill, close, reload, re-throw. If __destr_iter_close
+                // itself throws (e.g. non-callable iter.return), that
+                // throw replaces the original per §14.7.5.6 (the close-
+                // step's abrupt completion supersedes the body's per
+                // §13.15.7 IfAbruptCloseIterator).
+                let body_catch_pos = self.bytecode.len();
+                self.bytecode[body_catch_patch..body_catch_patch + 4]
+                    .copy_from_slice(&(body_catch_pos as u32).to_le_bytes());
+                let throw_tmp = self.alloc_temp("<for-of.body.throw>");
+                encode_op(&mut self.bytecode, Op::StoreLocal);
+                encode_u16(&mut self.bytecode, throw_tmp);
+                let iter_slot_for_catch = self
+                    .loop_stack
+                    .last()
+                    .and_then(|f| f.for_of_iter_slot)
+                    .expect("for-of frame must carry iter_slot");
+                self.emit_iter_close_call(iter_slot_for_catch);
+                encode_op(&mut self.bytecode, Op::LoadLocal);
+                encode_u16(&mut self.bytecode, throw_tmp);
+                encode_op(&mut self.bytecode, Op::Throw);
                 self.patch_jump(j_done);
                 // At the exit, the result object is on the stack — pop it.
                 encode_op(&mut self.bytecode, Op::Pop);
@@ -2507,7 +2560,14 @@ impl Compiler {
                         let finalizers = frame.pending_finalizers.clone();
                         // ICES-EXT 1: IteratorClose for the for-of frame
                         // being exited per ECMA-262 §14.7.5.6 step 5.
+                        // ICES-EXT 3: also pop the synthetic body try-frame
+                        // before close so the runtime's per-call try_stack
+                        // stays balanced (the close call may itself throw
+                        // on non-callable iter.return; that throw must
+                        // surface to the surrounding try-catch, not the
+                        // synthetic one we just popped).
                         let close_slot = frame.for_of_iter_slot;
+                        let try_open = frame.for_of_body_try_open;
                         if !self.in_finalizer_emission {
                             self.in_finalizer_emission = true;
                             for fin in finalizers.iter().rev() {
@@ -2515,6 +2575,9 @@ impl Compiler {
                                 self.compile_stmt(fin)?;
                             }
                             self.in_finalizer_emission = false;
+                        }
+                        if try_open {
+                            encode_op(&mut self.bytecode, Op::TryExit);
                         }
                         if let Some(slot) = close_slot {
                             self.emit_iter_close_call(slot);
@@ -2538,20 +2601,30 @@ impl Compiler {
                         .rposition(|f| f.label.as_deref() == Some(needle.as_str()))
                     {
                         let finalizers = self.loop_stack[idx].pending_finalizers.clone();
-                        // ICES-EXT 1: IteratorClose for every for-of frame
-                        // the labelled break crosses, innermost first per
-                        // §14.7.5.6 step 5 + §13.15.7 abrupt-completion
-                        // propagation.
-                        let close_slots: Vec<u16> = (idx..self.loop_stack.len())
+                        // ICES-EXT 1 + 3: per crossed for-of frame, pop
+                        // synthetic body try-frame then call IteratorClose,
+                        // innermost-first per §14.7.5.6 step 5 + §13.15.7.
+                        let frame_unwinds: Vec<(bool, Option<u16>)> = (idx
+                            ..self.loop_stack.len())
                             .rev()
-                            .filter_map(|i| self.loop_stack[i].for_of_iter_slot)
+                            .map(|i| {
+                                (
+                                    self.loop_stack[i].for_of_body_try_open,
+                                    self.loop_stack[i].for_of_iter_slot,
+                                )
+                            })
                             .collect();
                         for fin in finalizers.iter().rev() {
                             encode_op(&mut self.bytecode, Op::TryExit);
                             self.compile_stmt(fin)?;
                         }
-                        for slot in close_slots {
-                            self.emit_iter_close_call(slot);
+                        for (try_open, close_slot) in frame_unwinds {
+                            if try_open {
+                                encode_op(&mut self.bytecode, Op::TryExit);
+                            }
+                            if let Some(slot) = close_slot {
+                                self.emit_iter_close_call(slot);
+                            }
                         }
                         let patch_site = encode_op(&mut self.bytecode, Op::Jump);
                         encode_i32(&mut self.bytecode, 0);
@@ -2736,9 +2809,38 @@ impl Compiler {
                     return Err(self.err(span, "continue outside of loop"));
                 };
                 let finalizers = self.loop_stack[idx].pending_finalizers.clone();
+                // ICES-EXT 3: pop synthetic body try-frames + close
+                // IteratorClose-eligible iters for all crossed for-of
+                // frames innermost-first. Crossed frames (above target)
+                // are EXITED — close their iter. Target frame is RE-
+                // ENTERED next iteration (the loop body's TryEnter
+                // refires at loop_start), so its try-frame must be popped
+                // BUT its iter must NOT be closed.
+                let crossed_unwinds: Vec<(bool, Option<u16>)> = ((idx + 1)
+                    ..self.loop_stack.len())
+                    .rev()
+                    .map(|i| {
+                        (
+                            self.loop_stack[i].for_of_body_try_open,
+                            self.loop_stack[i].for_of_iter_slot,
+                        )
+                    })
+                    .collect();
+                let target_try_open = self.loop_stack[idx].for_of_body_try_open;
                 for fin in finalizers.iter().rev() {
                     encode_op(&mut self.bytecode, Op::TryExit);
                     self.compile_stmt(fin)?;
+                }
+                for (try_open, close_slot) in crossed_unwinds {
+                    if try_open {
+                        encode_op(&mut self.bytecode, Op::TryExit);
+                    }
+                    if let Some(slot) = close_slot {
+                        self.emit_iter_close_call(slot);
+                    }
+                }
+                if target_try_open {
+                    encode_op(&mut self.bytecode, Op::TryExit);
                 }
                 let pending = self.loop_stack[idx].continue_pending;
                 if pending {
@@ -2902,6 +3004,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: None,
                     for_of_iter_slot: None,
+                    for_of_body_try_open: false,
                 });
 
                 // 5. Emit each case body in textual order. Patch its
@@ -3114,6 +3217,7 @@ impl Compiler {
                     pending_finalizers: Vec::new(),
                     label: self.pending_label.take(),
                     for_of_iter_slot: None,
+                    for_of_body_try_open: false,
                 });
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, idx_slot);
