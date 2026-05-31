@@ -37,6 +37,19 @@ impl Runtime {
                 ));
             }
             let p = new_promise(rt);
+            // PSCV-EXT 1: per §27.2.3.1 step 3 OrdinaryCreateFromConstructor —
+            // honor NewTarget so subclass derivation (`class SubP extends
+            // Promise`) wires the result's [[Prototype]] to SubP.prototype.
+            // Without this, `new SubP(...) instanceof SubP` is false and
+            // Promise.all.call(SubP, ...) returns a default Promise.
+            if let Some(nt) = rt.current_new_target.clone() {
+                if let Value::Object(nt_id) = nt {
+                    let proto = rt.object_get(nt_id, "prototype");
+                    if let Value::Object(pid) = proto {
+                        rt.obj_mut(p).proto = Some(pid);
+                    }
+                }
+            }
             let p_for_resolve = p;
             let p_for_reject = p;
             // PEFM-EXT 1: per ECMA-262 §27.2.1.3.1/§27.2.1.3.2 the
@@ -74,30 +87,64 @@ impl Runtime {
         // §27.2.4.4 + §27.2.4.7 step 1-2 "Let C be the this value. If
         // Type(C) is not Object, throw TypeError." Closure inlines the
         // Object check before delegating to the generated *_via path.
+        let promise_obj_id = promise_obj;
         crate::intrinsics::register_intrinsic_method(
             self,
             promise_obj,
             "resolve",
             1,
-            |rt, args| {
+            move |rt, args| {
                 let c = rt.current_this();
                 if !matches!(c, Value::Object(_)) {
                     return Err(RuntimeError::TypeError(
                         "Promise.resolve: this is not an Object".into(),
                     ));
                 }
-                crate::generated::promise_resolve(rt, c, args)
+                let x = args.first().cloned().unwrap_or(Value::Undefined);
+                // PSCV-EXT 1 §27.2.4.7 PromiseResolve: if C === Promise
+                // (the native built-in), short-circuit through the fast
+                // promise_resolve_via path. Otherwise route through
+                // NewPromiseCapability(C) + capability.[[Resolve]](x) so
+                // subclasses receive a C-shaped instance.
+                if matches!(c, Value::Object(cid) if cid == promise_obj_id) {
+                    return rt.promise_resolve_via(&x);
+                }
+                // §27.2.4.7 step 1.a: if IsPromise(x) and x.constructor === C, return x.
+                if let Value::Object(xid) = &x {
+                    if matches!(rt.obj(*xid).internal_kind, InternalKind::Promise(_)) {
+                        let xc = rt.object_get(*xid, "constructor");
+                        if matches!((&xc, &c), (Value::Object(a), Value::Object(b)) if a == b) {
+                            return Ok(x);
+                        }
+                    }
+                }
+                let (cap_promise, cap_resolve, _cap_reject) =
+                    rt.new_promise_capability(&c)?;
+                rt.call_function(cap_resolve, Value::Undefined, vec![x])?;
+                Ok(cap_promise)
             },
         );
-        crate::intrinsics::register_intrinsic_method(self, promise_obj, "reject", 1, |rt, args| {
-            let c = rt.current_this();
-            if !matches!(c, Value::Object(_)) {
-                return Err(RuntimeError::TypeError(
-                    "Promise.reject: this is not an Object".into(),
-                ));
-            }
-            crate::generated::promise_reject(rt, c, args)
-        });
+        crate::intrinsics::register_intrinsic_method(
+            self,
+            promise_obj,
+            "reject",
+            1,
+            move |rt, args| {
+                let c = rt.current_this();
+                if !matches!(c, Value::Object(_)) {
+                    return Err(RuntimeError::TypeError(
+                        "Promise.reject: this is not an Object".into(),
+                    ));
+                }
+                let r = args.first().cloned().unwrap_or(Value::Undefined);
+                if matches!(c, Value::Object(cid) if cid == promise_obj_id) {
+                    return rt.promise_reject_via(&r);
+                }
+                let (cap_promise, _cap_resolve, cap_reject) = rt.new_promise_capability(&c)?;
+                rt.call_function(cap_reject, Value::Undefined, vec![r])?;
+                Ok(cap_promise)
+            },
+        );
         // Ω.5.P63.E52: Promise.then / catch_ routed through IR.
         crate::intrinsics::register_intrinsic_method(self, promise_obj, "then", 3, |rt, args| {
             crate::generated::promise_prototype_then(rt, rt.current_this(), args)

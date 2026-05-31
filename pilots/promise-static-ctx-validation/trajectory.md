@@ -20,3 +20,33 @@ Full regression sweep preserved (10 probes).
 ```
 
 **Status**: PSCV-EXT 0 LANDED. Closes ~36 test262 cells across the 6 Promise/ctx-non-object surfaces. Subclass routing (ctx-ctor) carry-forward to PSCV-EXT 1.
+
+## PSCV-EXT 1 — LANDED (2026-05-31) — Subclass routing via NewTarget + Promise.resolve/reject capability path
+
+**Trigger**: PSCV-EXT 0 chapter-close residual. The 3 ctx-ctor probe cells failed because the Promise constructor did not honor NewTarget, and Promise.resolve / Promise.reject discarded `this` and always returned a native Promise instance. Keeper APPROVED via Telegram 10711.
+
+**Substrate** (~50 LOC, promise.rs):
+
+1. Promise constructor (§27.2.3.1 step 3 OrdinaryCreateFromConstructor): after `new_promise(rt)`, override the result's `[[Prototype]]` with `current_new_target.prototype` when NewTarget is set. SubP-derived constructions now inherit SubP.prototype.
+
+2. `Promise.resolve` closure (§27.2.4.7 PromiseResolve):
+   - If C === native Promise, short-circuit through `promise_resolve_via` (fast path).
+   - Else: §27.2.4.7 step 1 "if IsPromise(x) and x.constructor === C, return x" check, then NewPromiseCapability(C) + Call(cap.[[Resolve]], undefined, [x]) per spec.
+
+3. `Promise.reject` closure (§27.2.4.4): mirror of resolve — short-circuit on native; else NewPromiseCapability(C) + Call(cap.[[Reject]], undefined, [r]).
+
+**Yield**:
+
+```text
+PSCV probe (/tmp/probe-pscv.js): 39/39 PASS (was 36/39)
+
+  6 methods × 6 non-Object this -> TypeError (36 cells; EXT 0)
+  Promise.all.call(SubP,[]) instanceof SubP                       ✓
+  Promise.race.call(SubP,[Promise.resolve(1)]) instanceof SubP    ✓
+  Promise.resolve.call(SubP,1) instanceof SubP                    ✓
+
+cargo test --release -p rusty-js-runtime --lib: 74/0/1 preserved.
+Full regression sweep preserved (9 probes).
+```
+
+**Status**: PSCV-EXT 1 LANDED. ctx-ctor subclass family closed. PSCV locale primary scope complete; Promise.all/race/any/allSettled/resolve/reject all spec-correct on both ctx-non-object (TypeError) and ctx-ctor (subclass-shaped result).
