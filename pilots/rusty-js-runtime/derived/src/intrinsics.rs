@@ -7586,7 +7586,17 @@ impl Runtime {
                 _ => return Err(RuntimeError::TypeError("iterator is not an object".into())),
             };
             let next_fn = rt.object_get(iter_obj, "next");
-            rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())
+            let result = rt.call_function(next_fn, Value::Object(iter_obj), Vec::new())?;
+            // ECMA-262 §7.4.5 IteratorNext step 3: "If Type(result) is not
+            // Object, throw a TypeError exception." Closes the for-of
+            // iterator-next-result-type test cell + sibling iterator-protocol
+            // residual cells per the SAMPLE.1 chain-bundle decomposition.
+            if !matches!(result, Value::Object(_)) {
+                return Err(RuntimeError::TypeError(
+                    "iterator.next() returned a non-object value".into(),
+                ));
+            }
+            Ok(result)
         });
         register_engine_helper(self, "__destr_iter_close", |rt, args| {
             // ECMA-262 §7.4.9 IteratorClose. Called when the destructure
@@ -7604,9 +7614,15 @@ impl Runtime {
                 return Ok(Value::Undefined);
             }
             if !matches!(ret, Value::Object(_)) {
-                // Per §7.4.9 step 4-5: GetMethod returns undefined for non-callable;
-                // callable check is implicit via Value::Object above.
-                return Ok(Value::Undefined);
+                // ECMA-262 §7.4.9 IteratorClose step 2 routes through §7.3.10
+                // GetMethod which THROWS TypeError when the value is non-null,
+                // non-undefined, and non-callable. Prior behavior silently
+                // returned undefined, masking the spec-mandated throw. Closes
+                // the for-of iterator-close-non-throw-get-method-non-callable
+                // test cell.
+                return Err(RuntimeError::TypeError(
+                    "iterator.return is not callable".into(),
+                ));
             }
             let inner = rt.call_function(ret, Value::Object(iter_obj), Vec::new())?;
             if !matches!(inner, Value::Object(_)) {
