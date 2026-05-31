@@ -320,6 +320,56 @@ pub fn resolve_promise(rt: &mut Runtime, promise: ObjectRef, value: Value) {
                 }
             }
         }
+        // PRESOLVE-EXT 0: thenable resolution per §27.2.1.4. If value is an
+        // Object whose .then property is callable, defer fulfillment to a
+        // thenable-resolution job that calls value.then(resolveFn, rejectFn).
+        // If accessing .then throws, reject the promise with the thrown error.
+        // If .then is non-callable, fall through to ordinary fulfillment.
+        let then_v = match rt.spec_get(&value, "then") {
+            Ok(v) => v,
+            Err(e) => {
+                let reason = match e {
+                    crate::interp::RuntimeError::Thrown(v) => v,
+                    other => {
+                        let msg = format!("{:?}", other);
+                        Value::String(std::rc::Rc::new(msg))
+                    }
+                };
+                reject_promise(rt, promise, reason);
+                return;
+            }
+        };
+        if rt.is_callable(&then_v) {
+            // Synchronously invoke thenable.then(resolveFn, rejectFn) — our
+            // promise model already settles synchronously elsewhere, so the
+            // microtask-job deferral isn't load-bearing here.
+            let p_resolve = promise;
+            let resolve_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                resolve_promise(rt, p_resolve, v);
+                Ok(Value::Undefined)
+            });
+            let p_reject = promise;
+            let reject_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
+                let v = args.first().cloned().unwrap_or(Value::Undefined);
+                reject_promise(rt, p_reject, v);
+                Ok(Value::Undefined)
+            });
+            let resolve_id = rt.alloc_object(resolve_fn);
+            let reject_id = rt.alloc_object(reject_fn);
+            if let Err(e) = rt.call_function(
+                then_v,
+                value,
+                vec![Value::Object(resolve_id), Value::Object(reject_id)],
+            ) {
+                let reason = match e {
+                    crate::interp::RuntimeError::Thrown(v) => v,
+                    other => Value::String(std::rc::Rc::new(format!("{:?}", other))),
+                };
+                reject_promise(rt, promise, reason);
+            }
+            return;
+        }
     }
     let reactions = {
         let p = rt.obj_mut(promise);
