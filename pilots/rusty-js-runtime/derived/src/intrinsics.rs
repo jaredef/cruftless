@@ -18178,7 +18178,8 @@ impl Runtime {
                                 }
                             },
                         };
-                        let method = rt.object_get(arg_id, "@@iterator");
+                        // WKSL-EXT 2: route through shared Symbol Rc.
+                        let method = rt.lookup_well_known_method(arg_id, "@@iterator")?;
                         let iter = rt.call_function(method, Value::Object(arg_id), Vec::new())?;
                         let iter_id = match iter {
                             Value::Object(id) => id,
@@ -21746,7 +21747,8 @@ impl Runtime {
                         ))
                     }
                 };
-                let it_m = rt.object_get(id, "@@iterator");
+                // WKSL-EXT 2: route through shared Symbol Rc.
+                let it_m = rt.lookup_well_known_method(id, "@@iterator")?;
                 if !rt.is_callable(&it_m) {
                     return Err(RuntimeError::TypeError(
                         "Map.groupBy: argument is not iterable".into(),
@@ -21992,7 +21994,15 @@ pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value
             _ => return Ok(Vec::new()),
         },
     };
-    let method = rt.object_get(id, "@@iterator");
+    // WKSL-EXT 2: route @@iterator lookup through the well-known Symbol's
+    // shared Rc so accessor properties installed via Object.defineProperty(
+    // o, Symbol.iterator, {get(){...}}) fire from spread `[...obj]`, Set
+    // ctor, WeakMap/WeakSet ctors, Array.from non-array-like fallback,
+    // and every other spread/iterable consumer routed through this helper.
+    // Without this, the string-keyed object_get(*, "@@iterator") miss
+    // silently returned undefined and the spread/iteration silently
+    // dropped the input.
+    let method = rt.lookup_well_known_method(id, "@@iterator")?;
     let iter = rt.call_function(method, Value::Object(id), Vec::new())?;
     let iter_id = match iter {
         Value::Object(id) => id,
