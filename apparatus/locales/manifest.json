@@ -1,10 +1,10 @@
 {
   "generated_by": "apparatus/locales/discover.sh",
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
-  "locale_root": "/home/jaredef/rusty-bun/pilots",
+  "locale_root": "/home/jaredef/Developer/cruftless/.claude/worktrees/bridge-cse_01Wd1hEjajHFetR5shGMWmjS/pilots",
   "totals": {
-    "locales": 236,
-    "top_level": 149,
+    "locales": 237,
+    "top_level": 150,
     "nested": 87,
     "warnings": 0
   },
@@ -305,6 +305,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": null
+    },
+    {
+      "coord": "cjs-esm-namespace-pipeline",
+      "tag": "L.cjs-esm-namespace-pipeline",
+      "parent": null,
+      "scope": "cjs-esm-namespace-pipeline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": "FOUNDED at CENP-EXT 0 (design-only). Phase 1 spawn + Phase 2 baseline-inspect + design articulation; no runtime substrate lands in this founding round."
     },
     {
       "coord": "cjs-ns-shape-diff-residual",
@@ -978,7 +987,7 @@
       "parent": null,
       "scope": "promise-static-ctx-validation",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {
@@ -1968,7 +1977,7 @@
       "parent": null,
       "scope": "top500-fast-residual-survey",
       "depth": 1,
-      "rung_count": 0,
+      "rung_count": 1,
       "status": "FOUNDED at Round 13b. Measurement + clustering only; no substrate edit in this locale."
     },
     {
