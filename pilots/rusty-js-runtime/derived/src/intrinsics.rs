@@ -18156,16 +18156,79 @@ impl Runtime {
                     rt.set_engine_sentinel(id, "__is_weakset", Value::Boolean(true));
                 }
                 rt.set_engine_sentinel(id, "size", Value::Number(0.0));
-                // Tier-Ω.5.rrr: populate from iterable arg. Per spec
-                // `new Set(iterable)` calls .add for each yielded value.
+                // AFID-EXT 1 (Set + WeakSet ctors): interleaved iteration
+                // per ECMA-262 §24.2.1.2 / §24.4.1.2 + AddEntriesFromIterable.
+                // The prior eager-collect path OOMed on infinite iters; the
+                // silent-error swallow (`if let Ok`) also hid spec-mandated
+                // ToObject / iterator-not-callable TypeErrors. Rewrite calls
+                // iter.next() per element and processes inline with
+                // iter_close_rt on any abrupt completion (WeakSet add
+                // on non-held-weakly values, etc.).
                 if let Some(arg) = args.first() {
-                    if let Ok(values) = collect_iterable(rt, arg.clone()) {
+                    if !matches!(arg, Value::Undefined | Value::Null) {
+                        let arg_id = match arg {
+                            Value::Object(id) => *id,
+                            other => match rt.to_object(other)? {
+                                Value::Object(id) => id,
+                                _ => {
+                                    return Err(RuntimeError::TypeError(
+                                        "Set/WeakSet: iterable cannot be coerced to object"
+                                            .into(),
+                                    ))
+                                }
+                            },
+                        };
+                        let method = rt.object_get(arg_id, "@@iterator");
+                        let iter = rt.call_function(method, Value::Object(arg_id), Vec::new())?;
+                        let iter_id = match iter {
+                            Value::Object(id) => id,
+                            _ => {
+                                return Err(RuntimeError::TypeError(
+                                    "iterator is not an object".into(),
+                                ))
+                            }
+                        };
+                        let next_fn = rt.object_get(iter_id, "next");
                         let mut size = 0.0_f64;
-                        for v in values {
-                            let key_s = abstract_ops::to_string(&v).as_str().to_string();
-                            if matches!(rt.object_get(storage, &key_s), Value::Undefined) {
-                                rt.object_set(storage, key_s, v);
-                                size += 1.0;
+                        loop {
+                            let result = rt.call_function(
+                                next_fn.clone(),
+                                Value::Object(iter_id),
+                                Vec::new(),
+                            )?;
+                            let rid = match result {
+                                Value::Object(id) => id,
+                                _ => {
+                                    let _ = crate::intrinsics::iter_close_rt(rt, iter_id);
+                                    return Err(RuntimeError::TypeError(
+                                        "iterator next did not return an object".into(),
+                                    ));
+                                }
+                            };
+                            if abstract_ops::to_boolean(&rt.object_get(rid, "done")) {
+                                break;
+                            }
+                            let v = rt.object_get(rid, "value");
+                            // Per-element processing wrapped so any abrupt
+                            // completion routes through iter_close_rt with
+                            // the ORIGINAL error preserved per §7.4.9 step 4.
+                            let process_err: Option<RuntimeError> = if is_weak_ctor
+                                && !matches!(v, Value::Object(_) | Value::Symbol(_))
+                            {
+                                Some(RuntimeError::TypeError(
+                                    "WeakSet: value cannot be held weakly".into(),
+                                ))
+                            } else {
+                                let key_s = abstract_ops::to_string(&v).as_str().to_string();
+                                if matches!(rt.object_get(storage, &key_s), Value::Undefined) {
+                                    rt.object_set(storage, key_s, v);
+                                    size += 1.0;
+                                }
+                                None
+                            };
+                            if let Some(e) = process_err {
+                                let _ = crate::intrinsics::iter_close_rt(rt, iter_id);
+                                return Err(e);
                             }
                         }
                         rt.object_set(id, "size".into(), Value::Number(size));

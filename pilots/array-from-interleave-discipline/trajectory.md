@@ -58,3 +58,49 @@ Regression sweep (3 prior probes, all under ulimit -v 2 GiB):
 ```
 
 **Status**: AFID-EXT 0 LANDED. Array.from no longer OOMs on infinite iters when mapfn throws. Interleaved iteration spec-correct. Close-on-mapfn-throw spec-correct (original throw preserved per §7.4.9 step 4). Finding AFID.1 (ICES-EXT 3 spec divergence on close-throw shadowing) surfaced for follow-up.
+
+## AFID-EXT 1 — LANDED (2026-05-31) — Set + WeakSet ctor interleave + close + silent-swallow removal
+
+**Trigger**: AFID.2 audit. Survey of `collect_iterable` call sites found 6 OOM-vulnerable surfaces under `ulimit -v 512 MiB`: Promise.all/race/any/allSettled (~200+ LOC across 4 intrinsics) + Set ctor + WeakSet ctor (shared closure, ~75 LOC). Keeper directed (Telegram 10690 "3") to land the cheap pair first, defer Promise.* family.
+
+**Substrate** (~75 LOC at one site, `intrinsics.rs:18159` inside the shared `for collection in &["Set", "WeakSet"]` loop):
+
+Replaced the prior 12-LOC `collect_iterable` block. New flow per ECMA-262 §24.2.1.2 / §24.4.1.2 + AddEntriesFromIterable:
+
+1. Branch on `arg ∈ {undefined, null}`: skip iteration per spec.
+2. ToObject the arg if primitive.
+3. GetMethod(@@iterator) → call → check Object → store iter_id.
+4. Cache GetMethod(next) on iter.
+5. Per-element loop: call next; check result Object (else close + TypeError); check .done; read .value.
+   - WeakSet: enforce §24.4.3.1 step 4 CanBeHeldWeakly (Object or Symbol); else close + TypeError.
+   - Set: insert with abstract_ops::to_string key + dedup; size += 1 on new.
+   - On any per-element abrupt completion, `iter_close_rt(rt, iter_id)` best-effort then return Err(original) (§7.4.9 step 4 preservation).
+
+Also removes the prior `if let Ok(values) = collect_iterable(...)` silent-swallow that had hidden spec-mandated TypeErrors (ToObject failures, iterator-not-callable, etc.).
+
+**Yield**:
+
+```text
+AFID-EXT 1 probe (/tmp/probe-afid-1.js): 6/7 PASS
+
+  WeakSet(infinite-primitive iter): close + TypeError ✓ (was OOM)
+  Set(next non-Object iter):         close + TypeError ✓ (was silent empty Set)
+  Set(undefined):                    empty Set ✓ (regression preserved)
+  Set([1,2,2,3]) dedup:              size=3 ✓ (regression preserved)
+  Set(42):                           TypeError ✓ (was silent empty Set via swallow)
+  WeakSet([o1, o2]).has(o1) && .has(o2):  FAIL — pre-existing storage bug (Finding AFID.3)
+  Set([1,2,3]):                      has 1+2+3 ✓ (regression preserved)
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+
+Regression sweep preserved: IPTD 7/7, cross-consumer 7/7,
+ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8.
+```
+
+**Phase 5 (Chapter-close-inspect)** per Rule 15:
+
+**Finding AFID.3** surfaced: WeakSet storage uses `abstract_ops::to_string(&v)` as the dedup/lookup key. Distinct objects all map to "[object Object]"; only one survives at any moment in storage. `.has(o1)` returns whether the key is present, not whether o1 specifically was inserted. The prior eager-collect path hid this — baseline OOMed before reaching .has() checks. Sibling locale candidate: `weakset-object-identity-storage-discipline/` (or merged into a broader `weak-collections-identity/`). Likely also affects WeakMap key storage. Out of AFID-EXT 1 scope.
+
+**Phase 3 (Pin-Art if duplicated)** per Rule 24: pattern `interleave_iter + close-on-abrupt + propagate-original` now appears at two runtime intrinsic sites (Array.from + Set/WeakSet ctor). Promise.* family would be the third + fourth + fifth + sixth instance. At ~3+ instances the helper-factoring threshold is met; defer until promise-iteration landing chooses its lowering shape (the per-method PromiseCapability tracking complicates a generic helper signature).
+
+**Status**: AFID-EXT 1 LANDED. Set + WeakSet ctors no longer OOM on infinite iters; spec-mandated TypeErrors no longer suppressed; close-on-abrupt + original-error preservation aligned with AFID-EXT 0. Promise.* family remains carry-forward to a dedicated session. Finding AFID.3 (WeakSet/WeakMap identity-storage) surfaces a separable sibling locale.
