@@ -10,6 +10,7 @@
 pub mod abstract_ops;
 pub mod bigint;
 pub mod caps;
+pub mod cjs_lexer;
 pub mod interp;
 pub mod interp_ic_table;
 pub mod intrinsics;
