@@ -5087,7 +5087,14 @@ impl Runtime {
                 }
             };
             let then_fn = match &next_promise {
-                Value::Object(id) => self.object_get(*id, "then"),
+                Value::Object(_) => match self.spec_get(&next_promise, "then") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                },
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
@@ -5277,7 +5284,14 @@ impl Runtime {
                 }
             };
             let then_fn = match &next_promise {
-                Value::Object(id) => self.object_get(*id, "then"),
+                Value::Object(_) => match self.spec_get(&next_promise, "then") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                },
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
@@ -5450,7 +5464,14 @@ impl Runtime {
                 }
             };
             let then_fn = match &next_promise {
-                Value::Object(id) => self.object_get(*id, "then"),
+                Value::Object(_) => match self.spec_get(&next_promise, "then") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                },
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
@@ -5602,7 +5623,14 @@ impl Runtime {
                 }
             };
             let then_fn = match &next_promise {
-                Value::Object(id) => self.object_get(*id, "then"),
+                Value::Object(_) => match self.spec_get(&next_promise, "then") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                        self.promise_reject_with_error(cap_reject, e)?;
+                        return Ok(());
+                    }
+                },
                 _ => Value::Undefined,
             };
             if !self.is_callable(&then_fn) {
