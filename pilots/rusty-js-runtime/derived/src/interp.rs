@@ -7253,25 +7253,33 @@ impl Runtime {
         // chance to fire — the collect loop OOMed first. AFID-EXT 0
         // rewrites this surface to the interleaved shape and adds
         // close-on-abrupt at each per-element abrupt site.
-        let iterable_path = match &src {
+        // WKSL-EXT 0: resolve @@iterator via the well-known Symbol's
+        // shared Rc so getter-installed iterator methods fire (was
+        // silently missing both the iterable-detection and the
+        // method-fetch when @@iterator was an accessor).
+        let iter_method_opt: Option<Value> = match &src {
             Value::Object(id) => {
-                !matches!(self.object_get(*id, "@@iterator"), Value::Undefined)
+                let m = self.lookup_well_known_method(*id, "@@iterator")?;
+                if matches!(m, Value::Undefined) {
+                    None
+                } else {
+                    Some(m)
+                }
             }
-            Value::String(_) => false,
+            Value::String(_) => None,
             Value::Undefined | Value::Null => {
                 return Err(RuntimeError::TypeError(
                     "Array.from: items must not be null or undefined".into(),
                 ))
             }
-            _ => false,
+            _ => None,
         };
-        if iterable_path {
+        if let Some(method) = iter_method_opt {
             // §23.1.2.1 step 6: iterable branch with interleaving.
             let src_id = match &src {
                 Value::Object(id) => *id,
                 _ => unreachable!(),
             };
-            let method = self.object_get(src_id, "@@iterator");
             let iter = self.call_function(method, Value::Object(src_id), Vec::new())?;
             let iter_id = match iter {
                 Value::Object(id) => id,
@@ -8397,31 +8405,7 @@ impl Runtime {
         for e in items {
             let spreadable = match &e {
                 Value::Object(eid) => {
-                    // ACSP-EXT 0: @@isConcatSpreadable is well-known-Symbol-
-                    // keyed. PropertyKey::Symbol uses Rc::ptr_eq for
-                    // identity, so resolve the shared Symbol Rc via
-                    // Symbol.isConcatSpreadable rather than allocating a
-                    // fresh Rc. Falls back to the string-keyed
-                    // "@@isConcatSpreadable" path for objects whose flag
-                    // was installed via direct property assignment
-                    // (which routes through the string-key bucket).
-                    let sym_rc = match self.global_get("Symbol") {
-                        Value::Object(sid) => match self.object_get(sid, "isConcatSpreadable") {
-                            Value::Symbol(rc) => Some(rc),
-                            _ => None,
-                        },
-                        _ => None,
-                    };
-                    let flag = match sym_rc {
-                        Some(rc) => {
-                            let key = crate::value::PropertyKey::Symbol(rc);
-                            match self.read_property_pk(*eid, &key)? {
-                                Value::Undefined => self.read_property(*eid, "@@isConcatSpreadable")?,
-                                other => other,
-                            }
-                        }
-                        None => self.read_property(*eid, "@@isConcatSpreadable")?,
-                    };
+                    let flag = self.lookup_well_known_method(*eid, "@@isConcatSpreadable")?;
                     match flag {
                         Value::Undefined => matches!(
                             self.obj(*eid).internal_kind,
@@ -12338,6 +12322,39 @@ impl Runtime {
                 setter: None,
             },
         );
+    }
+
+    /// WKSL-EXT 0 (Well-Known Symbol Lookup): resolve a well-known
+    /// Symbol-keyed property at `target_id` using the shared Symbol Rc
+    /// from the global `Symbol` so the PropertyKey::Symbol identity
+    /// (Rc::ptr_eq) matches the bucket entry installed via
+    /// Object.defineProperty(o, Symbol.X, ...) / class @@X getter
+    /// declarations. Falls back to the string-keyed bucket for objects
+    /// whose property was installed via direct "@@X" assignment.
+    /// `wks_full` is the "@@" + Symbol name string (e.g. "@@iterator");
+    /// the trailing portion after "@@" is looked up on the global
+    /// Symbol constructor.
+    pub fn lookup_well_known_method(
+        &mut self,
+        target_id: ObjectRef,
+        wks_full: &str,
+    ) -> Result<Value, RuntimeError> {
+        let short = wks_full.strip_prefix("@@").unwrap_or(wks_full);
+        let sym_rc = match self.global_get("Symbol") {
+            Value::Object(sid) => match self.object_get(sid, short) {
+                Value::Symbol(rc) => Some(rc),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(rc) = sym_rc {
+            let key = crate::value::PropertyKey::Symbol(rc);
+            match self.read_property_pk(target_id, &key)? {
+                Value::Undefined => {}
+                other => return Ok(other),
+            }
+        }
+        self.read_property(target_id, wks_full)
     }
 
     pub fn object_get(&self, id: ObjectRef, key: &str) -> Value {
