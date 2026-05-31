@@ -21666,6 +21666,32 @@ pub(crate) fn make_set_values_iterator(
     Ok(Value::Object(iter))
 }
 
+/// AFID-EXT 0: ECMA-262 §7.4.9 IteratorClose at the Runtime tier (Rust
+/// caller), mirroring the JS-callable `__destr_iter_close` helper.
+/// Invokes `iter.return()` if callable; returns silently for null /
+/// undefined; throws TypeError for non-callable non-null/non-undefined
+/// (§7.3.10 GetMethod). For Rust-side intrinsics that catch an abrupt
+/// completion during iteration (Array.from mapFn throw, etc.) and need
+/// to call IteratorClose before propagating.
+pub(crate) fn iter_close_rt(rt: &mut Runtime, iter_id: crate::value::ObjectRef) -> Result<(), RuntimeError> {
+    let ret = rt.object_get(iter_id, "return");
+    if matches!(ret, Value::Undefined | Value::Null) {
+        return Ok(());
+    }
+    if !matches!(ret, Value::Object(_)) {
+        return Err(RuntimeError::TypeError(
+            "iterator.return is not callable".into(),
+        ));
+    }
+    let inner = rt.call_function(ret, Value::Object(iter_id), Vec::new())?;
+    if !matches!(inner, Value::Object(_)) {
+        return Err(RuntimeError::TypeError(
+            "IteratorClose return method returned non-object".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn collect_iterable(rt: &mut Runtime, src: Value) -> Result<Vec<Value>, RuntimeError> {
     // IPTO-EXT 1: ECMA-262 §7.3.20 GetIterator(obj). Property access
     // `obj[Symbol.iterator]` ToObject-wraps primitives implicitly; cruft's

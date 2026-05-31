@@ -3,8 +3,8 @@
   "doc_reference": "Doc 737 (The Locale as Coordinate)",
   "locale_root": "/home/jaredef/rusty-bun/pilots",
   "totals": {
-    "locales": 232,
-    "top_level": 145,
+    "locales": 233,
+    "top_level": 146,
     "nested": 87,
     "warnings": 0
   },
@@ -143,6 +143,15 @@
       "depth": 1,
       "rung_count": 1,
       "status": "**CLOSED at AEVPD-EXT 1** (1 implementation round; multi-tier closure across three substrate truths)."
+    },
+    {
+      "coord": "array-from-interleave-discipline",
+      "tag": "L.array-from-interleave-discipline",
+      "parent": null,
+      "scope": "array-from-interleave-discipline",
+      "depth": 1,
+      "rung_count": 1,
+      "status": null
     },
     {
       "coord": "array-length-setter-truncation",
@@ -708,7 +717,7 @@
       "parent": null,
       "scope": "iterator-close-emission-sites",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 4,
       "status": null
     },
     {
@@ -735,7 +744,7 @@
       "parent": null,
       "scope": "iterator-protocol-throw-discipline",
       "depth": 1,
-      "rung_count": 1,
+      "rung_count": 2,
       "status": null
     },
     {

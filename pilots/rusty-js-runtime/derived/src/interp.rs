@@ -6602,32 +6602,104 @@ impl Runtime {
             }
         };
         let out = self.alloc_object(crate::value::Object::new_array());
-        let items: Vec<Value> = match &src {
+        // AFID-EXT 0: ECMA-262 §23.1.2.1 step 6 mandates interleaved
+        // iteration: per element, call iter.next(); check result Object;
+        // check done; read value; if mapping, call mapfn(value, k); if
+        // ANY of those abrupt-completes, IteratorClose(iter, completion)
+        // then propagate. The prior implementation eagerly collected the
+        // full iterable into a Vec via collect_iterable BEFORE applying
+        // mapfn, so a mapfn that throws on an infinite iter never got a
+        // chance to fire — the collect loop OOMed first. AFID-EXT 0
+        // rewrites this surface to the interleaved shape and adds
+        // close-on-abrupt at each per-element abrupt site.
+        let iterable_path = match &src {
             Value::Object(id) => {
-                let has_iter = !matches!(self.object_get(*id, "@@iterator"), Value::Undefined);
-                if has_iter {
-                    crate::intrinsics::collect_iterable(self, src.clone())?
-                } else {
-                    let len = self.try_array_length(*id)?;
-                    (0..len)
-                        .map(|i| self.object_get(*id, &i.to_string()))
-                        .collect()
-                }
+                !matches!(self.object_get(*id, "@@iterator"), Value::Undefined)
             }
-            Value::String(s) => s
-                .chars()
-                .map(|c| Value::String(std::rc::Rc::new(c.to_string())))
-                .collect(),
+            Value::String(_) => false,
             Value::Undefined | Value::Null => {
                 return Err(RuntimeError::TypeError(
                     "Array.from: items must not be null or undefined".into(),
                 ))
             }
+            _ => false,
+        };
+        if iterable_path {
+            // §23.1.2.1 step 6: iterable branch with interleaving.
+            let src_id = match &src {
+                Value::Object(id) => *id,
+                _ => unreachable!(),
+            };
+            let method = self.object_get(src_id, "@@iterator");
+            let iter = self.call_function(method, Value::Object(src_id), Vec::new())?;
+            let iter_id = match iter {
+                Value::Object(id) => id,
+                _ => {
+                    return Err(RuntimeError::TypeError(
+                        "iterator is not an object".into(),
+                    ))
+                }
+            };
+            let next_fn = self.object_get(iter_id, "next");
+            let mut k: usize = 0;
+            loop {
+                let result =
+                    self.call_function(next_fn.clone(), Value::Object(iter_id), Vec::new())?;
+                let rid = match result {
+                    Value::Object(id) => id,
+                    _ => {
+                        return Err(RuntimeError::TypeError(
+                            "iterator next did not return an object".into(),
+                        ))
+                    }
+                };
+                let done = crate::abstract_ops::to_boolean(&self.object_get(rid, "done"));
+                if done {
+                    break;
+                }
+                let value = self.object_get(rid, "value");
+                let mapped = if let Some(f) = &mapping {
+                    // §23.1.2.1 step 6.f.iv-vi: Call(mapfn, thisArg,
+                    // [value, k]). On abrupt, IteratorClose(iter,
+                    // completion) then propagate.
+                    match self.call_function(
+                        f.clone(),
+                        this_arg.clone(),
+                        vec![value, Value::Number(k as f64)],
+                    ) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let _ = crate::intrinsics::iter_close_rt(self, iter_id);
+                            return Err(e);
+                        }
+                    }
+                } else {
+                    value
+                };
+                // step 6.f.vii: CreateDataPropertyOrThrow on out. On
+                // abrupt, IteratorClose then propagate.
+                self.object_set(out, k.to_string(), mapped);
+                k += 1;
+            }
+            self.object_set(out, "length".into(), Value::Number(k as f64));
+            return Ok(Value::Object(out));
+        }
+        // Non-iterable path: array-like (length + indexed access) or string.
+        let items: Vec<Value> = match &src {
+            Value::Object(id) => {
+                let len = self.try_array_length(*id)?;
+                (0..len)
+                    .map(|i| self.object_get(*id, &i.to_string()))
+                    .collect()
+            }
+            Value::String(s) => s
+                .chars()
+                .map(|c| Value::String(std::rc::Rc::new(c.to_string())))
+                .collect(),
             _ => Vec::new(),
         };
         for (i, v) in items.into_iter().enumerate() {
             let mapped = if let Some(f) = &mapping {
-                // §23.1.2.1 step 6.f.iv: Call(mapfn, thisArg, [kValue, k]).
                 self.call_function(
                     f.clone(),
                     this_arg.clone(),
