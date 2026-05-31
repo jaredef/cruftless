@@ -21,7 +21,7 @@
 
 **Phase 5 (Chapter-close-inspect)** per Rule 15:
 
-**Finding AFID.1** — ICES-EXT 3 close-throw spec divergence surfaced (cross-locale): the ICES-EXT 3 synthetic catch stub for for-of body throw is:
+**Finding AFID.1** — CLOSED by ICES-EXT 3.1 (commit follow-up). ICES-EXT 3 close-throw spec divergence surfaced (cross-locale): the ICES-EXT 3 synthetic catch stub for for-of body throw is:
 
 ```
 catch_pos:

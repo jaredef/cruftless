@@ -2508,11 +2508,12 @@ impl Compiler {
                 encode_op(&mut self.bytecode, Op::TryExit);
                 self.emit_back_jump(loop_start);
                 // Synthetic catch handler: thrown value on stack on entry.
-                // Spill, close, reload, re-throw. If __destr_iter_close
-                // itself throws (e.g. non-callable iter.return), that
-                // throw replaces the original per §14.7.5.6 (the close-
-                // step's abrupt completion supersedes the body's per
-                // §13.15.7 IfAbruptCloseIterator).
+                // Spill, close (best-effort — swallow any close-thrown
+                // error via a nested synthetic try-catch per ECMA-262
+                // §7.4.9 step 4: when completion.[[Type]] is throw,
+                // IteratorClose returns the ORIGINAL completion even if
+                // GetMethod/Call of iter.return itself throws), reload,
+                // re-throw original. ICES-EXT 3.1 fix to AFID.1 finding.
                 let body_catch_pos = self.bytecode.len();
                 self.bytecode[body_catch_patch..body_catch_patch + 4]
                     .copy_from_slice(&(body_catch_pos as u32).to_le_bytes());
@@ -2524,7 +2525,19 @@ impl Compiler {
                     .last()
                     .and_then(|f| f.for_of_iter_slot)
                     .expect("for-of frame must carry iter_slot");
+                // Nested synthetic try-catch around the close call to
+                // discard close-thrown errors per §7.4.9 step 4.
+                encode_op(&mut self.bytecode, Op::TryEnter);
+                let swallow_patch = self.bytecode.len();
+                encode_u32(&mut self.bytecode, 0);
                 self.emit_iter_close_call(iter_slot_for_catch);
+                encode_op(&mut self.bytecode, Op::TryExit);
+                let jump_past_swallow = self.emit_jump(Op::Jump);
+                let swallow_pos = self.bytecode.len();
+                self.bytecode[swallow_patch..swallow_patch + 4]
+                    .copy_from_slice(&(swallow_pos as u32).to_le_bytes());
+                encode_op(&mut self.bytecode, Op::Pop); // discard close-thrown
+                self.patch_jump(jump_past_swallow);
                 encode_op(&mut self.bytecode, Op::LoadLocal);
                 encode_u16(&mut self.bytecode, throw_tmp);
                 encode_op(&mut self.bytecode, Op::Throw);

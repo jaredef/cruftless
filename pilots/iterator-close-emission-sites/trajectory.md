@@ -142,3 +142,47 @@ Regression sweep:
 **Finding ICES.2 surfaced**: Rule 24 emit-site coherence threshold met at three sites for the `(try_open, close_slot)` unwind walk pattern. `emit_frame_unwind` helper promotion deferred pending a fourth emit-site appearance.
 
 **Status**: ICES-EXT 3 LANDED. ICES locale's primary scope (plain-for-of break + return + throw IteratorClose discipline) is now spec-complete at the bytecode compiler tier. Plain-for-of, destructuring, array-spread, Array.from, spread-call, yield*, destructuring-rest — all consume the same helper-tier `__destr_iter_close` discipline; the for-of-specific control-flow paths now emit the matching IteratorClose calls per §14.7.5.6 step 5 + §13.15.7. for-await + yield* delegation + spread-on-throw remain as separable sibling locales.
+
+## ICES-EXT 3.1 — LANDED (2026-05-31) — spec-correctness fix per §7.4.9 step 4 (Finding AFID.1)
+
+**Trigger**: Finding AFID.1 surfaced during AFID-EXT 0 landing. The ICES-EXT 3 synthetic catch stub at the for-of body-throw close site let close-thrown errors replace body-thrown errors; per ECMA-262 §7.4.9 step 4, when `completion.[[Type]] is throw`, IteratorClose returns the ORIGINAL completion even if GetMethod / Call of iter.return themselves throw. Keeper APPROVED via Telegram 10686.
+
+**Substrate** (~10 LOC at the for-of synthetic catch stub):
+
+Replaced the bare close call with a nested synthetic try-catch that swallows close-thrown values:
+
+```
+catch_pos:
+  StoreLocal <thrown>
+  TryEnter <swallow_pos>
+  emit_iter_close_call iter_slot
+  TryExit
+  Jump <after_swallow>
+swallow_pos:
+  Pop                                ; discard close-thrown
+after_swallow:
+  LoadLocal <thrown>
+  Throw                              ; always the spilled original
+```
+
+On normal close (or silent skip for null/undefined .return), TryExit pops the inner synthetic frame and Jump skips the swallow arm.
+
+**Yield**:
+
+```text
+ICES-EXT 3.1 probe (/tmp/probe-ices-3-1.js): 5/5 PASS
+  body Error + iter.return non-callable (42) -> ORIGINAL Error wins   ✓
+  body Error + iter.return throws RangeError -> ORIGINAL Error wins   ✓
+  body normal (break) + iter.return non-callable -> close TypeError observed ✓
+  body Error + iter.return null -> ORIGINAL Error wins + close silent ✓
+  Nested for-of inner body throws -> ORIGINAL + close order IN,OUT     ✓
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+
+Regression sweep preserved: IPTD 7/7, cross-consumer 7/7, ICES-EXT 2 6/6,
+AFID 8/8, labelled-break ["B","A"].
+```
+
+**Finding AFID.1 CLOSED**: the bytecode-tier IteratorClose abrupt-completion preservation now matches §7.4.9 step 4. The Array.from runtime-tier surface (AFID-EXT 0) and the for-of bytecode-tier surface (ICES-EXT 3 + 3.1) are now spec-aligned on this same step.
+
+**Status**: ICES-EXT 3.1 LANDED. ICES locale primary scope is now both substrate-complete AND spec-correctness-complete at §7.4.9 step 4.
