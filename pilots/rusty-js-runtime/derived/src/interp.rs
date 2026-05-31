@@ -8397,7 +8397,31 @@ impl Runtime {
         for e in items {
             let spreadable = match &e {
                 Value::Object(eid) => {
-                    let flag = self.read_property(*eid, "@@isConcatSpreadable")?;
+                    // ACSP-EXT 0: @@isConcatSpreadable is well-known-Symbol-
+                    // keyed. PropertyKey::Symbol uses Rc::ptr_eq for
+                    // identity, so resolve the shared Symbol Rc via
+                    // Symbol.isConcatSpreadable rather than allocating a
+                    // fresh Rc. Falls back to the string-keyed
+                    // "@@isConcatSpreadable" path for objects whose flag
+                    // was installed via direct property assignment
+                    // (which routes through the string-key bucket).
+                    let sym_rc = match self.global_get("Symbol") {
+                        Value::Object(sid) => match self.object_get(sid, "isConcatSpreadable") {
+                            Value::Symbol(rc) => Some(rc),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let flag = match sym_rc {
+                        Some(rc) => {
+                            let key = crate::value::PropertyKey::Symbol(rc);
+                            match self.read_property_pk(*eid, &key)? {
+                                Value::Undefined => self.read_property(*eid, "@@isConcatSpreadable")?,
+                                other => other,
+                            }
+                        }
+                        None => self.read_property(*eid, "@@isConcatSpreadable")?,
+                    };
                     match flag {
                         Value::Undefined => matches!(
                             self.obj(*eid).internal_kind,
@@ -8410,7 +8434,9 @@ impl Runtime {
             };
             if spreadable {
                 if let Value::Object(eid) = e {
-                    let el = self.array_length(eid);
+                    // ACSP-EXT 0: use spec-strict length so getter / ToLength
+                    // throws propagate per §22.1.3.1 step 7.b.iii.
+                    let el = self.try_array_length(eid)?;
                     for i in 0..el {
                         let key = i.to_string();
                         if self.has_property(eid, &key) {
