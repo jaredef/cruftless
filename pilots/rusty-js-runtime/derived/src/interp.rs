@@ -4863,49 +4863,50 @@ impl Runtime {
     }
 
     /// Promise.prototype.finally(onFinally) per ECMA §27.2.5.3.
-    /// args[0] = source Promise (current_this).
+    /// args[0] = source (current_this), args[1] = onFinally.
+    /// PFINALLY-EXT 0: per spec Return ? Invoke(promise, "then", «
+    /// thenFinally, catchFinally »). When onFinally is callable, wrap it
+    /// in ThenFinally / CatchFinally closures (name "", length 1) that
+    /// invoke onFinally and pass through the original value / re-throw
+    /// the rejection. When onFinally is non-callable, pass it through
+    /// directly. The delegation through `this.then` lets test262's
+    /// finally/invokes-then-* family observe the .then invocation.
     pub fn promise_finally_via(&mut self, args: &[Value]) -> Result<Value, RuntimeError> {
-        let source = match args.first() {
-            Some(Value::Object(id)) => *id,
-            _ => {
-                return Err(RuntimeError::TypeError(
-                    "Promise.prototype.finally: this is not a Promise".into(),
-                ))
-            }
-        };
-        let cb = args.get(1).cloned();
-        let chain = crate::promise::new_promise(self);
-        let (status, value) = {
-            let s = self.obj(source);
-            if let crate::value::InternalKind::Promise(ps) = &s.internal_kind {
-                (ps.status, ps.value.clone())
-            } else {
-                return Err(RuntimeError::TypeError(
-                    "Promise.prototype.finally: this not a Promise".into(),
-                ));
-            }
-        };
-        if let Some(c) = &cb {
-            if matches!(c, Value::Object(_)) {
-                if let Err(e) = self.call_function(c.clone(), Value::Undefined, Vec::new()) {
-                    if let RuntimeError::Thrown(v) = e {
-                        crate::promise::reject_promise(self, chain, v);
-                        return Ok(Value::Object(chain));
-                    }
-                    return Err(e);
-                }
-            }
+        let source = args.first().cloned().unwrap_or(Value::Undefined);
+        if matches!(source, Value::Undefined | Value::Null) {
+            return Err(RuntimeError::TypeError(
+                "Promise.prototype.finally: this is null or undefined".into(),
+            ));
         }
-        match status {
-            crate::value::PromiseStatus::Fulfilled => {
-                crate::promise::resolve_promise(self, chain, value)
-            }
-            crate::value::PromiseStatus::Rejected => {
-                crate::promise::reject_promise(self, chain, value)
-            }
-            crate::value::PromiseStatus::Pending => {}
-        }
-        Ok(Value::Object(chain))
+        let receiver = match &source {
+            Value::Object(_) => source.clone(),
+            _ => self.to_object(&source)?,
+        };
+        let on_finally = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let (then_arg, catch_arg) = if !self.is_callable(&on_finally) {
+            // §27.2.5.3 step 5: pass-through to onFinally itself.
+            (on_finally.clone(), on_finally)
+        } else {
+            // ThenFinally: (value) => { onFinally(); return value; }
+            let of_then = on_finally.clone();
+            let then_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
+                let value = args.first().cloned().unwrap_or(Value::Undefined);
+                rt.call_function(of_then.clone(), Value::Undefined, Vec::new())?;
+                Ok(value)
+            });
+            let then_id = self.alloc_object(then_fn);
+            // CatchFinally: (reason) => { onFinally(); throw reason; }
+            let of_catch = on_finally.clone();
+            let catch_fn = crate::intrinsics::make_native_with_length("", 1, move |rt, args| {
+                let reason = args.first().cloned().unwrap_or(Value::Undefined);
+                rt.call_function(of_catch.clone(), Value::Undefined, Vec::new())?;
+                Err(RuntimeError::Thrown(reason))
+            });
+            let catch_id = self.alloc_object(catch_fn);
+            (Value::Object(then_id), Value::Object(catch_id))
+        };
+        let then_fn = self.get_via(&receiver, &Value::String(std::rc::Rc::new("then".into())))?;
+        self.call_function(then_fn, receiver, vec![then_arg, catch_arg])
     }
 
     /// Promise.all(iterable) per ECMA §27.2.4.1 using NewPromiseCapability +
