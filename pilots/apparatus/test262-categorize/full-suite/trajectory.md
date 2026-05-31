@@ -178,3 +178,21 @@ New per-record dimensions:
 - Use the row-coherence protocol to prove that at least five examples share one mechanism before editing code.
 
 **Remaining apparatus gaps**: `abstract_op=(unmapped)`, `uncategorized/resolver`, `failure/other`, coarse `absent-or-partial-surface`, and weak realm/execution-context recognition.
+
+---
+
+## FULL-EXT 5 — fresh full-suite sweep against current main (2026-05-30)
+
+**Trigger**: keeper directive to re-measure the full suite at parallelism 2 against current `main` and project failures onto engine coordinates.
+
+**Run**: `test262-full-2026-05-30-224858-p2` (sidecar). New reusable runner landed at `scripts/test262-full/run-full.sh` (enumerates the whole `$T262_ROOT/test` tree; same harness as the sample runner; PARALLEL default 2). The raw `results.jsonl` carried 22 stray non-JSON stdout lines (`[object JSON]`) that poison the categorizer's line-buffer parser; a `grep '^{'` `results.clean.jsonl` was the categorizer input.
+
+**Headline**: 53,289 paths, 53,040 emitted. PASS 34,946 / FAIL 13,161 / SKIP 4,933. Runnable pass rate **72.6%** (34,946 / 48,107).
+
+**Per-section**: language 84.2%, built-ins 70.4%, harness 85.2%, staging 39.5%, annexB 36.8%, intl402 21.2%.
+
+**Gain vs prior full run `2026-05-29-114155-p2`** (identical 53,040 paths): newly PASS 370, regressed 2, **net +368**. Newly-PASS by section: built-ins 280, staging 35, language 33, annexB 21, intl402 1.
+
+**Two regressions to triage**: `built-ins/RegExp/named-groups/duplicate-names-group-property-enumeration-order.js` and `staging/sm/Proxy/global-receiver.js`.
+
+**Pin-Art projection**: 18,094 interpreted non-pass records, 312 coordinates, 12 resolver instances. Top resolvers: runtime/spec-builtins (6,409), ast-to-bytecode/language-lowering (4,142), host-intrinsic/intl402 (2,822), parser-early-error (1,237), buffer-typed-array (1,085), regexp (859). The non-pass mass is dominated by deliberate not-yet-shipped surfaces (Temporal ~3,500, Intl ~2,800, Atomics/SAB ~550, explicit-resource-management ~380, ShadowRealm/import-defer), not correctness bugs. Genuine correctness work clusters in annexB eval-scoping, parser early-errors, resizable ArrayBuffers, and RegExp property-escapes.
