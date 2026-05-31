@@ -30,6 +30,27 @@ Cruft passes a curated 7,785-test representative sample of test262 at 89.6% runn
 
 The repository is organized as the Cruftless apparatus: a substrate-pilot directory tree where each substrate-shaped problem lives in a discoverable locale, and an arc-tier coordinate registry that subsumes locales under coherent multi-substrate programs. The apparatus is itself the engine's development environment; it is also the engine's discovery method.
 
+### Implementation footprint
+
+Cruft is approximately **125,700 lines of hand-derived Rust** (measured with `tokei`, code lines excluding comments and blanks): ~101,700 in the engine substrate and host, ~24,000 in the Node and Web platform surface.
+
+| Crate | Rust LoC | Layer |
+|---|---:|---|
+| `rusty-js-runtime` | 58,234 | engine — intrinsics, prototype chain, abstract ops |
+| `rusty-js-ir` | 10,805 | engine — spec-as-source-of-truth IR |
+| `cruftless` | 10,561 | host — CLI, Node/Web platform bindings |
+| `rusty-js-parser` | 8,492 | engine — lexer + parser |
+| `rusty-js-bytecode` | 7,420 | engine — bytecode compiler |
+| `rusty-js-jit` | 3,206 | engine — Cranelift-backed baseline JIT |
+| `rusty-js-pm` | 1,497 | engine — package manager (resolver-instance #0) |
+| `rusty-js-ast` | 878 | engine — AST |
+| `rusty-js-gc` | 326 | engine — garbage collector |
+| `rusty-js-shapes` | 320 | engine — hidden classes |
+| Node/Web platform pilots (24 crates) | 23,967 | host — `web-crypto`, `tls`, `streams`, `fetch`, `buffer`, `node-*`, … |
+| **Total** | **125,706** | |
+
+This excludes the apparatus and measurement instruments (`derive-constraints`, `test262-categorize`, the TypeScript corpus tools), which are tooling rather than runtime.
+
 ---
 
 ## Fielding Constraint Accumulation and the self-applying apparatus
