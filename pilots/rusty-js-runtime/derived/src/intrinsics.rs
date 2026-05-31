@@ -18219,7 +18219,15 @@ impl Runtime {
                                     "WeakSet: value cannot be held weakly".into(),
                                 ))
                             } else {
-                                let key_s = abstract_ops::to_string(&v).as_str().to_string();
+                                // AFID-EXT 2: route through identity-stable
+                                // storage key encoding (matches set_proto_add_via
+                                // + map_storage_key) so Object members compare
+                                // by reference. Prior to this rung the ctor used
+                                // abstract_ops::to_string directly, collapsing
+                                // distinct objects to "[object Object]" —
+                                // surfaced as Finding AFID.3 once AFID-EXT 1
+                                // closed the OOM that masked it.
+                                let key_s = Runtime::map_storage_key(&v);
                                 if matches!(rt.object_get(storage, &key_s), Value::Undefined) {
                                     rt.object_set(storage, key_s, v);
                                     size += 1.0;

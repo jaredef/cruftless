@@ -104,3 +104,28 @@ ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8.
 **Phase 3 (Pin-Art if duplicated)** per Rule 24: pattern `interleave_iter + close-on-abrupt + propagate-original` now appears at two runtime intrinsic sites (Array.from + Set/WeakSet ctor). Promise.* family would be the third + fourth + fifth + sixth instance. At ~3+ instances the helper-factoring threshold is met; defer until promise-iteration landing chooses its lowering shape (the per-method PromiseCapability tracking complicates a generic helper signature).
 
 **Status**: AFID-EXT 1 LANDED. Set + WeakSet ctors no longer OOM on infinite iters; spec-mandated TypeErrors no longer suppressed; close-on-abrupt + original-error preservation aligned with AFID-EXT 0. Promise.* family remains carry-forward to a dedicated session. Finding AFID.3 (WeakSet/WeakMap identity-storage) surfaces a separable sibling locale.
+
+## AFID-EXT 2 — LANDED (2026-05-31) — Set + WeakSet ctor identity-stable storage key (closes Finding AFID.3)
+
+**Trigger**: Finding AFID.3 surfaced by AFID-EXT 1's chapter-close (probe cell 6 unmasked once OOM closed). Keeper APPROVED via Telegram 10692.
+
+**Substrate** (~3 LOC):
+- Promote `Runtime::map_storage_key` from private `fn` to `pub(crate) fn` (interp.rs:5221).
+- Route the AFID-EXT 1 Set/WeakSet ctor block's storage write through `Runtime::map_storage_key(&v)` instead of `abstract_ops::to_string(&v).as_str().to_string()`. Identity-stable encoding: `__objkey@{oid}` for Object, `@@sym:{s}` for Symbol, fall-through for primitives.
+
+**Yield**:
+
+```text
+AFID-EXT 1 probe re-run: 7/7 PASS (was 6/7; cell 6 closed).
+Identity probe (new Set([o1,o2,1,2,2])): size=4; has(o1)+has(o2)+has(1)+has(2) all true.
+new WeakSet([o1,o2]).has(o1)+.has(o2) both true.
+
+cargo test --release -p rusty-js-runtime --lib: 74 / 0 / 1 preserved.
+
+Regression sweep preserved: IPTD 7/7, cross-consumer 7/7,
+ICES-EXT 2 6/6, ICES-EXT 3.1 5/5, AFID-EXT 0 8/8.
+```
+
+**Finding AFID.3 CLOSED**. WeakMap ctor would have the analogous issue if it had its own ctor block (current WeakMap ctor was OK at the ctor stage per the earlier triage, so no separate AFID-EXT 2 work needed for it — Map ctor path doesn't go through the same Set/WeakSet ctor closure).
+
+**Status**: AFID-EXT 2 LANDED. Set + WeakSet ctor now uses identity-stable storage keys matching set_proto_add_via + Set.has + Set.delete. Object members compare by reference at every dispatch surface.

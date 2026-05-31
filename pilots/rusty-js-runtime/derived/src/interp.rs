@@ -5218,7 +5218,7 @@ impl Runtime {
     ///   - other  → ToString result
     /// Without this, `new Map().set({a:1},"x").set({a:1},"y").size` was
     /// 1 (both keys collapsed to "[object Object]") instead of 2.
-    fn map_storage_key(key: &Value) -> String {
+    pub(crate) fn map_storage_key(key: &Value) -> String {
         match key {
             Value::Object(oid) => format!("__objkey@{}", oid.0),
             Value::Symbol(s) => {
